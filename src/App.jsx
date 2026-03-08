@@ -190,35 +190,39 @@ const s = io("https://myroom-ms7g.onrender.com", {
     };
   }, [roomId]);
 
-  const createPC = () => {
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
 
-    pc.onicecandidate = (event) => {
-  if (event.candidate) {
-    socketRef.current.emit("signal", {
-      roomId,
-      data: {
-        type: "candidate",
-        candidate: event.candidate,
-      },
-    });
-  }
-};
+const createPC = () => {
+  const pc = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+    ],
+  });
 
-   pc.ontrack = (event) => {
-  const [remoteStream] = event.streams;
-  remoteStreamRef.current = remoteStream;
+  pc.ontrack = (event) => {
+    const [remoteStream] = event.streams;
+    remoteStreamRef.current = remoteStream;
 
-  if (remoteVideoRef.current) {
-    remoteVideoRef.current.srcObject = remoteStream;
-    remoteVideoRef.current.play?.().catch(() => {});
-  }
-};
-
-    return pc;
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.play?.().catch(() => {});
+    }
   };
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      socketRef.current.emit("signal", {
+        roomId,
+        data: {
+          type: "candidate",
+          candidate: event.candidate,
+        },
+      });
+    }
+  };
+
+  pcRef.current = pc;
+  return pc;
+};
 
   const startLocalMedia = async (type) => {
     const constraints =
@@ -228,6 +232,12 @@ const s = io("https://myroom-ms7g.onrender.com", {
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     localStreamRef.current = stream;
+
+    if (pcRef.current) {
+  stream.getTracks().forEach((track) => {
+    pcRef.current.addTrack(track, stream);
+  });
+}
 
     // only show local video preview if video call
     if (type === "video" && localVideoRef.current) {
