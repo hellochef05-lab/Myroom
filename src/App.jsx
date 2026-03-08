@@ -165,8 +165,8 @@ function WebRTCCall({ roomId, myName }) {
 
   // socket connect once
   useEffect(() => {
-    const s = io("http://localhost:4000", {
-  transports: ["polling", "websocket"],
+const s = io("https://myroom-ms7g.onrender.com", {
+    transports: ["polling", "websocket"],
   reconnection: true,
 });
 
@@ -196,13 +196,16 @@ function WebRTCCall({ roomId, myName }) {
     });
 
     pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socketRef.current?.emit("signal", {
-          roomId,
-          data: { type: "ice", candidate: event.candidate },
-        });
-      }
-    };
+  if (event.candidate) {
+    socketRef.current.emit("signal", {
+      roomId,
+      data: {
+        type: "candidate",
+        candidate: event.candidate,
+      },
+    });
+  }
+};
 
    pc.ontrack = (event) => {
   const [remoteStream] = event.streams;
@@ -580,8 +583,8 @@ export default function App() {
 
     const userId = randomId();
 
-    const res = await fetch("http://localhost:4000/api/token", {
-      method: "POST",
+const res = await fetch("https://myroom-ms7g.onrender.com/api/token", {
+        method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId, name }),
     });
