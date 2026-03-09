@@ -233,11 +233,15 @@ const createPC = () => {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     localStreamRef.current = stream;
 
-    if (pcRef.current) {
   stream.getTracks().forEach((track) => {
+  const alreadyAdded = pcRef.current
+    .getSenders()
+    .some((sender) => sender.track && sender.track.id === track.id);
+
+  if (!alreadyAdded) {
     pcRef.current.addTrack(track, stream);
-  });
-}
+  }
+});
 
     // only show local video preview if video call
     if (type === "video" && localVideoRef.current) {
@@ -406,12 +410,14 @@ const createPC = () => {
     if (!socketRef.current) return;
     if (inCall || pcRef.current) return;
 
-    isCallerRef.current = true;
+    setInCall(true);
     setCallType(type);
+
+    isCallerRef.current = true;
 
     socketRef.current.emit("signal", {
       roomId,
-      data: { type: "call", callType: type, from: myName || "Someone" },
+      data: { type: "call", callType: type, from: myName },
     });
   };
 
@@ -545,11 +551,15 @@ const createPC = () => {
     </div>
   );
 }
+
 export default function App() {
   const [client, setClient] = useState(null);
   const [channel, setChannel] = useState(null);
   const [name, setName] = useState("");
   const [room, setRoom] = useState("");
+
+  const [inCall, setInCall] = useState(false);
+  const [callType, setCallType] = useState(null);
 
   // Cleanup on unmount
   useEffect(() => {
