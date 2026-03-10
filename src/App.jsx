@@ -97,7 +97,7 @@ function VoiceNoteButton() {
 }
 
 /** WhatsApp-like top header with call buttons */
-function CallHeader({ room, onStartAudio, onStartVideo, inCall }) {
+function CallHeader({ room, onStartAudio, onStartVideo, onEndCall, inCall, callType }) {
   return (
     <div
       style={{
@@ -110,7 +110,13 @@ function CallHeader({ room, onStartAudio, onStartVideo, inCall }) {
     >
       <div style={{ fontWeight: 700 }}>Room {room}</div>
 
-      <div style={{ display: "flex", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {inCall && (
+          <div style={{ color: "green", fontWeight: 600 }}>
+            {callType === "video" ? "Video Call Active" : "Audio Call Active"}
+          </div>
+        )}
+
         <button
           onClick={onStartAudio}
           title="Audio Call"
@@ -119,11 +125,12 @@ function CallHeader({ room, onStartAudio, onStartVideo, inCall }) {
             borderRadius: 12,
             border: "1px solid #eee",
             cursor: "pointer",
-            background: inCall ? "#f6f6f6" : "white",
+            background: "white",
           }}
         >
           <Phone size={18} />
         </button>
+
         <button
           onClick={onStartVideo}
           title="Video Call"
@@ -132,11 +139,25 @@ function CallHeader({ room, onStartAudio, onStartVideo, inCall }) {
             borderRadius: 12,
             border: "1px solid #eee",
             cursor: "pointer",
-            background: inCall ? "#f6f6f6" : "white",
+            background: "white",
           }}
         >
           <Video size={18} />
         </button>
+
+        {inCall && (
+          <button
+            onClick={onEndCall}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 12,
+              border: "1px solid #eee",
+              cursor: "pointer",
+            }}
+          >
+            End Call
+          </button>
+        )}
       </div>
     </div>
   );
@@ -209,16 +230,16 @@ const createPC = () => {
   };
 
   pc.onicecandidate = (event) => {
-    if (event.candidate) {
-      socketRef.current.emit("signal", {
-        roomId,
-        data: {
-          type: "candidate",
-          candidate: event.candidate,
-        },
-      });
-    }
-  };
+  if (event.candidate) {
+    socketRef.current.emit("signal", {
+      roomId,
+      data: {
+        type: "ice",
+        candidate: event.candidate,
+      },
+    });
+  }
+};
 
   pcRef.current = pc;
   return pc;
@@ -293,7 +314,6 @@ const createPC = () => {
     setCallType(ct);
 
     const stream = await startLocalMedia(ct);
-    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
     await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
 
@@ -320,7 +340,6 @@ const createPC = () => {
     const pc = pcRef.current;
 
     const stream = await startLocalMedia(type);
-    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -366,18 +385,19 @@ const createPC = () => {
         }
 
         if (data.type === "answer") {
-          const pc = pcRef.current;
-          if (!pc) return;
+  const pc = pcRef.current;
+  if (!pc) return;
 
-          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+  await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
 
-          // flush ICE we received early
-          for (const c of iceQueueRef.current) {
-            await pc.addIceCandidate(c);
-          }
-          iceQueueRef.current = [];
-          return;
-        }
+  for (const c of iceQueueRef.current) {
+    await pc.addIceCandidate(c);
+  }
+  iceQueueRef.current = [];
+
+  setInCall(true);
+  return;
+}
 
         if (data.type === "ice") {
           const pc = pcRef.current;
@@ -407,19 +427,17 @@ const createPC = () => {
   }, [callType, roomId]);
 
   const startCall = async (type) => {
-    if (!socketRef.current) return;
-    if (inCall || pcRef.current) return;
+  if (!socketRef.current) return;
+  if (inCall || pcRef.current) return;
 
-    setInCall(true);
-    setCallType(type);
+  setCallType(type);
+  isCallerRef.current = true;
 
-    isCallerRef.current = true;
-
-    socketRef.current.emit("signal", {
-      roomId,
-      data: { type: "call", callType: type, from: myName },
-    });
-  };
+  socketRef.current.emit("signal", {
+    roomId,
+    data: { type: "call", callType: type, from: myName },
+  });
+};
 
   const answerCall = async () => {
     acceptedRef.current = true;
@@ -455,11 +473,13 @@ const createPC = () => {
   return (
     <div style={{ position: "relative" }}>
       <CallHeader
-        room={roomId}
-        onStartAudio={() => startCall("audio")}
-        onStartVideo={() => startCall("video")}
-        inCall={inCall}
-      />
+  room={roomId}
+  onStartAudio={() => startCall("audio")}
+  onStartVideo={() => startCall("video")}
+onEndCall={hangup}
+  inCall={inCall}
+  callType={callType}
+/>
 
       {incoming && !inCall && (
         <div
@@ -528,24 +548,47 @@ const createPC = () => {
             End Call
           </button>
 
-          <video ref={remoteVideoRef} autoPlay playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          {callType === "video" ? (
+  <>
+    <video
+      ref={remoteVideoRef}
+      autoPlay
+      playsInline
+      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+    />
 
-          <video
-            ref={localVideoRef}
-            autoPlay
-            muted
-            playsInline
-            style={{
-              position: "absolute",
-              bottom: 10,
-              right: 10,
-              width: 140,
-              height: 100,
-              objectFit: "cover",
-              borderRadius: 10,
-              border: "1px solid rgba(255,255,255,0.25)",
-            }}
-          />
+    <video
+      ref={localVideoRef}
+      autoPlay
+      muted
+      playsInline
+      style={{
+        position: "absolute",
+        bottom: 10,
+        right: 10,
+        width: 140,
+        height: 100,
+        objectFit: "cover",
+        borderRadius: 10,
+        border: "1px solid rgba(255,255,255,0.25)",
+      }}
+    />
+  </>
+) : (
+  <div
+    style={{
+      color: "white",
+      height: "100%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 20,
+      fontWeight: 700,
+    }}
+  >
+    Audio Call Connected
+  </div>
+)}
         </div>
       )}
     </div>
