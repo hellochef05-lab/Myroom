@@ -16,10 +16,16 @@ import { io } from "socket.io-client";
 
 const apiKey = import.meta.env.VITE_STREAM_API_KEY;
 // parse TURN servers from env (JSON array of {urls,username,credential})
-const turnServers =
-  import.meta.env.VITE_TURN_SERVERS
-    ? JSON.parse(import.meta.env.VITE_TURN_SERVERS)
-    : [];
+let turnServers = [];
+try {
+  const raw = import.meta.env.VITE_TURN_SERVERS;
+  if (raw && raw.trim().length) {
+    turnServers = JSON.parse(raw);
+  }
+} catch (err) {
+  console.warn("failed to parse VITE_TURN_SERVERS", err);
+  turnServers = [];
+}
 
 function randomId() {
   return "user_" + Math.random().toString(16).slice(2);
@@ -123,7 +129,10 @@ function CallHeader({ room, onStartAudio, onStartVideo, onEndCall, inCall, callT
         )}
 
         <button
-          onClick={onStartAudio}
+          onClick={() => {
+            console.log("CallHeader: audio button clicked");
+            onStartAudio();
+          }}
           title="Audio Call"
           style={{
             padding: 10,
@@ -137,7 +146,10 @@ function CallHeader({ room, onStartAudio, onStartVideo, onEndCall, inCall, callT
         </button>
 
         <button
-          onClick={onStartVideo}
+          onClick={() => {
+            console.log("CallHeader: video button clicked");
+            onStartVideo();
+          }}
           title="Video Call"
           style={{
             padding: 10,
@@ -152,7 +164,10 @@ function CallHeader({ room, onStartAudio, onStartVideo, onEndCall, inCall, callT
 
         {inCall && (
           <button
-            onClick={onEndCall}
+            onClick={() => {
+              console.log("CallHeader: end call clicked");
+              onEndCall();
+            }}
             style={{
               padding: "10px 12px",
               borderRadius: 12,
@@ -506,8 +521,15 @@ const startOfferFlow = async (type) => {
   }, [callType, roomId]);
 
   const startCall = async (type) => {
-    if (!socketRef.current) return;
-    if (inCall || pcRef.current) return;
+    console.log("startCall invoked", type, "socket connected?", socketRef.current?.connected);
+    if (!socketRef.current) {
+      console.warn("startCall aborted: no socket");
+      return;
+    }
+    if (inCall || pcRef.current) {
+      console.warn("startCall aborted: already in call or pc exists");
+      return;
+    }
 
     setCallType(type);
     isCallerRef.current = true;
@@ -525,6 +547,7 @@ const startOfferFlow = async (type) => {
   };
 
   const answerCall = async () => {
+    console.log("answerCall invoked", { incoming });
     acceptedRef.current = true;
 
     // hide popup
@@ -811,7 +834,10 @@ export default function App() {
     };
   }, [client, room]);
 
+  const [joining, setJoining] = useState(false);
+
   async function joinRoom() {
+    console.log("joinRoom called", { name, room });
     if (!name || !room) {
       alert("Enter your name and room number");
       return;
@@ -822,23 +848,38 @@ export default function App() {
       return;
     }
 
+    setJoining(true);
     const userId = randomId();
 
-const res = await fetch("https://myroom-ms7g.onrender.com/api/token", {
+    try {
+      const res = await fetch("https://myroom-ms7g.onrender.com/api/token", {
         method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, name }),
-    });
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, name }),
+      });
 
-    const data = await res.json();
-    if (!data.token) {
-      alert("Token error - check console");
-      return;
+      if (!res.ok) {
+        console.error("token request failed", res.status, await res.text());
+        alert("Token fetch failed");
+        return;
+      }
+
+      const data = await res.json();
+      if (!data.token) {
+        console.error("no token returned", data);
+        alert("Token error - check console");
+        return;
+      }
+
+      const chatClient = StreamChat.getInstance(apiKey);
+      await chatClient.connectUser({ id: userId, name }, data.token);
+      setClient(chatClient);
+    } catch (err) {
+      console.error("joinRoom error", err);
+      alert("Join failed - see console");
+    } finally {
+      setJoining(false);
     }
-
-    const chatClient = StreamChat.getInstance(apiKey);
-    await chatClient.connectUser({ id: userId, name }, data.token);
-    setClient(chatClient);
   }
 
   if (!client) {
