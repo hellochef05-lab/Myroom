@@ -9,11 +9,16 @@ dotenv.config();
 
 const app = express();
 
-/* Allowed frontend origins */
-const allowedOrigins = [
-  "https://myroom-n1bl.vercel.app",
-  "http://localhost:5173",
-];
+/* Allowed frontend origins (comma-separated env variable for deploys) */
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",").filter(Boolean);
+// add common local dev if not provided
+if (!allowedOrigins.includes("http://localhost:5173")) {
+  allowedOrigins.push("http://localhost:5173");
+}
+// also ensure the render url is allowed in case you forgot to set env
+if (!allowedOrigins.includes("https://myroom-ms7g.onrender.com")) {
+  allowedOrigins.push("https://myroom-ms7g.onrender.com");
+}
 
 /* Express CORS */
 app.use(
@@ -97,6 +102,7 @@ io.on("connection", (socket) => {
 
   socket.on("signal", ({ roomId, data }) => {
     if (!roomId) return;
+    console.log(`signal event from ${socket.id} to room ${roomId}`, data.type);
     socket.to(roomId).emit("signal", data);
   });
 

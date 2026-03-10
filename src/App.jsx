@@ -15,6 +15,11 @@ import { Mic, Paperclip, Phone, Video } from "lucide-react";
 import { io } from "socket.io-client";
 
 const apiKey = import.meta.env.VITE_STREAM_API_KEY;
+// parse TURN servers from env (JSON array of {urls,username,credential})
+const turnServers =
+  import.meta.env.VITE_TURN_SERVERS
+    ? JSON.parse(import.meta.env.VITE_TURN_SERVERS)
+    : [];
 
 function randomId() {
   return "user_" + Math.random().toString(16).slice(2);
@@ -169,13 +174,18 @@ function WebRTCCall({ roomId, myName }) {
 
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
-  const remoteStreamRef = useRef(null);
+  // we'll keep a state copy of the remote stream so we can react when it changes
+  const [remoteStream, setRemoteStream] = useState(null);
+  // debug info for ICE/connection
+  const [pcState, setPcState] = useState({ ice: null, conn: null });
 
   const iceQueueRef = useRef([]);
   const pendingOfferRef = useRef(null);
 
   const localVideoRef = useRef(null);
-const remoteVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null);
+  // remoteMediaStreamRef was unused, remove it
 
   const isCallerRef = useRef(false);
   const acceptedRef = useRef(false);
@@ -183,6 +193,7 @@ const remoteVideoRef = useRef(null);
   const [inCall, setInCall] = useState(false);
   const [incoming, setIncoming] = useState(null); // { callType, from }
   const [callType, setCallType] = useState(null);
+  const screenStreamRef = useRef(null);
 
   // socket connect once
   useEffect(() => {
@@ -213,39 +224,82 @@ const s = io("https://myroom-ms7g.onrender.com", {
 
 
 const createPC = () => {
-  const pc = new RTCPeerConnection({
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-    ],
-  });
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        // allow injected TURN servers from environment (as JSON string)
+        ...turnServers,
+        // public STUN/TURN fallback for quick testing (metered.ca openrelay)
+        {
+          urls: "stun:stun.l.google.com:19302",
+        },
+        {
+          urls: "turn:openrelay.metered.ca:443?transport=tcp",
+          username: "openrelayproject",
+          credential: "openrelayproject",
+        },
+        // note: the openrelay server above has very limited bandwidth and
+        // is meant for development/testing only.  For production you should
+        // provide your own TURN server through VITE_TURN_SERVERS.
+      ],
+    });
 
-  pc.ontrack = (event) => {
-    const [remoteStream] = event.streams;
-    remoteStreamRef.current = remoteStream;
+    // don't attach a MediaStream to event.streams, so fall back to
+    // creating/merging manually and propagate via state so refs can
+    // update after they mount.
+    pc.ontrack = (event) => {
+      console.log("Remote track received:", event.track.kind, event.streams);
 
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream;
-      remoteVideoRef.current.play?.().catch(() => {});
+      let stream = event.streams && event.streams[0];
+      if (!stream) {
+        // either use existing stream or make a new one and add track
+        stream = remoteStream || new MediaStream();
+        if (!stream.getTracks().some((t) => t.id === event.track.id)) {
+          stream.addTrack(event.track);
+        }
+      }
+
+      setRemoteStream(stream);
+    };
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      console.log("local ICE candidate", event.candidate);
+      socketRef.current?.emit("signal", {
+        roomId,
+        data: {
+          type: "ice",
+          candidate: event.candidate,
+        },
+      });
     }
   };
 
-  pc.onicecandidate = (event) => {
-  if (event.candidate) {
-    socketRef.current.emit("signal", {
-      roomId,
-      data: {
-        type: "ice",
-        candidate: event.candidate,
-      },
-    });
-  }
-};
+  pc.onconnectionstatechange = () => {
+    console.log("Connection state:", pc.connectionState);
+    setPcState((s) => ({ ...s, conn: pc.connectionState }));
+    if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+      console.warn("PeerConnection failed/disconnected");
+      cleanupCall();
+      alert("Call failed: unable to establish a direct connection. Ensure TURN is configured.");
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    console.log("ICE connection state:", pc.iceConnectionState);
+    setPcState((s) => ({ ...s, ice: pc.iceConnectionState }));
+    if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+      console.warn("ICE connection state indicates failure", pc.iceConnectionState);
+      cleanupCall();
+      alert("ICE negotiation failed. Try again or check TURN servers.");
+    }
+  };
 
   pcRef.current = pc;
   return pc;
 };
 
-  const startLocalMedia = async (type) => {
+const startLocalMedia = async (type) => {
+    if (!pcRef.current) createPC();
+
     const constraints =
       type === "video"
         ? { video: true, audio: true }
@@ -254,30 +308,46 @@ const createPC = () => {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     localStreamRef.current = stream;
 
-  stream.getTracks().forEach((track) => {
-  const alreadyAdded = pcRef.current
-    .getSenders()
-    .some((sender) => sender.track && sender.track.id === track.id);
+    console.log(
+      "Local tracks:",
+      stream.getTracks().map((t) => `${t.kind}:${t.readyState}`)
+    );
 
-  if (!alreadyAdded) {
-    pcRef.current.addTrack(track, stream);
-  }
-});
+    stream.getAudioTracks().forEach((track) => {
+      track.enabled = true;
+    });
 
-    // only show local video preview if video call
+    stream.getTracks().forEach((track) => {
+      const alreadyAdded = pcRef.current
+        .getSenders()
+        .some((sender) => sender.track && sender.track.id === track.id);
+
+      if (!alreadyAdded) {
+        pcRef.current.addTrack(track, stream);
+        console.log("Added local track:", track.kind);
+      }
+    });
+
     if (type === "video" && localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
+      localVideoRef.current.muted = true;
+      localVideoRef.current.volume = 0;
+      localVideoRef.current.play?.().catch(() => {});
     } else if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
     }
 
     return stream;
   };
-
   const cleanupCall = () => {
     setInCall(false);
     setIncoming(null);
     setCallType(null);
+    // stop and remove any screen tracks
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current = null;
+    }
 
     acceptedRef.current = false;
     isCallerRef.current = false;
@@ -297,60 +367,63 @@ const createPC = () => {
       localStreamRef.current = null;
     }
 
-    if (remoteStreamRef.current) {
-      remoteStreamRef.current.getTracks().forEach((t) => t.stop());
-      remoteStreamRef.current = null;
+    // clear the state-stream as well
+    if (remoteStream) {
+      remoteStream.getTracks().forEach((t) => t.stop());
+      setRemoteStream(null);
     }
 
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
   };
 
-  const handleOffer = async (data) => {
-    if (!pcRef.current) pcRef.current = createPC();
-    const pc = pcRef.current;
+const handleOffer = async (data) => {
+  if (!pcRef.current) createPC();
+  const pc = pcRef.current;
 
-    const ct = data.callType || "audio";
-    setCallType(ct);
+  const ct = data.callType || "audio";
+  setCallType(ct);
 
-    const stream = await startLocalMedia(ct);
+  await startLocalMedia(ct);
 
-    await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+  await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
 
-    // flush ICE we received early
-    for (const c of iceQueueRef.current) {
-      await pc.addIceCandidate(c);
-    }
-    iceQueueRef.current = [];
+  for (const c of iceQueueRef.current) {
+    await pc.addIceCandidate(c);
+  }
+  iceQueueRef.current = [];
 
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
 
-    socketRef.current?.emit("signal", {
-      roomId,
-      data: { type: "answer", answer },
-    });
+  socketRef.current?.emit("signal", {
+    roomId,
+    data: { type: "answer", answer },
+  });
 
-    setInCall(true);
-    setIncoming(null);
-  };
+  setInCall(true);
+  setIncoming(null);
+};
 
-  const startOfferFlow = async (type) => {
-    if (!pcRef.current) pcRef.current = createPC();
-    const pc = pcRef.current;
+const startOfferFlow = async (type) => {
+  if (!pcRef.current) createPC();
+  const pc = pcRef.current;
 
-    const stream = await startLocalMedia(type);
+  await startLocalMedia(type);
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+  console.log(
+    "Caller senders:",
+    pc.getSenders().map((s) => s.track?.kind)
+  );
 
-    socketRef.current?.emit("signal", {
-      roomId,
-      data: { type: "offer", offer, callType: type },
-    });
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
 
-    setInCall(true);
-  };
+  socketRef.current?.emit("signal", {
+    roomId,
+    data: { type: "offer", offer, callType: type },
+  });
+};
 
   // listen signals
   useEffect(() => {
@@ -359,6 +432,7 @@ const createPC = () => {
 
     const onSignal = async (data) => {
       try {
+        console.log("received signal", data.type, data.callType || "");
         if (data.type === "call") {
           // reset any previous call state
           cleanupCall();
@@ -385,29 +459,34 @@ const createPC = () => {
         }
 
         if (data.type === "answer") {
-  const pc = pcRef.current;
-  if (!pc) return;
+          const pc = pcRef.current;
+          if (!pc) return;
 
-  await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
 
-  for (const c of iceQueueRef.current) {
-    await pc.addIceCandidate(c);
-  }
-  iceQueueRef.current = [];
+          for (const c of iceQueueRef.current) {
+            await pc.addIceCandidate(c).catch((err) =>
+              console.warn("ice add error", err)
+            );
+          }
+          iceQueueRef.current = [];
 
-  setInCall(true);
-  return;
-}
+          setInCall(true);
+          return;
+        }
 
         if (data.type === "ice") {
           const pc = pcRef.current;
           if (!pc) return;
 
           const candidate = new RTCIceCandidate(data.candidate);
+          console.log("adding remote candidate", candidate);
           if (!pc.remoteDescription) {
             iceQueueRef.current.push(candidate);
           } else {
-            await pc.addIceCandidate(candidate);
+            await pc.addIceCandidate(candidate).catch((err) =>
+              console.warn("ice add error", err)
+            );
           }
           return;
         }
@@ -427,23 +506,35 @@ const createPC = () => {
   }, [callType, roomId]);
 
   const startCall = async (type) => {
-  if (!socketRef.current) return;
-  if (inCall || pcRef.current) return;
+    if (!socketRef.current) return;
+    if (inCall || pcRef.current) return;
 
-  setCallType(type);
-  isCallerRef.current = true;
+    setCallType(type);
+    isCallerRef.current = true;
 
-  socketRef.current.emit("signal", {
-    roomId,
-    data: { type: "call", callType: type, from: myName },
-  });
-};
+    // unmute the audio element as this originates from a user click
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.muted = false;
+      remoteAudioRef.current.play().catch(() => {});
+    }
+
+    socketRef.current.emit("signal", {
+      roomId,
+      data: { type: "call", callType: type, from: myName },
+    });
+  };
 
   const answerCall = async () => {
     acceptedRef.current = true;
 
     // hide popup
     setIncoming(null);
+
+    // unmute on user interaction
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.muted = false;
+      remoteAudioRef.current.play().catch(() => {});
+    }
 
     socketRef.current?.emit("signal", {
       roomId,
@@ -470,16 +561,103 @@ const createPC = () => {
     cleanupCall();
   };
 
+  // whenever remoteStream updates we need to push it into
+  // any mounted media elements. a small effect handles that.
+  useEffect(() => {
+    if (remoteStream) {
+      console.log("remoteStream tracks", remoteStream.getTracks());
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current
+          .play()
+          .catch((e) => console.log("Remote video play blocked:", e));
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.muted = false;
+        remoteAudioRef.current.volume = 1;
+        // try to play, and if blocked add a one-time click listener
+        let interactionHandler;
+        remoteAudioRef.current
+          .play()
+          .catch((e) => {
+            console.log("Remote audio play blocked, will retry on interaction:", e);
+            interactionHandler = () => {
+              remoteAudioRef.current?.play().catch(() => {});
+            };
+            document.addEventListener("click", interactionHandler, { once: true });
+          });
+        // cleanup listener just in case
+        return () => {
+          if (interactionHandler) {
+            document.removeEventListener("click", interactionHandler);
+          }
+        };
+      }
+    }
+  }, [remoteStream]);
+
+  // if we just entered a call retry playback (some browsers require it)
+  useEffect(() => {
+    if (inCall && remoteAudioRef.current) {
+      remoteAudioRef.current.play().catch(() => {});
+    }
+  }, [inCall]);
+
   return (
     <div style={{ position: "relative" }}>
       <CallHeader
-  room={roomId}
-  onStartAudio={() => startCall("audio")}
-  onStartVideo={() => startCall("video")}
-onEndCall={hangup}
-  inCall={inCall}
-  callType={callType}
-/>
+        room={roomId}
+        onStartAudio={() => startCall("audio")}
+        onStartVideo={() => startCall("video")}
+        onEndCall={hangup}
+        inCall={inCall}
+        callType={callType}
+      />
+      {inCall && (
+        <button
+          onClick={async () => {
+            try {
+              if (!pcRef.current) createPC();
+              const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+              screenStreamRef.current = screenStream;
+              screenStream.getTracks().forEach((track) => {
+                pcRef.current.addTrack(track, screenStream);
+                track.onended = () => {
+                  const sender = pcRef.current
+                    .getSenders()
+                    .find((s) => s.track === track);
+                  if (sender) pcRef.current.removeTrack(sender);
+                };
+              });
+            } catch (e) {
+              console.error("screen share failed", e);
+            }
+          }}
+          style={{
+            position: "absolute",
+            top: 10,
+            left: 10,
+            padding: "6px 10px",
+            background: "white",
+            border: "1px solid #ddd",
+            borderRadius: 8,
+            cursor: "pointer",
+            zIndex: 2,
+          }}
+        >
+          📺 Share Screen
+        </button>
+      )}
+      {/* debug status */}
+      <div style={{ position: "absolute", top: 50, left: 10, fontSize: 12, color: "white" }}>
+        {/* show connection/ice state */}
+        Conn: {pcState.conn || "-"}, ICE: {pcState.ice || "-"}
+        <br />
+        Remote tracks: {remoteStream?.getTracks().length || 0}
+      </div>
+      {/* start muted so autoplay can succeed; we'll unmute on user interaction */}
+      <audio ref={remoteAudioRef} autoPlay playsInline muted />
 
       {incoming && !inCall && (
         <div
