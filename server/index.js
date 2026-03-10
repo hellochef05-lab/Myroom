@@ -10,12 +10,15 @@ dotenv.config();
 const app = express();
 
 /* Allowed frontend origins (comma-separated env variable for deploys) */
+// the list may come from an env var; the check logic below will also allow
+// any vercel.app subdomain automatically so you don't need to remember
+// to add them during rapid iteration.
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",").filter(Boolean);
 // add common local dev if not provided
 if (!allowedOrigins.includes("http://localhost:5173")) {
   allowedOrigins.push("http://localhost:5173");
 }
-// also ensure the render url is allowed in case you forgot to set env
+// ensure the render url is allowed too
 if (!allowedOrigins.includes("https://myroom-ms7g.onrender.com")) {
   allowedOrigins.push("https://myroom-ms7g.onrender.com");
 }
@@ -27,10 +30,19 @@ app.use(
       // allow requests with no origin (mobile apps, curl, same-server calls)
       if (!origin) return callback(null, true);
 
+      // allow explicit list
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
+      // also allow any vercel.app subdomain automatically to avoid
+      // forgetting to update env during rapid deploys
+      if (origin.endsWith(".vercel.app")) {
+        console.log("Permitting vercel.app origin", origin);
+        return callback(null, true);
+      }
+
+      console.warn(`CORS blocked for origin: ${origin}`);
       return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
     methods: ["GET", "POST"],
