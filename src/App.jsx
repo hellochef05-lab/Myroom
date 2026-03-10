@@ -212,10 +212,14 @@ function WebRTCCall({ roomId, myName }) {
 
   // socket connect once
   useEffect(() => {
-const s = io("https://myroom-ms7g.onrender.com", {
-    transports: ["polling", "websocket"],
-  reconnection: true,
-});
+    const s = io("https://myroom-ms7g.onrender.com", {
+      transports: ["polling", "websocket"],
+      reconnection: true,
+    });
+
+    s.on("connect", () => console.log("socket connected", s.id));
+    s.on("disconnect", (reason) => console.log("socket disconnected", reason));
+    s.on("connect_error", (err) => console.warn("socket connect_error", err));
 
     socketRef.current = s;
 

@@ -37,6 +37,25 @@
   padding: 2em;
 }
 
+/* WhatsApp-like chat bubble tweaks */
+.str-chat__message {
+  max-width: 75%;
+  padding: 6px 12px;
+  margin: 4px 0;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.str-chat__message--mine {
+  background-color: #dcf8c6;
+  align-self: flex-end;
+}
+.str-chat__message--their {
+  background-color: #fff;
+  align-self: flex-start;
+}
+/* small call header styling inside WebRTCCall */
+/* cloud adjust within component if needed */
+
 .read-the-docs {
   color: #888;
 }
