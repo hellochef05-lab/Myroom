@@ -89,12 +89,27 @@ app.post("/api/token", (req, res) => {
 const httpServer = createServer(app);
 
 /* Socket.IO */
-const io = new Server(httpServer, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"],
-    credentials: true,
+// socket.io CORS: make more permissive for now, logging requests.  we'll
+// still keep express routes locked down by the strict middleware above.
+const socketCors = {
+  origin: (origin, callback) => {
+    // origin may be undefined for same-host or mobile requests; allow those
+    if (!origin) return callback(null, true);
+    console.log("socket.io origin check", origin);
+    // allow everything (can tighten later if needed)
+    return callback(null, true);
+    // example of stricter logic:
+    // if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+    //   return callback(null, true);
+    // }
+    // callback(new Error(`socket.io CORS blocked: ${origin}`));
   },
+  methods: ["GET", "POST"],
+  credentials: true,
+};
+
+const io = new Server(httpServer, {
+  cors: socketCors,
 });
 
 io.on("connection", (socket) => {
