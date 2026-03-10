@@ -186,6 +186,9 @@ function CallHeader({ room, onStartAudio, onStartVideo, onEndCall, inCall, callT
 /** WebRTC Call UI (NO JITSI, NO LINKS) */
 function WebRTCCall({ roomId, myName }) {
   const socketRef = useRef(null);
+  // debug flag (toggle via env var if desired)
+  const debug = import.meta.env.VITE_DEBUG === 'true';
+  const dbg = (...args) => { if (debug) console.log(...args); };
 
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -217,9 +220,9 @@ function WebRTCCall({ roomId, myName }) {
       reconnection: true,
     });
 
-    s.on("connect", () => console.log("socket connected", s.id));
-    s.on("disconnect", (reason) => console.log("socket disconnected", reason));
-    s.on("connect_error", (err) => console.warn("socket connect_error", err));
+    s.on("connect", () => dbg("socket connected", s.id));
+    s.on("disconnect", (reason) => dbg("socket disconnected", reason));
+    s.on("connect_error", (err) => debug && console.warn("socket connect_error", err));
 
     socketRef.current = s;
 
@@ -266,7 +269,7 @@ const createPC = () => {
     // creating/merging manually and propagate via state so refs can
     // update after they mount.
     pc.ontrack = (event) => {
-      console.log("Remote track received:", event.track.kind, event.streams);
+      dbg("Remote track received:", event.track.kind, event.streams);
 
       let stream = event.streams && event.streams[0];
       if (!stream) {
@@ -281,7 +284,7 @@ const createPC = () => {
     };
   pc.onicecandidate = (event) => {
     if (event.candidate) {
-      console.log("local ICE candidate", event.candidate);
+      dbg("local ICE candidate", event.candidate);
       socketRef.current?.emit("signal", {
         roomId,
         data: {
@@ -293,7 +296,7 @@ const createPC = () => {
   };
 
   pc.onconnectionstatechange = () => {
-    console.log("Connection state:", pc.connectionState);
+    dbg("Connection state:", pc.connectionState);
     setPcState((s) => ({ ...s, conn: pc.connectionState }));
     if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
       console.warn("PeerConnection failed/disconnected");
@@ -303,7 +306,7 @@ const createPC = () => {
   };
 
   pc.oniceconnectionstatechange = () => {
-    console.log("ICE connection state:", pc.iceConnectionState);
+    dbg("ICE connection state:", pc.iceConnectionState);
     setPcState((s) => ({ ...s, ice: pc.iceConnectionState }));
     if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
       console.warn("ICE connection state indicates failure", pc.iceConnectionState);
@@ -451,7 +454,7 @@ const startOfferFlow = async (type) => {
 
     const onSignal = async (data) => {
       try {
-        console.log("received signal", data.type, data.callType || "");
+        dbg("received signal", data.type, data.callType || "");
         if (data.type === "call") {
           // reset any previous call state
           cleanupCall();
@@ -499,7 +502,7 @@ const startOfferFlow = async (type) => {
           if (!pc) return;
 
           const candidate = new RTCIceCandidate(data.candidate);
-          console.log("adding remote candidate", candidate);
+          dbg("adding remote candidate", candidate);
           if (!pc.remoteDescription) {
             iceQueueRef.current.push(candidate);
           } else {
@@ -525,7 +528,7 @@ const startOfferFlow = async (type) => {
   }, [callType, roomId]);
 
   const startCall = async (type) => {
-    console.log("startCall invoked", type, "socket connected?", socketRef.current?.connected);
+    dbg("startCall invoked", type, "socket connected?", socketRef.current?.connected);
     if (!socketRef.current) {
       console.warn("startCall aborted: no socket");
       return;
@@ -551,7 +554,7 @@ const startOfferFlow = async (type) => {
   };
 
   const answerCall = async () => {
-    console.log("answerCall invoked", { incoming });
+    dbg("answerCall invoked", { incoming });
     acceptedRef.current = true;
 
     // hide popup
@@ -886,6 +889,7 @@ export default function App() {
     }
   }
 
+  // before the client is connected show login form
   if (!client) {
     return (
       <div style={{ maxWidth: 420, margin: "60px auto", padding: 20 }}>
@@ -919,23 +923,47 @@ export default function App() {
 
   if (!channel) return <div style={{ padding: 20 }}>Loading chat…</div>;
 
+  // custom message component with read receipts
+  const MyMessage = (props) => {
+    const { message, formatDate } = props;
+    const isMine = message.user?.id === client.userID;
+    const readCount = message.read_by?.length || 0;
+    return (
+      <div
+        className={isMine ? "str-chat__message--mine" : "str-chat__message--their"}
+      >
+        <MessageSimple {...props} />
+        {isMine && (
+          <span style={{ fontSize: 10, opacity: 0.6 }}>✓{readCount > 1 ? '✓' : ''}</span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Chat client={client} theme="messaging light">
       <Channel channel={channel}>
         <Window>
-          {/* ✅ Free WhatsApp-like call (WebRTC) — no Jitsi, no 8x8 links */}
+          {/* WhatsApp-style header */}
+          <div className="header" style={{ padding: '10px', background: '#075e54', color: '#fff' }}>
+            Room {room}
+          </div>
+
+          {/* call UI */}
           <WebRTCCall roomId={room} myName={name} />
 
-          <MessageList />
+          {/* show typing indicator below messages */}
+          <MessageList Message={MyMessage} />
+          <TypingIndicator />
 
           {/* Bottom bar: attach + input + voice note */}
-          <div style={{ display: "flex", gap: 10, padding: 10 }}>
+          <div className="input-bar" style={{ display: 'flex', gap: 10, padding: 10 }}>
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
+                display: 'flex',
+                alignItems: 'center',
                 gap: 8,
-                padding: "0 6px",
+                padding: '0 6px',
               }}
               title="Attach files (use the upload button inside the message input)"
             >
