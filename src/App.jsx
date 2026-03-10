@@ -174,15 +174,15 @@ function WebRTCCall({ roomId, myName }) {
   const iceQueueRef = useRef([]);
   const pendingOfferRef = useRef(null);
 
+  const localVideoRef = useRef(null);
+const remoteVideoRef = useRef(null);
+
   const isCallerRef = useRef(false);
   const acceptedRef = useRef(false);
 
   const [inCall, setInCall] = useState(false);
   const [incoming, setIncoming] = useState(null); // { callType, from }
   const [callType, setCallType] = useState(null);
-
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
 
   // socket connect once
   useEffect(() => {
