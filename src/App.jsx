@@ -330,7 +330,7 @@ const startLocalMedia = async (type) => {
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     localStreamRef.current = stream;
 
-    console.log(
+    dbg(
       "Local tracks:",
       stream.getTracks().map((t) => `${t.kind}:${t.readyState}`)
     );
@@ -346,7 +346,7 @@ const startLocalMedia = async (type) => {
 
       if (!alreadyAdded) {
         pcRef.current.addTrack(track, stream);
-        console.log("Added local track:", track.kind);
+        dbg("Added local track:", track.kind);
       }
     });
 
@@ -828,6 +828,12 @@ export default function App() {
       try {
         const ch = client.channel("messaging", room, { name: `Room ${room}` });
         await ch.watch();
+        // enforce two‑participant max
+        const memberCount = Object.keys(ch.state.members || {}).length;
+        if (memberCount > 2) {
+          alert("Room already has two participants");
+          return;
+        }
         if (!cancelled) setChannel(ch);
       } catch (e) {
         console.error(e);
