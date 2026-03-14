@@ -892,51 +892,54 @@ export default function App() {
     }
   }
 
-  const MyMessage = (props) => {
-    const { message } = props;
-    const isMine = message.user?.id === client?.userID;
-    const readCount = message.read_by?.length || 0;
-    const sentAt = message.created_at || message.updated_at;
+const MyMessage = (props) => {
+  const message = props?.message;
 
-    return (
+  if (!message) return null;
+
+  const isMine = message?.user?.id === client?.userID;
+  const readCount = message?.read_by?.length || 0;
+  const sentAt = message?.created_at || message?.updated_at;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: isMine ? "flex-end" : "flex-start",
+        padding: "2px 12px",
+      }}
+    >
       <div
         style={{
-          display: "flex",
-          justifyContent: isMine ? "flex-end" : "flex-start",
-          padding: "2px 12px",
+          maxWidth: "78%",
+          background: isMine ? "#DCF8C6" : "#fff",
+          borderRadius: 14,
+          padding: "2px 2px 18px 2px",
+          boxShadow: "0 1px 1px rgba(0,0,0,0.08)",
+          position: "relative",
         }}
       >
+        <MessageSimple {...props} />
+
         <div
           style={{
-            maxWidth: "78%",
-            background: isMine ? "#DCF8C6" : "#fff",
-            borderRadius: 14,
-            padding: "2px 2px 18px 2px",
-            boxShadow: "0 1px 1px rgba(0,0,0,0.08)",
-            position: "relative",
+            position: "absolute",
+            right: 10,
+            bottom: 6,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 11,
+            color: "#667781",
           }}
         >
-          <MessageSimple {...props} />
-
-          <div
-            style={{
-              position: "absolute",
-              right: 10,
-              bottom: 6,
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              fontSize: 11,
-              color: "#667781",
-            }}
-          >
-            <span>{formatTime(sentAt)}</span>
-            {isMine && <span>{readCount > 1 ? "✓✓" : "✓"}</span>}
-          </div>
+          <span>{sentAt ? formatTime(sentAt) : ""}</span>
+          {isMine && <span>{readCount > 1 ? "✓✓" : "✓"}</span>}
         </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   if (!client) {
     return (
