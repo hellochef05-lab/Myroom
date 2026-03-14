@@ -827,51 +827,63 @@ export default function App() {
 
   const audioRecordingConfig = {};
 
+  const loginInputStyle = {
+    width: "100%",
+    padding: "16px 18px",
+    borderRadius: 16,
+    border: "1px solid #d7dbe0",
+    outline: "none",
+    fontSize: 16,
+    background: "#fff",
+    color: "#374151",
+    boxSizing: "border-box",
+  };
+
   useEffect(() => {
     return () => {
       if (client) client.disconnectUser();
     };
   }, [client]);
 
-useEffect(() => {
-  if (!client || !room || !client.userID) return;
-  let cancelled = false;
+  useEffect(() => {
+    if (!client || !room || !client.userID) return;
+    let cancelled = false;
 
-  const init = async () => {
-    try {
-      const ch = client.channel("messaging", room, {
-        name: `Room ${room}`,
-      });
+    const init = async () => {
+      try {
+        const ch = client.channel("messaging", room, {
+          name: `Room ${room}`,
+        });
 
-      await ch.watch();
+        await ch.watch();
 
-      let members = Object.keys(ch.state.members || {});
-      const isMember = members.includes(client.userID);
+        let members = Object.keys(ch.state.members || {});
+        const isMember = members.includes(client.userID);
 
-      if (!isMember) {
-        if (members.length >= 2) {
-          alert("Room already has two participants");
-          return;
+        if (!isMember) {
+          if (members.length >= 2) {
+            alert("Room already has two participants");
+            return;
+          }
+
+          await ch.addMembers([client.userID]);
+          await ch.watch();
+          members = Object.keys(ch.state.members || {});
         }
 
-        await ch.addMembers([client.userID]);
-        await ch.watch();
-        members = Object.keys(ch.state.members || {});
+        if (!cancelled) setChannel(ch);
+      } catch (err) {
+        console.error("channel init error", err);
+        if (!cancelled) setChannel(null);
       }
+    };
 
-      if (!cancelled) setChannel(ch);
-    } catch (err) {
-      console.error("channel init error", err);
-      if (!cancelled) setChannel(null);
-    }
-  };
+    init();
 
-  init();
-
-  return () => {
-    cancelled = true;
-  };
-}, [client, room]);
+    return () => {
+      cancelled = true;
+    };
+  }, [client, room]);
 
   async function joinRoom() {
     if (!name || !room) {
@@ -919,63 +931,64 @@ useEffect(() => {
     }
   }
 
-const MyMessage = (props) => {
-  const message = props?.message;
+  const MyMessage = (props) => {
+    const message = props?.message;
 
-  if (!message || !message.type || message.type === "system") {
-    return <MessageSimple {...props} />;
-  }
+    if (!message || !message.type || message.type === "system") {
+      return <MessageSimple {...props} />;
+    }
 
-  const isMine = message?.user?.id === client?.userID;
-  const readCount = message?.read_by?.length || 0;
-  const sentAt = message?.created_at || message?.updated_at;
+    const isMine = message?.user?.id === client?.userID;
+    const readCount = message?.read_by?.length || 0;
+    const sentAt = message?.created_at || message?.updated_at;
 
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: isMine ? "flex-end" : "flex-start",
-        padding: "2px 12px",
-      }}
-    >
+    return (
       <div
         style={{
-          maxWidth: "78%",
-          background: isMine ? "#DCF8C6" : "#fff",
-          borderRadius: 14,
-          padding: "6px 10px 18px 10px",
-          boxShadow: "0 1px 1px rgba(0,0,0,0.08)",
-          position: "relative",
+          display: "flex",
+          justifyContent: isMine ? "flex-end" : "flex-start",
+          padding: "2px 12px",
         }}
       >
-        <MessageSimple {...props} />
-
         <div
           style={{
-            position: "absolute",
-            right: 10,
-            bottom: 4,
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            fontSize: 11,
-            color: "#667781",
+            maxWidth: "78%",
+            background: isMine ? "#DCF8C6" : "#fff",
+            borderRadius: 14,
+            padding: "6px 10px 18px 10px",
+            boxShadow: "0 1px 1px rgba(0,0,0,0.08)",
+            position: "relative",
           }}
         >
-          <span>{sentAt ? formatTime(sentAt) : ""}</span>
-          {isMine && <span>{readCount > 1 ? "✓✓" : "✓"}</span>}
+          <MessageSimple {...props} />
+
+          <div
+            style={{
+              position: "absolute",
+              right: 10,
+              bottom: 4,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: 11,
+              color: "#667781",
+            }}
+          >
+            <span>{sentAt ? formatTime(sentAt) : ""}</span>
+            {isMine && <span>{readCount > 1 ? "✓✓" : "✓"}</span>}
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
   if (!client) {
     return (
       <div
         style={{
           minHeight: "100dvh",
-          background: "#ECE5DD",
+          background:
+            "linear-gradient(180deg, #1a8a7a 0%, #4bb596 35%, #d9d1c8 100%)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -985,48 +998,137 @@ const MyMessage = (props) => {
         <div
           style={{
             width: "100%",
-            maxWidth: 420,
-            background: "#fff",
-            borderRadius: 18,
-            padding: 24,
-            boxShadow: "0 18px 45px rgba(0,0,0,0.12)",
+            maxWidth: 460,
+            position: "relative",
           }}
         >
-          <h2 style={{ marginTop: 0, marginBottom: 20 }}>Private Chat Room</h2>
-
-          <label style={{ fontSize: 13, fontWeight: 600 }}>Your Name</label>
-          <input
-            style={loginInputStyle}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="User"
-          />
-
-          <label style={{ fontSize: 13, fontWeight: 600 }}>Room Number</label>
-          <input
-            style={loginInputStyle}
-            value={room}
-            onChange={(e) => setRoom(e.target.value)}
-            placeholder="1234"
-          />
-
-          <button
+          <div
             style={{
-              width: "100%",
-              padding: 14,
-              border: "none",
-              borderRadius: 12,
-              background: "#25D366",
-              color: "#fff",
-              fontWeight: 700,
-              cursor: joining ? "not-allowed" : "pointer",
-              opacity: joining ? 0.7 : 1,
+              background:
+                "linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06))",
+              borderRadius: 28,
+              padding: "76px 18px 10px",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.16)",
             }}
-            onClick={joinRoom}
-            disabled={joining}
           >
-            {joining ? "Joining..." : "Join"}
-          </button>
+            <div
+              style={{
+                background: "#fff",
+                borderRadius: 28,
+                padding: "74px 28px 30px",
+                boxShadow: "0 10px 24px rgba(0,0,0,0.10)",
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: 14,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  width: 112,
+                  height: 112,
+                  borderRadius: "50%",
+                  background:
+                    "linear-gradient(180deg, #7fd07f 0%, #1fa172 100%)",
+                  border: "7px solid rgba(255,255,255,0.85)",
+                  boxShadow: "0 10px 24px rgba(0,0,0,0.18)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 42,
+                }}
+              >
+                💬
+              </div>
+
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: 34,
+                  fontWeight: 800,
+                  color: "#1d2b3a",
+                  lineHeight: 1.15,
+                }}
+              >
+                Private Chat Room
+              </h1>
+
+              <p
+                style={{
+                  margin: "14px 0 20px",
+                  fontSize: 15,
+                  lineHeight: 1.45,
+                  color: "#6b7280",
+                }}
+              >
+                Join your room to start chatting, sharing media,
+                <br />
+                and calling.
+              </p>
+
+              <div style={{ textAlign: "left", marginBottom: 18 }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "#243447",
+                    marginBottom: 8,
+                  }}
+                >
+                  Your Name
+                </label>
+                <input
+                  style={loginInputStyle}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Enter your name"
+                />
+              </div>
+
+              <div style={{ textAlign: "left", marginBottom: 24 }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "#243447",
+                    marginBottom: 8,
+                  }}
+                >
+                  Room Number
+                </label>
+                <input
+                  style={loginInputStyle}
+                  value={room}
+                  onChange={(e) => setRoom(e.target.value)}
+                  placeholder="Enter room number"
+                />
+              </div>
+
+              <button
+                style={{
+                  width: "100%",
+                  padding: "16px 18px",
+                  border: "none",
+                  borderRadius: 18,
+                  background:
+                    "linear-gradient(90deg, #22b87d 0%, #6fd26c 100%)",
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: 18,
+                  cursor: joining ? "not-allowed" : "pointer",
+                  opacity: joining ? 0.75 : 1,
+                  boxShadow: "0 10px 20px rgba(34,184,125,0.26)",
+                }}
+                onClick={joinRoom}
+                disabled={joining}
+              >
+                {joining ? "Joining..." : "Join Room"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -1048,33 +1150,33 @@ const MyMessage = (props) => {
     >
       <div
         style={{
-  width: "100%",
-  maxWidth: 1100,
-  height: "100dvh",
-  background: "#EFEAE2",
-  display: "flex",
-  flexDirection: "column",
-  overflow: "hidden",
-}}
+          width: "100%",
+          maxWidth: 1100,
+          height: "100dvh",
+          background: "#EFEAE2",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
       >
         <Chat client={client} theme="messaging light">
           <Channel channel={channel}>
             <Window>
               <WebRTCCall roomId={room} myName={name} />
 
-<div
-  style={{
-    flex: 1,
-    minHeight: 0,
-    overflowY: "auto",
-    WebkitOverflowScrolling: "touch",
-    backgroundImage:
-      "radial-gradient(rgba(255,255,255,0.35) 1px, transparent 1px)",
-    backgroundSize: "18px 18px",
-  }}
->
-  <MessageList />
-</div>
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
+                  WebkitOverflowScrolling: "touch",
+                  backgroundImage:
+                    "radial-gradient(rgba(255,255,255,0.35) 1px, transparent 1px)",
+                  backgroundSize: "18px 18px",
+                }}
+              >
+                <MessageList Message={MyMessage} />
+              </div>
 
               <div
                 style={{
@@ -1086,15 +1188,15 @@ const MyMessage = (props) => {
               </div>
 
               <div
-  style={{
-    padding: 10,
-    borderTop: "1px solid rgba(0,0,0,0.06)",
-    background: "#F0F2F5",
-    position: "sticky",
-    bottom: 0,
-    zIndex: 90,
-  }}
->
+                style={{
+                  padding: 10,
+                  borderTop: "1px solid rgba(0,0,0,0.06)",
+                  background: "#F0F2F5",
+                  position: "sticky",
+                  bottom: 0,
+                  zIndex: 90,
+                }}
+              >
                 <div
                   style={{
                     display: "flex",
@@ -1129,13 +1231,3 @@ const MyMessage = (props) => {
     </div>
   );
 }
-
-const loginInputStyle = {
-  width: "100%",
-  padding: 12,
-  marginTop: 6,
-  marginBottom: 14,
-  borderRadius: 12,
-  border: "1px solid #d9d9d9",
-  outline: "none",
-};
