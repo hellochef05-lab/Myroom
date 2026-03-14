@@ -60,17 +60,23 @@ function CallHeader({
   return (
     <div
       style={{
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  padding: "12px 14px",
-  background: "#075E54",
-  color: "#fff",
-  borderBottom: "1px solid rgba(0,0,0,0.08)",
-  position: "sticky",
-  top: 0,
-  zIndex: 50,
-}}
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "12px 14px",
+        background: "#075E54",
+        color: "#fff",
+        borderBottom: "1px solid rgba(0,0,0,0.08)",
+        position: "fixed",
+        top: 0,
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: "100%",
+        maxWidth: 1100,
+        zIndex: 100,
+        flexShrink: 0,
+        boxSizing: "border-box",
+      }}
     >
       <div>
         <div style={{ fontWeight: 700, fontSize: 16 }}>Room {room}</div>
@@ -770,7 +776,7 @@ function WebRTCCall({ roomId, myName }) {
 
   const overlayVisible = Boolean(incoming || inCall || callType);
 
-  return (
+    return (
     <>
       <CallHeader
         room={roomId}
@@ -779,6 +785,8 @@ function WebRTCCall({ roomId, myName }) {
         inCall={inCall}
         callType={callType}
       />
+
+      <div style={{ height: 68, flexShrink: 0 }} />
 
       <FullScreenCallOverlay
         visible={overlayVisible}
@@ -1033,14 +1041,14 @@ const MyMessage = (props) => {
     >
       <div
         style={{
-          width: "100%",
-          maxWidth: 1100,
-          height: "100dvh",
-          background: "#EFEAE2",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
+  width: "100%",
+  maxWidth: 1100,
+  height: "100dvh",
+  background: "#EFEAE2",
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+}}
       >
         <Chat client={client} theme="messaging light">
           <Channel channel={channel}>
@@ -1077,7 +1085,7 @@ const MyMessage = (props) => {
     background: "#F0F2F5",
     position: "sticky",
     bottom: 0,
-    zIndex: 40,
+    zIndex: 90,
   }}
 >
                 <div
