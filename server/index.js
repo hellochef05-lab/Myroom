@@ -8,62 +8,60 @@ import { Server } from "socket.io";
 dotenv.config();
 
 const app = express();
+app.use(express.json());
 
-/* Allowed frontend origins (comma-separated env variable for deploys) */
-// the list may come from an env var; the check logic below will also allow
-// any vercel.app subdomain automatically so you don't need to remember
-// to add them during rapid iteration.
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",").filter(Boolean);
-// add common local dev if not provided
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 if (!allowedOrigins.includes("http://localhost:5173")) {
   allowedOrigins.push("http://localhost:5173");
 }
-// ensure the render url is allowed too
+
 if (!allowedOrigins.includes("https://myroom-ms7g.onrender.com")) {
   allowedOrigins.push("https://myroom-ms7g.onrender.com");
 }
 
-/* Express CORS */
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  return allowedOrigins.includes(origin) || origin.endsWith(".vercel.app");
+};
+
 app.use(
   cors({
-    origin(origin, callback) {
-      // allow requests with no origin (mobile apps, curl, same-server calls)
-      if (!origin) return callback(null, true);
-
-      // allow explicit list
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS blocked for origin: ${origin}`));
       }
-
-      // also allow any vercel.app subdomain automatically to avoid
-      // forgetting to update env during rapid deploys
-      if (origin.endsWith(".vercel.app")) {
-        console.log("Permitting vercel.app origin", origin);
-        return callback(null, true);
-      }
-
-      console.warn(`CORS blocked for origin: ${origin}`);
-      return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
-    methods: ["GET", "POST"],
     credentials: true,
   })
 );
 
-app.use(express.json());
+const streamApiKey = process.env.STREAM_API_KEY;
+const streamApiSecret = process.env.STREAM_API_SECRET;
 
-/* Health check route */
+if (!streamApiKey || !streamApiSecret) {
+  console.error("Missing STREAM_API_KEY or STREAM_API_SECRET");
+}
+
+const serverClient = StreamChat.getInstance(streamApiKey, streamApiSecret);
+
 app.get("/", (_req, res) => {
   res.send("Backend is running");
 });
 
-/* Token route */
 app.post("/api/token", async (req, res) => {
   try {
     const { userId, name, room } = req.body;
 
     if (!userId || !name || !room) {
-      return res.status(400).json({ error: "userId, name, and room are required" });
+      return res.status(400).json({
+        error: "userId, name, and room are required",
+      });
     }
 
     await serverClient.upsertUser({
@@ -85,38 +83,31 @@ app.post("/api/token", async (req, res) => {
     }
 
     const token = serverClient.createToken(userId);
-    res.json({ token });
+    return res.json({ token });
   } catch (err) {
-    console.error("token route error", err);
-    res.status(500).json({ error: "Failed to create token" });
+    console.error("token route error:", err);
+    console.error("token route body:", req.body);
+    return res.status(500).json({
+      error: "Failed to create token",
+      details: err.message,
+    });
   }
 });
 
-/* Create HTTP server */
 const httpServer = createServer(app);
 
-/* Socket.IO */
-// socket.io CORS: make more permissive for now, logging requests.  we'll
-// still keep express routes locked down by the strict middleware above.
-const socketCors = {
-  origin: (origin, callback) => {
-    // origin may be undefined for same-host or mobile requests; allow those
-    if (!origin) return callback(null, true);
-    console.log("socket.io origin check", origin);
-    // allow everything (can tighten later if needed)
-    return callback(null, true);
-    // example of stricter logic:
-    // if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
-    //   return callback(null, true);
-    // }
-    // callback(new Error(`socket.io CORS blocked: ${origin}`));
-  },
-  methods: ["GET", "POST"],
-  credentials: true,
-};
-
 const io = new Server(httpServer, {
-  cors: socketCors,
+  cors: {
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Socket.IO CORS blocked for origin: ${origin}`));
+      }
+    },
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
 });
 
 io.on("connection", (socket) => {
@@ -135,8 +126,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("signal", ({ roomId, data }) => {
-    if (!roomId) return;
-    console.log(`signal event from ${socket.id} to room ${roomId}`, data.type);
+    if (!roomId || !data) return;
     socket.to(roomId).emit("signal", data);
   });
 
@@ -145,7 +135,6 @@ io.on("connection", (socket) => {
   });
 });
 
-/* Start server */
 const PORT = process.env.PORT || 4000;
 
 httpServer.listen(PORT, "0.0.0.0", () => {
