@@ -60,14 +60,17 @@ function CallHeader({
   return (
     <div
       style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "12px 14px",
-        background: "#075E54",
-        color: "#fff",
-        borderBottom: "1px solid rgba(0,0,0,0.08)",
-      }}
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "12px 14px",
+  background: "#075E54",
+  color: "#fff",
+  borderBottom: "1px solid rgba(0,0,0,0.08)",
+  position: "sticky",
+  top: 0,
+  zIndex: 50,
+}}
     >
       <div>
         <div style={{ fontWeight: 700, fontSize: 16 }}>Room {room}</div>
@@ -956,7 +959,7 @@ const MyMessage = (props) => {
     return (
       <div
         style={{
-          minHeight: "100vh",
+          minHeight: "100dvh",
           background: "#ECE5DD",
           display: "flex",
           alignItems: "center",
@@ -1021,7 +1024,7 @@ const MyMessage = (props) => {
   return (
     <div
       style={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         background: "#D9DBD5",
         display: "flex",
         justifyContent: "center",
@@ -1032,10 +1035,11 @@ const MyMessage = (props) => {
         style={{
           width: "100%",
           maxWidth: 1100,
-          height: "100vh",
+          height: "100dvh",
           background: "#EFEAE2",
           display: "flex",
           flexDirection: "column",
+          overflow: "hidden",
         }}
       >
         <Chat client={client} theme="messaging light">
@@ -1043,17 +1047,19 @@ const MyMessage = (props) => {
             <Window>
               <WebRTCCall roomId={room} myName={name} />
 
-              <div
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  backgroundImage:
-                    "radial-gradient(rgba(255,255,255,0.35) 1px, transparent 1px)",
-                  backgroundSize: "18px 18px",
-                }}
-              >
-                <MessageList />
-              </div>
+<div
+  style={{
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
+    backgroundImage:
+      "radial-gradient(rgba(255,255,255,0.35) 1px, transparent 1px)",
+    backgroundSize: "18px 18px",
+  }}
+>
+  <MessageList />
+</div>
 
               <div
                 style={{
@@ -1065,12 +1071,15 @@ const MyMessage = (props) => {
               </div>
 
               <div
-                style={{
-                  padding: 10,
-                  borderTop: "1px solid rgba(0,0,0,0.06)",
-                  background: "#F0F2F5",
-                }}
-              >
+  style={{
+    padding: 10,
+    borderTop: "1px solid rgba(0,0,0,0.06)",
+    background: "#F0F2F5",
+    position: "sticky",
+    bottom: 0,
+    zIndex: 40,
+  }}
+>
                 <div
                   style={{
                     display: "flex",
