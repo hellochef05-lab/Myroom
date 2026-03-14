@@ -83,12 +83,61 @@ app.post("/api/token", async (req, res) => {
     }
 
     const token = serverClient.createToken(userId);
+
     return res.json({ token });
   } catch (err) {
     console.error("token route error:", err);
     console.error("token route body:", req.body);
     return res.status(500).json({
       error: "Failed to create token",
+      details: err.message,
+    });
+  }
+});
+
+app.post("/api/delete-all-rooms", async (req, res) => {
+  try {
+    const adminKey = req.headers["x-admin-key"];
+
+    if (adminKey !== process.env.ADMIN_DELETE_KEY) {
+      return res.status(403).json({
+        success: false,
+        error: "Unauthorized",
+      });
+    }
+
+    const filters = { type: "messaging" };
+    const sort = [{ last_message_at: -1 }];
+
+    const channels = await serverClient.queryChannels(filters, sort, {
+      limit: 100,
+    });
+
+    if (!channels.length) {
+      return res.json({
+        success: true,
+        message: "No rooms found",
+        deleted: 0,
+      });
+    }
+
+    const cids = channels.map((channel) => channel.cid);
+
+    const response = await serverClient.deleteChannels(cids);
+    const result = await serverClient.getTask(response.task_id);
+
+    return res.json({
+      success: true,
+      message: "All rooms deleted",
+      deleted: cids.length,
+      task_status: result.status,
+      room_ids: cids,
+    });
+  } catch (err) {
+    console.error("delete all rooms error:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to delete all rooms",
       details: err.message,
     });
   }
