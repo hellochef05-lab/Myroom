@@ -89,23 +89,29 @@ function CallHeader({
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8 }}>
-        <button
-          onClick={onStartAudio}
-          title="Audio call"
-          style={iconButtonStyle("#ffffff")}
-        >
-          <Phone size={18} color="#075E54" />
-        </button>
+      <div style={{ display: "flex", gap: 12 }}>
+  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+    <button
+      onClick={onStartAudio}
+      title="Audio call"
+      style={iconButtonStyle("#25D366")}
+    >
+      <Phone size={22} color="#fff" />
+    </button>
+    <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>Call</span>
+  </div>
 
-        <button
-          onClick={onStartVideo}
-          title="Video call"
-          style={iconButtonStyle("#ffffff")}
-        >
-          <Video size={18} color="#075E54" />
-        </button>
-      </div>
+  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+    <button
+      onClick={onStartVideo}
+      title="Video call"
+      style={iconButtonStyle("#34B7F1")}
+    >
+      <Video size={22} color="#fff" />
+    </button>
+    <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>Video</span>
+  </div>
+</div>
     </div>
   );
 }
@@ -333,8 +339,8 @@ function FullScreenCallOverlay({
 
 function iconButtonStyle(background) {
   return {
-    width: 40,
-    height: 40,
+    width: 46,
+    height: 46,
     borderRadius: 999,
     border: "none",
     background,
@@ -342,6 +348,7 @@ function iconButtonStyle(background) {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
   };
 }
 
