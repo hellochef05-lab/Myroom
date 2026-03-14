@@ -58,30 +58,37 @@ app.get("/", (_req, res) => {
 });
 
 /* Token route */
-app.post("/api/token", (req, res) => {
-  const { userId } = req.body;
-
-  if (!userId) {
-    return res.status(400).json({ error: "Missing userId" });
-  }
-
-  const apiKey = process.env.STREAM_API_KEY;
-  const apiSecret = process.env.STREAM_API_SECRET;
-
-  if (!apiKey || !apiSecret) {
-    return res
-      .status(500)
-      .json({ error: "Missing STREAM_API_KEY or STREAM_API_SECRET in Render environment variables" });
-  }
-
+app.post("/api/token", async (req, res) => {
   try {
-    const serverClient = StreamChat.getInstance(apiKey, apiSecret);
-    const token = serverClient.createToken(userId);
+    const { userId, name, room } = req.body;
 
-    return res.json({ token });
-  } catch (error) {
-    console.error("Token creation error:", error);
-    return res.status(500).json({ error: "Failed to create token" });
+    if (!userId || !name || !room) {
+      return res.status(400).json({ error: "userId, name, and room are required" });
+    }
+
+    await serverClient.upsertUser({
+      id: userId,
+      name,
+      role: "user",
+    });
+
+    const channel = serverClient.channel("messaging", room, {
+      name: `Room ${room}`,
+      created_by_id: userId,
+    });
+
+    await channel.watch();
+
+    const currentMembers = Object.keys(channel.state.members || {});
+    if (!currentMembers.includes(userId)) {
+      await channel.addMembers([userId]);
+    }
+
+    const token = serverClient.createToken(userId);
+    res.json({ token });
+  } catch (err) {
+    console.error("token route error", err);
+    res.status(500).json({ error: "Failed to create token" });
   }
 });
 

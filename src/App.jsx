@@ -815,36 +815,45 @@ export default function App() {
     };
   }, [client]);
 
-  useEffect(() => {
-    if (!client || !room) return;
-    let cancelled = false;
+useEffect(() => {
+  if (!client || !room || !client.userID) return;
+  let cancelled = false;
 
-    const init = async () => {
-      try {
-        const ch = client.channel("messaging", room, {
-          name: `Room ${room}`,
-        });
+  const init = async () => {
+    try {
+      const ch = client.channel("messaging", room, {
+        name: `Room ${room}`,
+      });
 
-        await ch.watch();
+      await ch.watch();
 
-        const memberCount = Object.keys(ch.state.members || {}).length;
-        if (memberCount > 2) {
+      let members = Object.keys(ch.state.members || {});
+      const isMember = members.includes(client.userID);
+
+      if (!isMember) {
+        if (members.length >= 2) {
           alert("Room already has two participants");
           return;
         }
 
-        if (!cancelled) setChannel(ch);
-      } catch (err) {
-        console.error(err);
-        if (!cancelled) setChannel(null);
+        await ch.addMembers([client.userID]);
+        await ch.watch();
+        members = Object.keys(ch.state.members || {});
       }
-    };
 
-    init();
-    return () => {
-      cancelled = true;
-    };
-  }, [client, room]);
+      if (!cancelled) setChannel(ch);
+    } catch (err) {
+      console.error("channel init error", err);
+      if (!cancelled) setChannel(null);
+    }
+  };
+
+  init();
+
+  return () => {
+    cancelled = true;
+  };
+}, [client, room]);
 
   async function joinRoom() {
     if (!name || !room) {
@@ -864,7 +873,7 @@ export default function App() {
       const res = await fetch("https://myroom-ms7g.onrender.com/api/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, name }),
+        body: JSON.stringify({ userId, name, room }),
       });
 
       if (!res.ok) {
@@ -895,7 +904,9 @@ export default function App() {
 const MyMessage = (props) => {
   const message = props?.message;
 
-  if (!message) return null;
+  if (!message || !message.type || message.type === "system") {
+    return <MessageSimple {...props} />;
+  }
 
   const isMine = message?.user?.id === client?.userID;
   const readCount = message?.read_by?.length || 0;
@@ -914,7 +925,7 @@ const MyMessage = (props) => {
           maxWidth: "78%",
           background: isMine ? "#DCF8C6" : "#fff",
           borderRadius: 14,
-          padding: "2px 2px 18px 2px",
+          padding: "6px 10px 18px 10px",
           boxShadow: "0 1px 1px rgba(0,0,0,0.08)",
           position: "relative",
         }}
@@ -925,7 +936,7 @@ const MyMessage = (props) => {
           style={{
             position: "absolute",
             right: 10,
-            bottom: 6,
+            bottom: 4,
             display: "flex",
             alignItems: "center",
             gap: 4,
@@ -1041,7 +1052,7 @@ const MyMessage = (props) => {
                   backgroundSize: "18px 18px",
                 }}
               >
-                <MessageList Message={MyMessage} />
+                <MessageList />
               </div>
 
               <div
