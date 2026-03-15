@@ -424,125 +424,125 @@ function WebRTCCall({ roomId, myName }) {
   const remoteVideoRef = useRef(null);
 
 
-  const cleanupCall = () => {
-    setInCall(false);
-    setIncoming(null);
-    setCallType(null);
-    setMuted(false);
-    setCameraOff(false);
-    setRemoteName("Contact");
+const cleanupCall = () => {
+  setInCall(false);
+  setIncoming(null);
+  setCallType(null);
+  setMuted(false);
+  setCameraOff(false);
+  setRemoteName("Contact");
 
-    acceptedRef.current = false;
-    isCallerRef.current = false;
-    pendingOfferRef.current = null;
-    iceQueueRef.current = [];
+  acceptedRef.current = false;
+  isCallerRef.current = false;
+  pendingOfferRef.current = null;
+  iceQueueRef.current = [];
 
-    if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((t) => t.stop());
-      screenStreamRef.current = null;
-    }
-
-    if (pcRef.current) {
-      pcRef.current.ontrack = null;
-      pcRef.current.onicecandidate = null;
-      pcRef.current.onconnectionstatechange = null;
-      pcRef.current.close();
-      pcRef.current = null;
-    }
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
-    }
-
-    if (remoteStreamRef.current) {
-      remoteStreamRef.current.getTracks().forEach((t) => t.stop());
-      remoteStreamRef.current = null;
-    }
-
-    setRemoteStream(null);
-
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-  };
-
-  const createPC = () => {
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        ...turnServers,
-        { urls: "stun:stun.l.google.com:19302" },
-        {
-          urls: "turn:openrelay.metered.ca:443?transport=tcp",
-          username: "openrelayproject",
-          credential: "openrelayproject",
-        },
-      ],
-    });
-
-    const inboundStream = new MediaStream();
-    remoteStreamRef.current = inboundStream;
-    setRemoteStream(inboundStream);
-
-pc.ontrack = (event) => {
-  if (!inboundStream.getTracks().some((t) => t.id === event.track.id)) {
-    inboundStream.addTrack(event.track);
+  if (screenStreamRef.current) {
+    screenStreamRef.current.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current = null;
   }
 
-  console.log(
-    "Remote tracks:",
-    inboundStream.getTracks().map((t) => ({
-      kind: t.kind,
-      enabled: t.enabled,
-      muted: t.muted,
-      readyState: t.readyState,
-      label: t.label,
-    }))
-  );
-
-  if (remoteVideoRef.current) {
-    remoteVideoRef.current.srcObject = inboundStream;
-    remoteVideoRef.current.autoplay = true;
-    remoteVideoRef.current.playsInline = true;
-    remoteVideoRef.current.muted = false;
-    remoteVideoRef.current.volume = 1;
-
-    const playRemote = async () => {
-      try {
-        await remoteVideoRef.current?.play();
-      } catch (err) {
-        console.error("Remote media play failed:", err);
-      }
-    };
-
-    playRemote();
-    document.addEventListener("click", playRemote, { once: true });
+  if (pcRef.current) {
+    pcRef.current.ontrack = null;
+    pcRef.current.onicecandidate = null;
+    pcRef.current.onconnectionstatechange = null;
+    pcRef.current.close();
+    pcRef.current = null;
   }
+
+  if (localStreamRef.current) {
+    localStreamRef.current.getTracks().forEach((t) => t.stop());
+    localStreamRef.current = null;
+  }
+
+  if (remoteStreamRef.current) {
+    remoteStreamRef.current.getTracks().forEach((t) => t.stop());
+    remoteStreamRef.current = null;
+  }
+
+  setRemoteStream(null);
+
+  if (localVideoRef.current) localVideoRef.current.srcObject = null;
+  if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
 };
 
-    pc.onicecandidate = (event) => {
-      if (!event.candidate) return;
+const createPC = () => {
+  const pc = new RTCPeerConnection({
+    iceServers: [
+      ...turnServers,
+      { urls: "stun:stun.l.google.com:19302" },
+      {
+        urls: "turn:openrelay.metered.ca:443?transport=tcp",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+    ],
+  });
 
-      socketRef.current?.emit("signal", {
-        roomId,
-        data: { type: "ice", candidate: event.candidate },
-      });
-    };
+  const inboundStream = new MediaStream();
+  remoteStreamRef.current = inboundStream;
+  setRemoteStream(inboundStream);
 
-    pc.onconnectionstatechange = () => {
-      console.log("pc connection state:", pc.connectionState);
+  pc.ontrack = (event) => {
+    if (!inboundStream.getTracks().some((t) => t.id === event.track.id)) {
+      inboundStream.addTrack(event.track);
+    }
 
-      if (
-        pc.connectionState === "failed" ||
-        pc.connectionState === "disconnected" ||
-        pc.connectionState === "closed"
-      ) {
-        cleanupCall();
-      }
-    };
+    console.log(
+      "Remote tracks:",
+      inboundStream.getTracks().map((t) => ({
+        kind: t.kind,
+        enabled: t.enabled,
+        muted: t.muted,
+        readyState: t.readyState,
+        label: t.label,
+      }))
+    );
 
-    pcRef.current = pc;
-    return pc;
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = inboundStream;
+      remoteVideoRef.current.autoplay = true;
+      remoteVideoRef.current.playsInline = true;
+      remoteVideoRef.current.muted = false;
+      remoteVideoRef.current.volume = 1;
+
+      const playRemote = async () => {
+        try {
+          await remoteVideoRef.current?.play();
+        } catch (err) {
+          console.error("Remote media play failed:", err);
+        }
+      };
+
+      playRemote();
+      document.addEventListener("click", playRemote, { once: true });
+    }
   };
+
+  pc.onicecandidate = (event) => {
+    if (!event.candidate) return;
+
+    socketRef.current?.emit("signal", {
+      roomId,
+      data: { type: "ice", candidate: event.candidate },
+    });
+  };
+
+  pc.onconnectionstatechange = () => {
+    console.log("pc connection state:", pc.connectionState);
+
+    if (
+      pc.connectionState === "failed" ||
+      pc.connectionState === "disconnected" ||
+      pc.connectionState === "closed"
+    ) {
+      cleanupCall();
+    }
+  };
+
+  pcRef.current = pc;
+  return pc;
+};
 
 const startLocalMedia = async (type) => {
   let pc = pcRef.current;
@@ -699,79 +699,79 @@ const startLocalMedia = async (type) => {
     };
   }, [roomId]);
 
-  useEffect(() => {
-    const s = socketRef.current;
-    if (!s) return;
+useEffect(() => {
+  const s = socketRef.current;
+  if (!s) return;
 
-    const onSignal = async (data) => {
-      try {
-        if (data.type === "call") {
-          cleanupCall();
-          setIncoming({
-            callType: data.callType,
-            from: data.from || "Contact",
-          });
-          setRemoteName(data.from || "Contact");
-          setCallType(data.callType || "audio");
-          return;
-        }
-
-        if (data.type === "accept") {
-          if (isCallerRef.current) {
-            await startOfferFlow(data.callType || "audio");
-          }
-          return;
-        }
-
-        if (data.type === "offer") {
-          if (!acceptedRef.current) {
-            pendingOfferRef.current = data;
-            return;
-          }
-          await handleOffer(data);
-          return;
-        }
-
-        if (data.type === "answer") {
-          const pc = pcRef.current;
-          if (!pc) return;
-
-          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-
-          for (const candidate of iceQueueRef.current) {
-            await pc.addIceCandidate(candidate).catch(console.warn);
-          }
-          iceQueueRef.current = [];
-
-          setInCall(true);
-          return;
-        }
-
-        if (data.type === "ice") {
-          const pc = pcRef.current;
-          if (!pc) return;
-
-          const candidate = new RTCIceCandidate(data.candidate);
-
-          if (!pc.remoteDescription) {
-            iceQueueRef.current.push(candidate);
-          } else {
-            await pc.addIceCandidate(candidate).catch(console.warn);
-          }
-          return;
-        }
-
-        if (data.type === "hangup") {
-          cleanupCall();
-        }
-      } catch (err) {
-        console.error("Signal error:", err);
+  const onSignal = async (data) => {
+    try {
+      if (data.type === "call") {
+        setIncoming({
+          callType: data.callType,
+          from: data.from || "Contact",
+        });
+        setRemoteName(data.from || "Contact");
+        setCallType(data.callType || "audio");
+        return;
       }
-    };
 
-    s.on("signal", onSignal);
-    return () => s.off("signal", onSignal);
-  }, [roomId, myName]);
+      if (data.type === "accept") {
+        if (isCallerRef.current) {
+          await startOfferFlow(data.callType || "audio");
+        }
+        return;
+      }
+
+      if (data.type === "offer") {
+        if (!acceptedRef.current) {
+          pendingOfferRef.current = data;
+          return;
+        }
+
+        await handleOffer(data);
+        return;
+      }
+
+      if (data.type === "answer") {
+        const pc = pcRef.current;
+        if (!pc) return;
+
+        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+
+        for (const candidate of iceQueueRef.current) {
+          await pc.addIceCandidate(candidate).catch(console.warn);
+        }
+        iceQueueRef.current = [];
+
+        setInCall(true);
+        return;
+      }
+
+      if (data.type === "ice") {
+        const pc = pcRef.current;
+        if (!pc) return;
+
+        const candidate = new RTCIceCandidate(data.candidate);
+
+        if (!pc.remoteDescription) {
+          iceQueueRef.current.push(candidate);
+        } else {
+          await pc.addIceCandidate(candidate).catch(console.warn);
+        }
+        return;
+      }
+
+      if (data.type === "hangup") {
+        cleanupCall();
+      }
+    } catch (err) {
+      console.error("Signal error:", err);
+    }
+  };
+
+  s.on("signal", onSignal);
+  return () => s.off("signal", onSignal);
+}, [roomId, myName]);
 
 const startCall = async (type) => {
   if (!socketRef.current || !joinedRoom) {
@@ -807,7 +807,6 @@ const startCall = async (type) => {
 const answerCall = async () => {
   try {
     acceptedRef.current = true;
-    iceQueueRef.current = [];
 
     socketRef.current?.emit("signal", {
       roomId,
