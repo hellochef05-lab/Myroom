@@ -196,6 +196,38 @@ io.on("connection", (socket) => {
     console.log("User disconnected:", socket.id);
   });
 });
+app.get("/api/delete-all-rooms-shortcut", async (req, res) => {
+  try {
+    const key = req.query.key;
+
+    if (key !== process.env.DELETE_SHORTCUT_KEY) {
+      return res.status(403).send("Unauthorized");
+    }
+
+    const filters = { type: "messaging" };
+    const sort = [{ last_message_at: -1 }];
+
+    const channels = await serverClient.queryChannels(filters, sort, {
+      limit: 100,
+    });
+
+    if (!channels.length) {
+      return res.send("No rooms found");
+    }
+
+    const cids = channels.map((channel) => channel.cid);
+
+    const response = await serverClient.deleteChannels(cids);
+    const result = await serverClient.getTask(response.task_id);
+
+    return res.send(
+      `Success. Deleted ${cids.length} rooms. Task status: ${result.status}`
+    );
+  } catch (err) {
+    console.error("delete shortcut error:", err);
+    return res.status(500).send(`Failed: ${err.message}`);
+  }
+});
 
 const PORT = process.env.PORT || 4000;
 

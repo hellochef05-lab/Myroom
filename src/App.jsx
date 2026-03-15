@@ -207,7 +207,6 @@ function FullScreenCallOverlay({
         flexDirection: "column",
       }}
     >
-      <audio ref={remoteAudioRef} autoPlay playsInline />
 
       <div
         style={{
@@ -424,7 +423,7 @@ function WebRTCCall({ roomId, myName }) {
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
-  const remoteAudioRef = useRef(null);
+
 
   const cleanupCall = () => {
     setInCall(false);
@@ -487,29 +486,21 @@ function WebRTCCall({ roomId, myName }) {
     setRemoteStream(inboundStream);
 
     pc.ontrack = (event) => {
-      if (!inboundStream.getTracks().some((t) => t.id === event.track.id)) {
-        inboundStream.addTrack(event.track);
-      }
+  if (!inboundStream.getTracks().some((t) => t.id === event.track.id)) {
+    inboundStream.addTrack(event.track);
+  }
 
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = inboundStream;
-        remoteVideoRef.current.autoplay = true;
-        remoteVideoRef.current.playsInline = true;
-        remoteVideoRef.current.play().catch((err) => {
-          console.error("Remote video play failed:", err);
-        });
-      }
+  if (remoteVideoRef.current) {
+    remoteVideoRef.current.srcObject = inboundStream;
+    remoteVideoRef.current.autoplay = true;
+    remoteVideoRef.current.playsInline = true;
+    remoteVideoRef.current.muted = false;
+    remoteVideoRef.current.volume = 1;
 
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = inboundStream;
-        remoteAudioRef.current.muted = false;
-        remoteAudioRef.current.volume = 1;
-        remoteAudioRef.current.autoplay = true;
-        remoteAudioRef.current.playsInline = true;
-        remoteAudioRef.current.play().catch((err) => {
-          console.error("Remote audio play failed:", err);
-        });
-      }
+    remoteVideoRef.current.play().catch((err) => {
+      console.error("Remote media play failed:", err);
+    });
+  }
     };
 
     pc.onicecandidate = (event) => {
@@ -1229,6 +1220,23 @@ async function deleteAllRooms() {
               >
                 {joining ? "Joining..." : "Join Room"}
               </button>
+              <button
+  onClick={deleteAllRooms}
+  style={{
+    width: "100%",
+    marginTop: 12,
+    padding: "14px 18px",
+    border: "none",
+    borderRadius: 18,
+    background: "#B00020",
+    color: "#fff",
+    fontWeight: 700,
+    fontSize: 16,
+    cursor: "pointer",
+  }}
+>
+  Delete All Rooms
+</button>
             </div>
           </div>
         </div>
