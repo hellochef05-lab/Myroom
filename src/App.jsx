@@ -769,7 +769,6 @@ pc.ontrack = (event) => {
 
 const answerCall = async () => {
   acceptedRef.current = true;
-  setIncoming(null);
 
   if (remoteAudioRef.current) {
     remoteAudioRef.current.muted = false;
@@ -790,10 +789,12 @@ const answerCall = async () => {
   if (pendingOfferRef.current) {
     const offerData = pendingOfferRef.current;
     pendingOfferRef.current = null;
+    setIncoming(null);
     await handleOffer(offerData);
+  } else {
+    setIncoming(null);
   }
 };
-
   const declineCall = () => {
     socketRef.current?.emit("signal", {
       roomId,
