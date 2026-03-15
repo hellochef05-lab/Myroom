@@ -544,40 +544,62 @@ pc.ontrack = (event) => {
     return pc;
   };
 
-  const startLocalMedia = async (type) => {
-    let pc = pcRef.current;
-    if (!pc) {
-      pc = createPC();
+const startLocalMedia = async (type) => {
+  let pc = pcRef.current;
+  if (!pc) {
+    pc = createPC();
+  }
+
+  const constraints =
+    type === "video"
+      ? { audio: true, video: true }
+      : { audio: true, video: false };
+
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  localStreamRef.current = stream;
+
+  console.log(
+    "Local tracks:",
+    stream.getTracks().map((t) => ({
+      kind: t.kind,
+      enabled: t.enabled,
+      muted: t.muted,
+      readyState: t.readyState,
+      label: t.label,
+    }))
+  );
+
+  stream.getTracks().forEach((track) => {
+    const alreadyAdded = pc
+      .getSenders()
+      .some((sender) => sender.track?.id === track.id);
+
+    if (!alreadyAdded) {
+      pc.addTrack(track, stream);
     }
+  });
 
-    const constraints =
-      type === "video"
-        ? { audio: true, video: true }
-        : { audio: true, video: false };
+  console.log(
+    "Senders:",
+    pc.getSenders().map((s) => ({
+      kind: s.track?.kind,
+      enabled: s.track?.enabled,
+      muted: s.track?.muted,
+      readyState: s.track?.readyState,
+      label: s.track?.label,
+    }))
+  );
 
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    localStreamRef.current = stream;
+  if (type === "video" && localVideoRef.current) {
+    localVideoRef.current.srcObject = stream;
+    localVideoRef.current.muted = true;
+    localVideoRef.current.play?.().catch(() => {});
+  } else if (localVideoRef.current) {
+    localVideoRef.current.srcObject = null;
+  }
 
-    stream.getTracks().forEach((track) => {
-      const alreadyAdded = pc
-        .getSenders()
-        .some((sender) => sender.track?.id === track.id);
-
-      if (!alreadyAdded) {
-        pc.addTrack(track, stream);
-      }
-    });
-
-    if (type === "video" && localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
-      localVideoRef.current.muted = true;
-      localVideoRef.current.play?.().catch(() => {});
-    } else if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null;
-    }
-
-    return stream;
-  };
+  return stream;
+};
 
   const handleOffer = async (data) => {
     let pc = pcRef.current;
