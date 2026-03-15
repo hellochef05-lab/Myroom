@@ -483,10 +483,21 @@ function WebRTCCall({ roomId, myName }) {
     remoteStreamRef.current = inboundStream;
     setRemoteStream(inboundStream);
 
-    pc.ontrack = (event) => {
+pc.ontrack = (event) => {
   if (!inboundStream.getTracks().some((t) => t.id === event.track.id)) {
     inboundStream.addTrack(event.track);
   }
+
+  console.log(
+    "Remote tracks:",
+    inboundStream.getTracks().map((t) => ({
+      kind: t.kind,
+      enabled: t.enabled,
+      muted: t.muted,
+      readyState: t.readyState,
+      label: t.label,
+    }))
+  );
 
   if (remoteVideoRef.current) {
     remoteVideoRef.current.srcObject = inboundStream;
@@ -495,11 +506,18 @@ function WebRTCCall({ roomId, myName }) {
     remoteVideoRef.current.muted = false;
     remoteVideoRef.current.volume = 1;
 
-    remoteVideoRef.current.play().catch((err) => {
-      console.error("Remote media play failed:", err);
-    });
-  }
+    const playRemote = async () => {
+      try {
+        await remoteVideoRef.current?.play();
+      } catch (err) {
+        console.error("Remote media play failed:", err);
+      }
     };
+
+    playRemote();
+    document.addEventListener("click", playRemote, { once: true });
+  }
+};
 
     pc.onicecandidate = (event) => {
       if (!event.candidate) return;
@@ -733,60 +751,62 @@ function WebRTCCall({ roomId, myName }) {
     return () => s.off("signal", onSignal);
   }, [roomId, myName]);
 
-  const startCall = async (type) => {
-    if (!socketRef.current || !joinedRoom) {
-      alert("Please wait a moment and try again.");
-      return;
+const startCall = async (type) => {
+  if (!socketRef.current || !joinedRoom) {
+    alert("Please wait a moment and try again.");
+    return;
+  }
+
+  if (inCall) return;
+
+  cleanupCall();
+
+  try {
+    setCallType(type);
+    setRemoteName("Contact");
+    isCallerRef.current = true;
+    acceptedRef.current = false;
+    pendingOfferRef.current = null;
+    iceQueueRef.current = [];
+
+    socketRef.current.emit("signal", {
+      roomId,
+      data: {
+        type: "call",
+        callType: type,
+        from: myName,
+      },
+    });
+  } catch (err) {
+    console.error("startCall failed", err);
+  }
+};
+
+const answerCall = async () => {
+  try {
+    acceptedRef.current = true;
+    iceQueueRef.current = [];
+
+    socketRef.current?.emit("signal", {
+      roomId,
+      data: {
+        type: "accept",
+        callType: incoming?.callType || "audio",
+      },
+    });
+
+    if (pendingOfferRef.current) {
+      const offerData = pendingOfferRef.current;
+      pendingOfferRef.current = null;
+      setIncoming(null);
+      await handleOffer(offerData);
+    } else {
+      setIncoming(null);
     }
-
-    if (inCall) return;
-
-    if (pcRef.current) {
-      cleanupCall();
-    }
-
-    try {
-      setCallType(type);
-      setRemoteName("Contact");
-      isCallerRef.current = true;
-
-      socketRef.current.emit("signal", {
-        roomId,
-        data: {
-          type: "call",
-          callType: type,
-          from: myName,
-        },
-      });
-    } catch (err) {
-      console.error("startCall failed", err);
-    }
-  };
-
-  const answerCall = async () => {
-    try {
-      acceptedRef.current = true;
-
-      socketRef.current?.emit("signal", {
-        roomId,
-        data: {
-          type: "accept",
-          callType: incoming?.callType || "audio",
-        },
-      });
-
-      if (pendingOfferRef.current) {
-        const offerData = pendingOfferRef.current;
-        pendingOfferRef.current = null;
-        setIncoming(null);
-        await handleOffer(offerData);
-      } else {
-        setIncoming(null);
-      }
-    } catch (err) {
-      console.error("answerCall failed", err);
-    }
-  };
+  } catch (err) {
+    console.error("answerCall failed", err);
+  }
+};
 
   const declineCall = () => {
     socketRef.current?.emit("signal", {
