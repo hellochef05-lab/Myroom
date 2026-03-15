@@ -1010,7 +1010,29 @@ export default function App() {
       setJoining(false);
     }
   }
+async function deleteAllRooms() {
+  const ok = window.confirm("Delete all rooms?");
+  if (!ok) return;
 
+  const adminKey = window.prompt("Enter admin key");
+  if (!adminKey) return;
+
+  const res = await fetch("http://localhost:4000/api/delete-all-rooms", {
+    method: "POST",
+    headers: {
+      "x-admin-key": adminKey,
+    },
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    alert(data.error || "Failed");
+    return;
+  }
+
+  alert(`Deleted ${data.deleted} rooms`);
+}
   const MyMessage = (props) => {
     const message = props?.message;
 
