@@ -181,7 +181,6 @@ function FullScreenCallOverlay({
   remoteName,
   localVideoRef,
   remoteVideoRef,
-  remoteAudioRef,
   onAnswer,
   onDecline,
   onHangup,
@@ -465,7 +464,6 @@ function WebRTCCall({ roomId, myName }) {
 
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
   };
 
   const createPC = () => {
@@ -885,7 +883,6 @@ function WebRTCCall({ roomId, myName }) {
         remoteName={incoming?.from || remoteName}
         localVideoRef={localVideoRef}
         remoteVideoRef={remoteVideoRef}
-        remoteAudioRef={remoteAudioRef}
         onAnswer={answerCall}
         onDecline={declineCall}
         onHangup={hangup}
