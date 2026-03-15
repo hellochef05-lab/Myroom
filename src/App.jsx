@@ -37,10 +37,6 @@ try {
   turnServers = [];
 }
 
-function randomId() {
-  return "user_" + Math.random().toString(16).slice(2);
-}
-
 function formatTime(dateValue) {
   if (!dateValue) return "";
   const date = new Date(dateValue);
@@ -50,12 +46,43 @@ function formatTime(dateValue) {
   });
 }
 
+function iconButtonStyle(background) {
+  return {
+    width: 46,
+    height: 46,
+    borderRadius: 999,
+    border: "none",
+    background,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+  };
+}
+
+function roundActionButton(background) {
+  return {
+    width: 58,
+    height: 58,
+    borderRadius: 999,
+    border: "none",
+    background,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 8px 30px rgba(0,0,0,0.22)",
+  };
+}
+
 function CallHeader({
   room,
   onStartAudio,
   onStartVideo,
   inCall,
   callType,
+  joinedRoom,
 }) {
   return (
     <div
@@ -85,33 +112,63 @@ function CallHeader({
             ? callType === "video"
               ? "Video call in progress"
               : "Audio call in progress"
-            : "Online"}
+            : joinedRoom
+            ? "Online"
+            : "Connecting..."}
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 12 }}>
-  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-    <button
-      onClick={onStartAudio}
-      title="Audio call"
-      style={iconButtonStyle("#25D366")}
-    >
-      <Phone size={22} color="#fff" />
-    </button>
-    <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>Call</span>
-  </div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <button
+            onClick={onStartAudio}
+            title="Audio call"
+            style={{
+              ...iconButtonStyle("#25D366"),
+              opacity: joinedRoom ? 1 : 0.5,
+              cursor: joinedRoom ? "pointer" : "not-allowed",
+            }}
+            disabled={!joinedRoom}
+          >
+            <Phone size={22} color="#fff" />
+          </button>
+          <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>
+            Call
+          </span>
+        </div>
 
-  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-    <button
-      onClick={onStartVideo}
-      title="Video call"
-      style={iconButtonStyle("#34B7F1")}
-    >
-      <Video size={22} color="#fff" />
-    </button>
-    <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>Video</span>
-  </div>
-</div>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <button
+            onClick={onStartVideo}
+            title="Video call"
+            style={{
+              ...iconButtonStyle("#34B7F1"),
+              opacity: joinedRoom ? 1 : 0.5,
+              cursor: joinedRoom ? "pointer" : "not-allowed",
+            }}
+            disabled={!joinedRoom}
+          >
+            <Video size={22} color="#fff" />
+          </button>
+          <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>
+            Video
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -150,7 +207,7 @@ function FullScreenCallOverlay({
         flexDirection: "column",
       }}
     >
-      <audio ref={remoteAudioRef} autoPlay playsInline muted />
+      <audio ref={remoteAudioRef} autoPlay playsInline />
 
       <div
         style={{
@@ -166,7 +223,9 @@ function FullScreenCallOverlay({
         }}
       >
         <div>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>{remoteName || "Contact"}</div>
+          <div style={{ fontSize: 22, fontWeight: 700 }}>
+            {remoteName || "Contact"}
+          </div>
           <div style={{ fontSize: 13, opacity: 0.85 }}>
             {incoming
               ? incoming.callType === "video"
@@ -183,18 +242,17 @@ function FullScreenCallOverlay({
 
       {isVideo ? (
         <>
-         <video
-  ref={remoteVideoRef}
-  autoPlay
-  playsInline
-  muted
-  style={{
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    background: "#000",
-  }}
-/>
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              background: "#000",
+            }}
+          />
 
           <video
             ref={localVideoRef}
@@ -293,10 +351,16 @@ function FullScreenCallOverlay({
         >
           <button
             onClick={onToggleMute}
-            style={roundActionButton(muted ? "#455A64" : "rgba(255,255,255,0.18)")}
+            style={roundActionButton(
+              muted ? "#455A64" : "rgba(255,255,255,0.18)"
+            )}
             title={muted ? "Unmute" : "Mute"}
           >
-            {muted ? <MicOff size={20} color="#fff" /> : <Mic size={20} color="#fff" />}
+            {muted ? (
+              <MicOff size={20} color="#fff" />
+            ) : (
+              <Mic size={20} color="#fff" />
+            )}
           </button>
 
           {isVideo && (
@@ -338,46 +402,18 @@ function FullScreenCallOverlay({
   );
 }
 
-function iconButtonStyle(background) {
-  return {
-    width: 46,
-    height: 46,
-    borderRadius: 999,
-    border: "none",
-    background,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
-  };
-}
-
-function roundActionButton(background) {
-  return {
-    width: 58,
-    height: 58,
-    borderRadius: 999,
-    border: "none",
-    background,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: "0 8px 30px rgba(0,0,0,0.22)",
-  };
-}
-
 function WebRTCCall({ roomId, myName }) {
   const socketRef = useRef(null);
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
+  const remoteStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
   const pendingOfferRef = useRef(null);
   const iceQueueRef = useRef([]);
   const acceptedRef = useRef(false);
   const isCallerRef = useRef(false);
 
+  const [joinedRoom, setJoinedRoom] = useState(false);
   const [remoteStream, setRemoteStream] = useState(null);
   const [incoming, setIncoming] = useState(null);
   const [inCall, setInCall] = useState(false);
@@ -390,48 +426,14 @@ function WebRTCCall({ roomId, myName }) {
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
 
-  useEffect(() => {
-  const s = io("https://myroom-ms7g.onrender.com", {
-    transports: ["polling", "websocket"],
-    reconnection: true,
-  });
-
-  s.on("connect", () => {
-    console.log("socket connected", s.id);
-    if (roomId) {
-      s.emit("join-room", { roomId });
-    }
-  });
-
-  s.on("disconnect", (reason) => {
-    console.log("socket disconnected", reason);
-  });
-
-  socketRef.current = s;
-
-  return () => {
-    s.disconnect();
-    socketRef.current = null;
-  };
-}, [roomId]);
-
-useEffect(() => {
-  const s = socketRef.current;
-  if (!s || !roomId) return;
-
-  s.emit("join-room", { roomId });
-
-  return () => {
-    s.emit("leave-room", { roomId });
-  };
-}, [roomId]);
-
   const cleanupCall = () => {
     setInCall(false);
     setIncoming(null);
     setCallType(null);
     setMuted(false);
     setCameraOff(false);
+    setRemoteName("Contact");
+
     acceptedRef.current = false;
     isCallerRef.current = false;
     pendingOfferRef.current = null;
@@ -445,6 +447,7 @@ useEffect(() => {
     if (pcRef.current) {
       pcRef.current.ontrack = null;
       pcRef.current.onicecandidate = null;
+      pcRef.current.onconnectionstatechange = null;
       pcRef.current.close();
       pcRef.current = null;
     }
@@ -454,10 +457,12 @@ useEffect(() => {
       localStreamRef.current = null;
     }
 
-    if (remoteStream) {
-      remoteStream.getTracks().forEach((t) => t.stop());
-      setRemoteStream(null);
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach((t) => t.stop());
+      remoteStreamRef.current = null;
     }
+
+    setRemoteStream(null);
 
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
@@ -477,36 +482,36 @@ useEffect(() => {
       ],
     });
 
-pc.ontrack = (event) => {
-  console.log("ontrack fired:", {
-    kind: event.track.kind,
-    streams: event.streams,
-    trackEnabled: event.track.enabled,
-    trackMuted: event.track.muted,
-    readyState: event.track.readyState,
-  });
+    const inboundStream = new MediaStream();
+    remoteStreamRef.current = inboundStream;
+    setRemoteStream(inboundStream);
 
-  let stream = event.streams?.[0];
+    pc.ontrack = (event) => {
+      if (!inboundStream.getTracks().some((t) => t.id === event.track.id)) {
+        inboundStream.addTrack(event.track);
+      }
 
-  if (!stream) {
-    stream = remoteStream || new MediaStream();
-    if (!stream.getTracks().some((t) => t.id === event.track.id)) {
-      stream.addTrack(event.track);
-    }
-  }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = inboundStream;
+        remoteVideoRef.current.autoplay = true;
+        remoteVideoRef.current.playsInline = true;
+        remoteVideoRef.current.play().catch((err) => {
+          console.error("Remote video play failed:", err);
+        });
+      }
 
-  console.log(
-    "remote stream tracks after ontrack:",
-    stream.getTracks().map((t) => ({
-      kind: t.kind,
-      enabled: t.enabled,
-      muted: t.muted,
-      readyState: t.readyState,
-    }))
-  );
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = inboundStream;
+        remoteAudioRef.current.muted = false;
+        remoteAudioRef.current.volume = 1;
+        remoteAudioRef.current.autoplay = true;
+        remoteAudioRef.current.playsInline = true;
+        remoteAudioRef.current.play().catch((err) => {
+          console.error("Remote audio play failed:", err);
+        });
+      }
+    };
 
-  setRemoteStream(stream);
-};
     pc.onicecandidate = (event) => {
       if (!event.candidate) return;
 
@@ -517,6 +522,8 @@ pc.ontrack = (event) => {
     };
 
     pc.onconnectionstatechange = () => {
+      console.log("pc connection state:", pc.connectionState);
+
       if (
         pc.connectionState === "failed" ||
         pc.connectionState === "disconnected" ||
@@ -531,7 +538,10 @@ pc.ontrack = (event) => {
   };
 
   const startLocalMedia = async (type) => {
-    if (!pcRef.current) createPC();
+    let pc = pcRef.current;
+    if (!pc) {
+      pc = createPC();
+    }
 
     const constraints =
       type === "video"
@@ -540,34 +550,16 @@ pc.ontrack = (event) => {
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     localStreamRef.current = stream;
-    console.log(
-  "Local audio tracks:",
-  stream.getAudioTracks().map((t) => ({
-    label: t.label,
-    enabled: t.enabled,
-    muted: t.muted,
-    readyState: t.readyState,
-  }))
-);
 
     stream.getTracks().forEach((track) => {
-      const alreadyAdded = pcRef.current
+      const alreadyAdded = pc
         .getSenders()
         .some((sender) => sender.track?.id === track.id);
 
       if (!alreadyAdded) {
-        pcRef.current.addTrack(track, stream);
+        pc.addTrack(track, stream);
       }
     });
-    console.log(
-  "Senders after addTrack:",
-  pcRef.current.getSenders().map((s) => ({
-    kind: s.track?.kind,
-    enabled: s.track?.enabled,
-    muted: s.track?.muted,
-    readyState: s.track?.readyState,
-  }))
-);
 
     if (type === "video" && localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
@@ -581,8 +573,10 @@ pc.ontrack = (event) => {
   };
 
   const handleOffer = async (data) => {
-    if (!pcRef.current) createPC();
-    const pc = pcRef.current;
+    let pc = pcRef.current;
+    if (!pc) {
+      pc = createPC();
+    }
 
     const nextCallType = data.callType || "audio";
     setCallType(nextCallType);
@@ -592,7 +586,7 @@ pc.ontrack = (event) => {
     await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
 
     for (const candidate of iceQueueRef.current) {
-      await pc.addIceCandidate(candidate);
+      await pc.addIceCandidate(candidate).catch(console.warn);
     }
     iceQueueRef.current = [];
 
@@ -609,12 +603,18 @@ pc.ontrack = (event) => {
   };
 
   const startOfferFlow = async (type) => {
-    if (!pcRef.current) createPC();
-    const pc = pcRef.current;
+    let pc = pcRef.current;
+    if (!pc) {
+      pc = createPC();
+    }
 
     await startLocalMedia(type);
 
-    const offer = await pc.createOffer();
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: type === "video",
+    });
+
     await pc.setLocalDescription(offer);
 
     socketRef.current?.emit("signal", {
@@ -627,6 +627,48 @@ pc.ontrack = (event) => {
       },
     });
   };
+
+  useEffect(() => {
+    const s = io("https://myroom-ms7g.onrender.com", {
+      transports: ["polling", "websocket"],
+      reconnection: true,
+    });
+
+    socketRef.current = s;
+
+    const joinCurrentRoom = () => {
+      if (!roomId) return;
+
+      s.emit("join-room", { roomId }, (res) => {
+        if (res?.ok) {
+          console.log("joined room", roomId);
+          setJoinedRoom(true);
+        } else {
+          setJoinedRoom(false);
+        }
+      });
+    };
+
+    s.on("connect", () => {
+      console.log("socket connected", s.id);
+      setJoinedRoom(false);
+      joinCurrentRoom();
+    });
+
+    s.on("disconnect", (reason) => {
+      console.log("socket disconnected", reason);
+      setJoinedRoom(false);
+    });
+
+    return () => {
+      if (roomId) {
+        s.emit("leave-room", { roomId });
+      }
+      s.disconnect();
+      socketRef.current = null;
+      setJoinedRoom(false);
+    };
+  }, [roomId]);
 
   useEffect(() => {
     const s = socketRef.current;
@@ -646,8 +688,8 @@ pc.ontrack = (event) => {
         }
 
         if (data.type === "accept") {
-          if (isCallerRef.current && !pcRef.current) {
-            await startOfferFlow(data.callType || callType || "audio");
+          if (isCallerRef.current) {
+            await startOfferFlow(data.callType || "audio");
           }
           return;
         }
@@ -681,6 +723,7 @@ pc.ontrack = (event) => {
           if (!pc) return;
 
           const candidate = new RTCIceCandidate(data.candidate);
+
           if (!pc.remoteDescription) {
             iceQueueRef.current.push(candidate);
           } else {
@@ -699,102 +742,63 @@ pc.ontrack = (event) => {
 
     s.on("signal", onSignal);
     return () => s.off("signal", onSignal);
-  }, [callType, roomId, myName, remoteStream]);
-
-  useEffect(() => {
-  if (!remoteStream) return;
-
-  console.log(
-    "Remote stream received:",
-    remoteStream.getTracks().map((t) => ({
-      kind: t.kind,
-      enabled: t.enabled,
-      muted: t.muted,
-      readyState: t.readyState,
-    }))
-  );
-
-  if (remoteVideoRef.current) {
-    remoteVideoRef.current.srcObject = null;
-    remoteVideoRef.current.srcObject = remoteStream;
-    remoteVideoRef.current.load?.();
-    remoteVideoRef.current.play().catch((err) => {
-      console.error("Remote video play failed:", err);
-    });
-  }
-
-  if (remoteAudioRef.current) {
-    remoteAudioRef.current.srcObject = null;
-    remoteAudioRef.current.srcObject = remoteStream;
-    remoteAudioRef.current.muted = false;
-    remoteAudioRef.current.volume = 1;
-    remoteAudioRef.current.load?.();
-
-    const tryPlay = () => {
-      remoteAudioRef.current?.play().catch((err) => {
-        console.error("Remote audio play failed:", err);
-      });
-    };
-
-    tryPlay();
-    document.addEventListener("click", tryPlay, { once: true });
-
-    return () => {
-      document.removeEventListener("click", tryPlay);
-    };
-  }
-}, [remoteStream]);
+  }, [roomId, myName]);
 
   const startCall = async (type) => {
-    if (!socketRef.current || inCall || pcRef.current) return;
-
-    setCallType(type);
-    setRemoteName("Contact");
-    isCallerRef.current = true;
-
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.muted = false;
-      remoteAudioRef.current.play().catch(() => {});
+    if (!socketRef.current || !joinedRoom) {
+      alert("Please wait a moment and try again.");
+      return;
     }
 
-    socketRef.current.emit("signal", {
-      roomId,
-      data: {
-        type: "call",
-        callType: type,
-        from: myName,
-      },
-    });
+    if (inCall) return;
+
+    if (pcRef.current) {
+      cleanupCall();
+    }
+
+    try {
+      setCallType(type);
+      setRemoteName("Contact");
+      isCallerRef.current = true;
+
+      socketRef.current.emit("signal", {
+        roomId,
+        data: {
+          type: "call",
+          callType: type,
+          from: myName,
+        },
+      });
+    } catch (err) {
+      console.error("startCall failed", err);
+    }
   };
 
-const answerCall = async () => {
-  acceptedRef.current = true;
+  const answerCall = async () => {
+    try {
+      acceptedRef.current = true;
 
-  if (remoteAudioRef.current) {
-    remoteAudioRef.current.muted = false;
-    remoteAudioRef.current.volume = 1;
-    remoteAudioRef.current.play().catch((err) => {
-      console.error("Answer remote audio play failed:", err);
-    });
-  }
+      socketRef.current?.emit("signal", {
+        roomId,
+        data: {
+          type: "accept",
+          callType: incoming?.callType || "audio",
+        },
+      });
 
-  socketRef.current?.emit("signal", {
-    roomId,
-    data: {
-      type: "accept",
-      callType: incoming?.callType || "audio",
-    },
-  });
+      if (pendingOfferRef.current) {
+        const offerData = pendingOfferRef.current;
+        pendingOfferRef.current = null;
+        setIncoming(null);
+        await handleOffer(offerData);
+      } else {
+        setIncoming(null);
+      }
+    } catch (err) {
+      console.error("answerCall failed", err);
+    }
+  };
 
-  if (pendingOfferRef.current) {
-    const offerData = pendingOfferRef.current;
-    pendingOfferRef.current = null;
-    setIncoming(null);
-    await handleOffer(offerData);
-  } else {
-    setIncoming(null);
-  }
-};
   const declineCall = () => {
     socketRef.current?.emit("signal", {
       roomId,
@@ -867,8 +871,9 @@ const answerCall = async () => {
     }
   };
 
-const overlayVisible = Boolean(incoming || inCall);
-    return (
+  const overlayVisible = Boolean(incoming || inCall);
+
+  return (
     <>
       <CallHeader
         room={roomId}
@@ -876,6 +881,7 @@ const overlayVisible = Boolean(incoming || inCall);
         onStartVideo={() => startCall("video")}
         inCall={inCall}
         callType={callType}
+        joinedRoom={joinedRoom}
       />
 
       <div style={{ height: 68, flexShrink: 0 }} />
@@ -931,7 +937,7 @@ export default function App() {
   }, [client]);
 
   useEffect(() => {
-    if (!client || !room || !client.userID) return;
+    if (!client || !room) return;
     let cancelled = false;
 
     const init = async () => {
@@ -942,21 +948,9 @@ export default function App() {
 
         await ch.watch();
 
-        let members = Object.keys(ch.state.members || {});
-        const isMember = members.includes(client.userID);
-
-        if (!isMember) {
-          if (members.length >= 2) {
-            alert("Room already has two participants");
-            return;
-          }
-
-          await ch.addMembers([client.userID]);
-          await ch.watch();
-          members = Object.keys(ch.state.members || {});
+        if (!cancelled) {
+          setChannel(ch);
         }
-
-        if (!cancelled) setChannel(ch);
       } catch (err) {
         console.error("channel init error", err);
         if (!cancelled) setChannel(null);
@@ -992,8 +986,9 @@ export default function App() {
       });
 
       if (!res.ok) {
-        console.error("token request failed", res.status, await res.text());
-        alert("Token fetch failed");
+        const text = await res.text();
+        console.error("token request failed", res.status, text);
+        alert("Token fetch failed: " + text);
         return;
       }
 

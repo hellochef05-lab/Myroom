@@ -1,8 +1,9 @@
 #root {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 0;
   text-align: center;
+  min-height: 100vh;
 }
 
 .logo {
@@ -11,9 +12,11 @@
   will-change: filter;
   transition: filter 300ms;
 }
+
 .logo:hover {
   filter: drop-shadow(0 0 2em #646cffaa);
 }
+
 .logo.react:hover {
   filter: drop-shadow(0 0 2em #61dafbaa);
 }
@@ -37,7 +40,6 @@
   padding: 2em;
 }
 
-/* WhatsApp-like chat bubble tweaks */
 .str-chat__message {
   max-width: 75%;
   padding: 6px 12px;
@@ -45,16 +47,16 @@
   border-radius: 8px;
   font-size: 14px;
 }
+
 .str-chat__message--mine {
   background-color: #dcf8c6;
   align-self: flex-end;
 }
+
 .str-chat__message--their {
   background-color: #fff;
   align-self: flex-start;
 }
-/* small call header styling inside WebRTCCall */
-/* cloud adjust within component if needed */
 
 .read-the-docs {
   color: #888;

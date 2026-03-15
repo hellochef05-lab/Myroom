@@ -78,6 +78,13 @@ app.post("/api/token", async (req, res) => {
     await channel.watch();
 
     const currentMembers = Object.keys(channel.state.members || {});
+
+    if (!currentMembers.includes(userId) && currentMembers.length >= 2) {
+      return res.status(403).json({
+        error: "Room already has two participants",
+      });
+    }
+
     if (!currentMembers.includes(userId)) {
       await channel.addMembers([userId]);
     }
@@ -162,10 +169,16 @@ const io = new Server(httpServer, {
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  socket.on("join-room", ({ roomId }) => {
-    if (!roomId) return;
+  socket.on("join-room", ({ roomId }, ack) => {
+    if (!roomId) {
+      if (ack) ack({ ok: false });
+      return;
+    }
+
     socket.join(roomId);
     console.log(`Socket ${socket.id} joined room: ${roomId}`);
+
+    if (ack) ack({ ok: true, roomId });
   });
 
   socket.on("leave-room", ({ roomId }) => {
