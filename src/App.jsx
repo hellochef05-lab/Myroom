@@ -476,17 +476,36 @@ useEffect(() => {
       ],
     });
 
-    pc.ontrack = (event) => {
-      let stream = event.streams?.[0];
-      if (!stream) {
-        stream = remoteStream || new MediaStream();
-        if (!stream.getTracks().some((t) => t.id === event.track.id)) {
-          stream.addTrack(event.track);
-        }
-      }
-      setRemoteStream(stream);
-    };
+pc.ontrack = (event) => {
+  console.log("ontrack fired:", {
+    kind: event.track.kind,
+    streams: event.streams,
+    trackEnabled: event.track.enabled,
+    trackMuted: event.track.muted,
+    readyState: event.track.readyState,
+  });
 
+  let stream = event.streams?.[0];
+
+  if (!stream) {
+    stream = remoteStream || new MediaStream();
+    if (!stream.getTracks().some((t) => t.id === event.track.id)) {
+      stream.addTrack(event.track);
+    }
+  }
+
+  console.log(
+    "remote stream tracks after ontrack:",
+    stream.getTracks().map((t) => ({
+      kind: t.kind,
+      enabled: t.enabled,
+      muted: t.muted,
+      readyState: t.readyState,
+    }))
+  );
+
+  setRemoteStream(stream);
+};
     pc.onicecandidate = (event) => {
       if (!event.candidate) return;
 
@@ -539,6 +558,15 @@ useEffect(() => {
         pcRef.current.addTrack(track, stream);
       }
     });
+    console.log(
+  "Senders after addTrack:",
+  pcRef.current.getSenders().map((s) => ({
+    kind: s.track?.kind,
+    enabled: s.track?.enabled,
+    muted: s.track?.muted,
+    readyState: s.track?.readyState,
+  }))
+);
 
     if (type === "video" && localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
@@ -673,20 +701,49 @@ useEffect(() => {
   }, [callType, roomId, myName, remoteStream]);
 
   useEffect(() => {
-    if (!remoteStream) return;
+  if (!remoteStream) return;
 
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream;
-      remoteVideoRef.current.play().catch(() => {});
-    }
+  console.log(
+    "Remote stream received:",
+    remoteStream.getTracks().map((t) => ({
+      kind: t.kind,
+      enabled: t.enabled,
+      muted: t.muted,
+      readyState: t.readyState,
+    }))
+  );
 
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = remoteStream;
-      remoteAudioRef.current.muted = false;
-      remoteAudioRef.current.volume = 1;
-      remoteAudioRef.current.play().catch(() => {});
-    }
-  }, [remoteStream]);
+  if (remoteVideoRef.current) {
+    remoteVideoRef.current.srcObject = remoteStream;
+    remoteVideoRef.current.muted = true;
+    remoteVideoRef.current.playsInline = true;
+    remoteVideoRef.current.autoplay = true;
+    remoteVideoRef.current.play().catch((err) => {
+      console.error("Remote video play failed:", err);
+    });
+  }
+
+  if (remoteAudioRef.current) {
+    remoteAudioRef.current.srcObject = remoteStream;
+    remoteAudioRef.current.muted = false;
+    remoteAudioRef.current.volume = 1;
+    remoteAudioRef.current.playsInline = true;
+    remoteAudioRef.current.autoplay = true;
+
+    const tryPlay = () => {
+      remoteAudioRef.current?.play().catch((err) => {
+        console.error("Remote audio play failed:", err);
+      });
+    };
+
+    tryPlay();
+    document.addEventListener("click", tryPlay, { once: true });
+
+    return () => {
+      document.removeEventListener("click", tryPlay);
+    };
+  }
+}, [remoteStream]);
 
   const startCall = async (type) => {
     if (!socketRef.current || inCall || pcRef.current) return;
@@ -710,24 +767,32 @@ useEffect(() => {
     });
   };
 
-  const answerCall = async () => {
-    acceptedRef.current = true;
-    setIncoming(null);
+const answerCall = async () => {
+  acceptedRef.current = true;
+  setIncoming(null);
 
-    socketRef.current?.emit("signal", {
-      roomId,
-      data: {
-        type: "accept",
-        callType: incoming?.callType || "audio",
-      },
+  if (remoteAudioRef.current) {
+    remoteAudioRef.current.muted = false;
+    remoteAudioRef.current.volume = 1;
+    remoteAudioRef.current.play().catch((err) => {
+      console.error("Answer remote audio play failed:", err);
     });
+  }
 
-    if (pendingOfferRef.current) {
-      const offerData = pendingOfferRef.current;
-      pendingOfferRef.current = null;
-      await handleOffer(offerData);
-    }
-  };
+  socketRef.current?.emit("signal", {
+    roomId,
+    data: {
+      type: "accept",
+      callType: incoming?.callType || "audio",
+    },
+  });
+
+  if (pendingOfferRef.current) {
+    const offerData = pendingOfferRef.current;
+    pendingOfferRef.current = null;
+    await handleOffer(offerData);
+  }
+};
 
   const declineCall = () => {
     socketRef.current?.emit("signal", {
