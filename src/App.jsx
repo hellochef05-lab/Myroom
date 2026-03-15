@@ -390,29 +390,40 @@ function WebRTCCall({ roomId, myName }) {
   const remoteAudioRef = useRef(null);
 
   useEffect(() => {
-    const s = io("https://myroom-ms7g.onrender.com", {
-      transports: ["polling", "websocket"],
-      reconnection: true,
-    });
+  const s = io("https://myroom-ms7g.onrender.com", {
+    transports: ["polling", "websocket"],
+    reconnection: true,
+  });
 
-    socketRef.current = s;
+  s.on("connect", () => {
+    console.log("socket connected", s.id);
+    if (roomId) {
+      s.emit("join-room", { roomId });
+    }
+  });
 
-    return () => {
-      s.disconnect();
-      socketRef.current = null;
-    };
-  }, []);
+  s.on("disconnect", (reason) => {
+    console.log("socket disconnected", reason);
+  });
 
-  useEffect(() => {
-    const s = socketRef.current;
-    if (!s || !roomId) return;
+  socketRef.current = s;
 
-    s.emit("join-room", { roomId });
+  return () => {
+    s.disconnect();
+    socketRef.current = null;
+  };
+}, [roomId]);
 
-    return () => {
-      s.emit("leave-room", { roomId });
-    };
-  }, [roomId]);
+useEffect(() => {
+  const s = socketRef.current;
+  if (!s || !roomId) return;
+
+  s.emit("join-room", { roomId });
+
+  return () => {
+    s.emit("leave-room", { roomId });
+  };
+}, [roomId]);
 
   const cleanupCall = () => {
     setInCall(false);
@@ -509,6 +520,15 @@ function WebRTCCall({ roomId, myName }) {
 
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     localStreamRef.current = stream;
+    console.log(
+  "Local audio tracks:",
+  stream.getAudioTracks().map((t) => ({
+    label: t.label,
+    enabled: t.enabled,
+    muted: t.muted,
+    readyState: t.readyState,
+  }))
+);
 
     stream.getTracks().forEach((track) => {
       const alreadyAdded = pcRef.current
@@ -781,8 +801,7 @@ function WebRTCCall({ roomId, myName }) {
     }
   };
 
-  const overlayVisible = Boolean(incoming || inCall || callType);
-
+const overlayVisible = Boolean(incoming || inCall);
     return (
     <>
       <CallHeader
@@ -897,7 +916,7 @@ export default function App() {
     }
 
     setJoining(true);
-    const userId = randomId();
+    const userId = name.trim().toLowerCase().replace(/\s+/g, "_");
 
     try {
       const res = await fetch("https://myroom-ms7g.onrender.com/api/token", {
