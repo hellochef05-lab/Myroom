@@ -183,17 +183,18 @@ function FullScreenCallOverlay({
 
       {isVideo ? (
         <>
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              background: "#000",
-            }}
-          />
+         <video
+  ref={remoteVideoRef}
+  autoPlay
+  playsInline
+  muted
+  style={{
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    background: "#000",
+  }}
+/>
 
           <video
             ref={localVideoRef}
@@ -714,21 +715,20 @@ pc.ontrack = (event) => {
   );
 
   if (remoteVideoRef.current) {
+    remoteVideoRef.current.srcObject = null;
     remoteVideoRef.current.srcObject = remoteStream;
-    remoteVideoRef.current.muted = true;
-    remoteVideoRef.current.playsInline = true;
-    remoteVideoRef.current.autoplay = true;
+    remoteVideoRef.current.load?.();
     remoteVideoRef.current.play().catch((err) => {
       console.error("Remote video play failed:", err);
     });
   }
 
   if (remoteAudioRef.current) {
+    remoteAudioRef.current.srcObject = null;
     remoteAudioRef.current.srcObject = remoteStream;
     remoteAudioRef.current.muted = false;
     remoteAudioRef.current.volume = 1;
-    remoteAudioRef.current.playsInline = true;
-    remoteAudioRef.current.autoplay = true;
+    remoteAudioRef.current.load?.();
 
     const tryPlay = () => {
       remoteAudioRef.current?.play().catch((err) => {
