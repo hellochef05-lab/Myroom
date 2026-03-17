@@ -181,6 +181,7 @@ function FullScreenCallOverlay({
   remoteName,
   localVideoRef,
   remoteVideoRef,
+  remoteAudioRef,
   onAnswer,
   onDecline,
   onHangup,
@@ -206,6 +207,7 @@ function FullScreenCallOverlay({
         flexDirection: "column",
       }}
     >
+      <audio ref={remoteAudioRef} autoPlay playsInline />
 
       <div
         style={{
@@ -422,6 +424,7 @@ function WebRTCCall({ roomId, myName }) {
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null);
 
 
 const cleanupCall = () => {
@@ -464,6 +467,7 @@ const cleanupCall = () => {
 
   if (localVideoRef.current) localVideoRef.current.srcObject = null;
   if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+  if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
 };
 
 const createPC = () => {
@@ -484,40 +488,53 @@ const createPC = () => {
   setRemoteStream(inboundStream);
 
   pc.ontrack = (event) => {
-    if (!inboundStream.getTracks().some((t) => t.id === event.track.id)) {
-      inboundStream.addTrack(event.track);
-    }
+  if (!inboundStream.getTracks().some((t) => t.id === event.track.id)) {
+    inboundStream.addTrack(event.track);
+  }
 
-    console.log(
-      "Remote tracks:",
-      inboundStream.getTracks().map((t) => ({
-        kind: t.kind,
-        enabled: t.enabled,
-        muted: t.muted,
-        readyState: t.readyState,
-        label: t.label,
-      }))
-    );
+  console.log(
+    "Remote tracks:",
+    inboundStream.getTracks().map((t) => ({
+      kind: t.kind,
+      enabled: t.enabled,
+      muted: t.muted,
+      readyState: t.readyState,
+      label: t.label,
+    }))
+  );
 
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = inboundStream;
-      remoteVideoRef.current.autoplay = true;
-      remoteVideoRef.current.playsInline = true;
-      remoteVideoRef.current.muted = false;
-      remoteVideoRef.current.volume = 1;
+  if (remoteVideoRef.current) {
+    remoteVideoRef.current.srcObject = inboundStream;
+    remoteVideoRef.current.autoplay = true;
+    remoteVideoRef.current.playsInline = true;
+    remoteVideoRef.current.muted = true;
+    remoteVideoRef.current.volume = 1;
 
-      const playRemote = async () => {
-        try {
-          await remoteVideoRef.current?.play();
-        } catch (err) {
-          console.error("Remote media play failed:", err);
-        }
-      };
+    remoteVideoRef.current.play().catch((err) => {
+      console.error("Remote video play failed:", err);
+    });
+  }
 
-      playRemote();
-      document.addEventListener("click", playRemote, { once: true });
-    }
-  };
+  if (remoteAudioRef.current) {
+    remoteAudioRef.current.srcObject = inboundStream;
+    remoteAudioRef.current.autoplay = true;
+    remoteAudioRef.current.playsInline = true;
+    remoteAudioRef.current.muted = false;
+    remoteAudioRef.current.volume = 1;
+
+    const playAudio = async () => {
+      try {
+        await remoteAudioRef.current?.play();
+      } catch (err) {
+        console.error("Remote audio play failed:", err);
+      }
+    };
+
+    playAudio();
+    document.addEventListener("click", playAudio, { once: true });
+    document.addEventListener("touchstart", playAudio, { once: true });
+  }
+};
 
   pc.onicecandidate = (event) => {
     if (!event.candidate) return;
@@ -917,14 +934,15 @@ const answerCall = async () => {
       <div style={{ height: 68, flexShrink: 0 }} />
 
       <FullScreenCallOverlay
-        visible={overlayVisible}
-        inCall={inCall}
-        incoming={incoming}
-        callType={incoming?.callType || callType}
-        remoteName={incoming?.from || remoteName}
-        localVideoRef={localVideoRef}
-        remoteVideoRef={remoteVideoRef}
-        onAnswer={answerCall}
+  visible={overlayVisible}
+  inCall={inCall}
+  incoming={incoming}
+  callType={incoming?.callType || callType}
+  remoteName={incoming?.from || remoteName}
+  localVideoRef={localVideoRef}
+  remoteVideoRef={remoteVideoRef}
+  remoteAudioRef={remoteAudioRef}
+  onAnswer={answerCall}
         onDecline={declineCall}
         onHangup={hangup}
         onToggleMute={toggleMute}
