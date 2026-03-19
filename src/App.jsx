@@ -207,7 +207,9 @@ function FullScreenCallOverlay({
         flexDirection: "column",
       }}
     >
-      <audio ref={remoteAudioRef} autoPlay playsInline />
+      {callType === "audio" && (
+  <audio ref={remoteAudioRef} autoPlay playsInline />
+)}
 
       <div
         style={{
@@ -487,14 +489,16 @@ const createPC = () => {
   remoteStreamRef.current = inboundStream;
   setRemoteStream(inboundStream);
 
-  pc.ontrack = (event) => {
-  if (!inboundStream.getTracks().some((t) => t.id === event.track.id)) {
-    inboundStream.addTrack(event.track);
-  }
+pc.ontrack = (event) => {
+  const stream = event.streams[0];
+  if (!stream) return;
+
+  remoteStreamRef.current = stream;
+  setRemoteStream(stream);
 
   console.log(
     "Remote tracks:",
-    inboundStream.getTracks().map((t) => ({
+    stream.getTracks().map((t) => ({
       kind: t.kind,
       enabled: t.enabled,
       muted: t.muted,
@@ -503,11 +507,12 @@ const createPC = () => {
     }))
   );
 
-  if (remoteVideoRef.current) {
-    remoteVideoRef.current.srcObject = inboundStream;
+  // For video calls, let the video element play both video + audio
+  if (remoteVideoRef.current && callType === "video") {
+    remoteVideoRef.current.srcObject = stream;
     remoteVideoRef.current.autoplay = true;
     remoteVideoRef.current.playsInline = true;
-    remoteVideoRef.current.muted = true;
+    remoteVideoRef.current.muted = false;
     remoteVideoRef.current.volume = 1;
 
     remoteVideoRef.current.play().catch((err) => {
@@ -515,24 +520,17 @@ const createPC = () => {
     });
   }
 
-  if (remoteAudioRef.current) {
-    remoteAudioRef.current.srcObject = inboundStream;
+  // For audio-only calls, use the audio element
+  if (remoteAudioRef.current && callType === "audio") {
+    remoteAudioRef.current.srcObject = stream;
     remoteAudioRef.current.autoplay = true;
     remoteAudioRef.current.playsInline = true;
     remoteAudioRef.current.muted = false;
     remoteAudioRef.current.volume = 1;
 
-    const playAudio = async () => {
-      try {
-        await remoteAudioRef.current?.play();
-      } catch (err) {
-        console.error("Remote audio play failed:", err);
-      }
-    };
-
-    playAudio();
-    document.addEventListener("click", playAudio, { once: true });
-    document.addEventListener("touchstart", playAudio, { once: true });
+    remoteAudioRef.current.play().catch((err) => {
+      console.error("Remote audio play failed:", err);
+    });
   }
 };
 
@@ -572,8 +570,17 @@ const startLocalMedia = async (type) => {
       ? { audio: true, video: true }
       : { audio: true, video: false };
 
-  const stream = await navigator.mediaDevices.getUserMedia(constraints);
-  localStreamRef.current = stream;
+let stream;
+
+try {
+  stream = await navigator.mediaDevices.getUserMedia(constraints);
+} catch (err) {
+  console.error("getUserMedia failed:", err);
+  alert("Microphone/Camera access failed. Please allow permissions in your browser.");
+  throw err;
+}
+
+localStreamRef.current = stream;
 
   console.log(
     "Local tracks:",
