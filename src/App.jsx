@@ -207,7 +207,12 @@ function FullScreenCallOverlay({
         flexDirection: "column",
       }}
     >
-      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: "none" }} />
+      <audio
+        ref={remoteAudioRef}
+        autoPlay
+        playsInline
+        style={{ display: "none" }}
+      />
 
       <div
         style={{
@@ -543,7 +548,9 @@ function WebRTCCall({ roomId, myName }) {
       stream = await navigator.mediaDevices.getUserMedia(constraints);
     } catch (err) {
       console.error("getUserMedia failed:", err);
-      alert("Microphone/Camera access failed. Please allow permissions in your browser.");
+      alert(
+        "Microphone/Camera access failed. Please allow permissions in your browser."
+      );
       throw err;
     }
 
@@ -766,54 +773,81 @@ function WebRTCCall({ roomId, myName }) {
     return () => s.off("signal", onSignal);
   }, [roomId, myName]);
 
+  const overlayVisible = Boolean(incoming || inCall);
+
   useEffect(() => {
     if (!remoteStream) return;
+    if (!overlayVisible) return;
 
-    console.log("Attaching remote stream", {
-      callType,
-      hasRemoteVideoEl: !!remoteVideoRef.current,
-      hasRemoteAudioEl: !!remoteAudioRef.current,
-      trackKinds: remoteStream.getTracks().map((t) => t.kind),
-    });
+    const attachRemoteMedia = async () => {
+      console.log("Attaching remote stream", {
+        callType,
+        overlayVisible,
+        hasRemoteVideoEl: !!remoteVideoRef.current,
+        hasRemoteAudioEl: !!remoteAudioRef.current,
+        trackKinds: remoteStream.getTracks().map((t) => t.kind),
+      });
 
-    if (callType === "video") {
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.autoplay = true;
-        remoteVideoRef.current.playsInline = true;
-        remoteVideoRef.current.muted = false;
-        remoteVideoRef.current.volume = 1;
+      if (callType === "video") {
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+          remoteVideoRef.current.autoplay = true;
+          remoteVideoRef.current.playsInline = true;
+          remoteVideoRef.current.muted = true;
+          remoteVideoRef.current.volume = 1;
 
-        remoteVideoRef.current.play().catch((err) => {
-          console.error("Remote video play failed:", err);
-        });
+          try {
+            await remoteVideoRef.current.play();
+          } catch (err) {
+            console.error("Remote video play failed:", err);
+          }
+        }
+
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = remoteStream;
+          remoteAudioRef.current.autoplay = true;
+          remoteAudioRef.current.playsInline = true;
+          remoteAudioRef.current.muted = false;
+          remoteAudioRef.current.volume = 1;
+
+          try {
+            await remoteAudioRef.current.play();
+          } catch (err) {
+            console.error("Remote audio play failed:", err);
+          }
+        }
+      } else {
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.srcObject = remoteStream;
+          remoteAudioRef.current.autoplay = true;
+          remoteAudioRef.current.playsInline = true;
+          remoteAudioRef.current.muted = false;
+          remoteAudioRef.current.volume = 1;
+
+          try {
+            await remoteAudioRef.current.play();
+          } catch (err) {
+            console.error("Remote audio play failed:", err);
+          }
+        }
+
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = null;
+        }
       }
+    };
 
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = null;
-      }
-    } else {
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = remoteStream;
-        remoteAudioRef.current.autoplay = true;
-        remoteAudioRef.current.playsInline = true;
-        remoteAudioRef.current.muted = false;
-        remoteAudioRef.current.volume = 1;
+    const id = setTimeout(() => {
+      attachRemoteMedia();
+    }, 100);
 
-        remoteAudioRef.current.play().catch((err) => {
-          console.error("Remote audio play failed:", err);
-        });
-      }
-
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = null;
-      }
-    }
-  }, [remoteStream, inCall, callType]);
+    return () => clearTimeout(id);
+  }, [remoteStream, callType, overlayVisible]);
 
   useEffect(() => {
     if (!localStreamRef.current) return;
     if (!localVideoRef.current) return;
+    if (!overlayVisible) return;
 
     if (callType === "video") {
       localVideoRef.current.srcObject = localStreamRef.current;
@@ -827,7 +861,7 @@ function WebRTCCall({ roomId, myName }) {
     } else {
       localVideoRef.current.srcObject = null;
     }
-  }, [inCall, callType, cameraOff]);
+  }, [overlayVisible, inCall, callType, cameraOff]);
 
   const startCall = async (type) => {
     if (!socketRef.current || !joinedRoom) {
@@ -956,8 +990,6 @@ function WebRTCCall({ roomId, myName }) {
       console.error("screen share failed", err);
     }
   };
-
-  const overlayVisible = Boolean(incoming || inCall);
 
   return (
     <>
@@ -1104,12 +1136,15 @@ export default function App() {
     const adminKey = window.prompt("Enter admin key");
     if (!adminKey) return;
 
-    const res = await fetch("https://myroom-ms7g.onrender.com/api/delete-all-rooms", {
-      method: "POST",
-      headers: {
-        "x-admin-key": adminKey,
-      },
-    });
+    const res = await fetch(
+      "https://myroom-ms7g.onrender.com/api/delete-all-rooms",
+      {
+        method: "POST",
+        headers: {
+          "x-admin-key": adminKey,
+        },
+      }
+    );
 
     const data = await res.json();
 
