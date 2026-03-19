@@ -207,9 +207,7 @@ function FullScreenCallOverlay({
         flexDirection: "column",
       }}
     >
-      {callType === "audio" && (
-  <audio ref={remoteAudioRef} autoPlay playsInline />
-)}
+      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: "none" }} />
 
       <div
         style={{
@@ -428,202 +426,173 @@ function WebRTCCall({ roomId, myName }) {
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
 
+  const cleanupCall = () => {
+    setInCall(false);
+    setIncoming(null);
+    setCallType(null);
+    setMuted(false);
+    setCameraOff(false);
+    setRemoteName("Contact");
 
-const cleanupCall = () => {
-  setInCall(false);
-  setIncoming(null);
-  setCallType(null);
-  setMuted(false);
-  setCameraOff(false);
-  setRemoteName("Contact");
+    acceptedRef.current = false;
+    isCallerRef.current = false;
+    pendingOfferRef.current = null;
+    iceQueueRef.current = [];
 
-  acceptedRef.current = false;
-  isCallerRef.current = false;
-  pendingOfferRef.current = null;
-  iceQueueRef.current = [];
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current = null;
+    }
 
-  if (screenStreamRef.current) {
-    screenStreamRef.current.getTracks().forEach((t) => t.stop());
-    screenStreamRef.current = null;
-  }
+    if (pcRef.current) {
+      pcRef.current.ontrack = null;
+      pcRef.current.onicecandidate = null;
+      pcRef.current.onconnectionstatechange = null;
+      pcRef.current.close();
+      pcRef.current = null;
+    }
 
-  if (pcRef.current) {
-    pcRef.current.ontrack = null;
-    pcRef.current.onicecandidate = null;
-    pcRef.current.onconnectionstatechange = null;
-    pcRef.current.close();
-    pcRef.current = null;
-  }
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
 
-  if (localStreamRef.current) {
-    localStreamRef.current.getTracks().forEach((t) => t.stop());
-    localStreamRef.current = null;
-  }
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach((t) => t.stop());
+      remoteStreamRef.current = null;
+    }
 
-  if (remoteStreamRef.current) {
-    remoteStreamRef.current.getTracks().forEach((t) => t.stop());
-    remoteStreamRef.current = null;
-  }
+    setRemoteStream(null);
 
-  setRemoteStream(null);
-
-  if (localVideoRef.current) localVideoRef.current.srcObject = null;
-  if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-  if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
-};
-
-const createPC = () => {
-  const pc = new RTCPeerConnection({
-    iceServers: [
-      ...turnServers,
-      { urls: "stun:stun.l.google.com:19302" },
-      {
-        urls: "turn:openrelay.metered.ca:443?transport=tcp",
-        username: "openrelayproject",
-        credential: "openrelayproject",
-      },
-    ],
-  });
-
-  const inboundStream = new MediaStream();
-  remoteStreamRef.current = inboundStream;
-  setRemoteStream(inboundStream);
-
-pc.ontrack = (event) => {
-  const stream = event.streams[0];
-  if (!stream) return;
-
-  remoteStreamRef.current = stream;
-  setRemoteStream(stream);
-
-  console.log(
-    "Remote tracks:",
-    stream.getTracks().map((t) => ({
-      kind: t.kind,
-      enabled: t.enabled,
-      muted: t.muted,
-      readyState: t.readyState,
-      label: t.label,
-    }))
-  );
-
-  // For video calls, let the video element play both video + audio
-  if (remoteVideoRef.current && callType === "video") {
-    remoteVideoRef.current.srcObject = stream;
-    remoteVideoRef.current.autoplay = true;
-    remoteVideoRef.current.playsInline = true;
-    remoteVideoRef.current.muted = false;
-    remoteVideoRef.current.volume = 1;
-
-    remoteVideoRef.current.play().catch((err) => {
-      console.error("Remote video play failed:", err);
-    });
-  }
-
-  // For audio-only calls, use the audio element
-  if (remoteAudioRef.current && callType === "audio") {
-    remoteAudioRef.current.srcObject = stream;
-    remoteAudioRef.current.autoplay = true;
-    remoteAudioRef.current.playsInline = true;
-    remoteAudioRef.current.muted = false;
-    remoteAudioRef.current.volume = 1;
-
-    remoteAudioRef.current.play().catch((err) => {
-      console.error("Remote audio play failed:", err);
-    });
-  }
-};
-
-  pc.onicecandidate = (event) => {
-    if (!event.candidate) return;
-
-    socketRef.current?.emit("signal", {
-      roomId,
-      data: { type: "ice", candidate: event.candidate },
-    });
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
   };
 
-  pc.onconnectionstatechange = () => {
-    console.log("pc connection state:", pc.connectionState);
+  const createPC = () => {
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        ...turnServers,
+        { urls: "stun:stun.l.google.com:19302" },
+        {
+          urls: "turn:openrelay.metered.ca:443?transport=tcp",
+          username: "openrelayproject",
+          credential: "openrelayproject",
+        },
+      ],
+    });
 
-    if (
-      pc.connectionState === "failed" ||
-      pc.connectionState === "disconnected" ||
-      pc.connectionState === "closed"
-    ) {
-      cleanupCall();
-    }
+    pc.ontrack = (event) => {
+      const stream = event.streams[0];
+      if (!stream) return;
+
+      remoteStreamRef.current = stream;
+      setRemoteStream(stream);
+
+      console.log(
+        "Remote tracks:",
+        stream.getTracks().map((t) => ({
+          kind: t.kind,
+          enabled: t.enabled,
+          muted: t.muted,
+          readyState: t.readyState,
+          label: t.label,
+        }))
+      );
+    };
+
+    pc.onicecandidate = (event) => {
+      if (!event.candidate) return;
+
+      socketRef.current?.emit("signal", {
+        roomId,
+        data: { type: "ice", candidate: event.candidate },
+      });
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log("pc connection state:", pc.connectionState);
+
+      if (
+        pc.connectionState === "failed" ||
+        pc.connectionState === "disconnected" ||
+        pc.connectionState === "closed"
+      ) {
+        cleanupCall();
+      }
+    };
+
+    pcRef.current = pc;
+    return pc;
   };
 
-  pcRef.current = pc;
-  return pc;
-};
-
-const startLocalMedia = async (type) => {
-  let pc = pcRef.current;
-  if (!pc) {
-    pc = createPC();
-  }
-
-  const constraints =
-    type === "video"
-      ? { audio: true, video: true }
-      : { audio: true, video: false };
-
-let stream;
-
-try {
-  stream = await navigator.mediaDevices.getUserMedia(constraints);
-} catch (err) {
-  console.error("getUserMedia failed:", err);
-  alert("Microphone/Camera access failed. Please allow permissions in your browser.");
-  throw err;
-}
-
-localStreamRef.current = stream;
-
-  console.log(
-    "Local tracks:",
-    stream.getTracks().map((t) => ({
-      kind: t.kind,
-      enabled: t.enabled,
-      muted: t.muted,
-      readyState: t.readyState,
-      label: t.label,
-    }))
-  );
-
-  stream.getTracks().forEach((track) => {
-    const alreadyAdded = pc
-      .getSenders()
-      .some((sender) => sender.track?.id === track.id);
-
-    if (!alreadyAdded) {
-      pc.addTrack(track, stream);
+  const startLocalMedia = async (type) => {
+    let pc = pcRef.current;
+    if (!pc) {
+      pc = createPC();
     }
-  });
 
-  console.log(
-    "Senders:",
-    pc.getSenders().map((s) => ({
-      kind: s.track?.kind,
-      enabled: s.track?.enabled,
-      muted: s.track?.muted,
-      readyState: s.track?.readyState,
-      label: s.track?.label,
-    }))
-  );
+    const constraints =
+      type === "video"
+        ? { audio: true, video: true }
+        : { audio: true, video: false };
 
-  if (type === "video" && localVideoRef.current) {
-    localVideoRef.current.srcObject = stream;
-    localVideoRef.current.muted = true;
-    localVideoRef.current.play?.().catch(() => {});
-  } else if (localVideoRef.current) {
-    localVideoRef.current.srcObject = null;
-  }
+    let stream;
 
-  return stream;
-};
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      console.error("getUserMedia failed:", err);
+      alert("Microphone/Camera access failed. Please allow permissions in your browser.");
+      throw err;
+    }
+
+    localStreamRef.current = stream;
+
+    console.log(
+      "Local tracks:",
+      stream.getTracks().map((t) => ({
+        kind: t.kind,
+        enabled: t.enabled,
+        muted: t.muted,
+        readyState: t.readyState,
+        label: t.label,
+      }))
+    );
+
+    stream.getTracks().forEach((track) => {
+      const alreadyAdded = pc
+        .getSenders()
+        .some((sender) => sender.track?.id === track.id);
+
+      if (!alreadyAdded) {
+        pc.addTrack(track, stream);
+      }
+    });
+
+    console.log(
+      "Senders:",
+      pc.getSenders().map((s) => ({
+        kind: s.track?.kind,
+        enabled: s.track?.enabled,
+        muted: s.track?.muted,
+        readyState: s.track?.readyState,
+        label: s.track?.label,
+      }))
+    );
+
+    if (type === "video" && localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+      localVideoRef.current.muted = true;
+      localVideoRef.current.playsInline = true;
+      localVideoRef.current.autoplay = true;
+      localVideoRef.current.play?.().catch(() => {});
+    } else if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+
+    return stream;
+  };
 
   const handleOffer = async (data) => {
     let pc = pcRef.current;
@@ -723,135 +692,198 @@ localStreamRef.current = stream;
     };
   }, [roomId]);
 
-useEffect(() => {
-  const s = socketRef.current;
-  if (!s) return;
+  useEffect(() => {
+    const s = socketRef.current;
+    if (!s) return;
 
-  const onSignal = async (data) => {
-    try {
-      if (data.type === "call") {
-        setIncoming({
-          callType: data.callType,
-          from: data.from || "Contact",
-        });
-        setRemoteName(data.from || "Contact");
-        setCallType(data.callType || "audio");
-        return;
-      }
-
-      if (data.type === "accept") {
-        if (isCallerRef.current) {
-          await startOfferFlow(data.callType || "audio");
-        }
-        return;
-      }
-
-      if (data.type === "offer") {
-        if (!acceptedRef.current) {
-          pendingOfferRef.current = data;
+    const onSignal = async (data) => {
+      try {
+        if (data.type === "call") {
+          setIncoming({
+            callType: data.callType,
+            from: data.from || "Contact",
+          });
+          setRemoteName(data.from || "Contact");
+          setCallType(data.callType || "audio");
           return;
         }
 
-        await handleOffer(data);
-        return;
-      }
-
-      if (data.type === "answer") {
-        const pc = pcRef.current;
-        if (!pc) return;
-
-        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-
-        for (const candidate of iceQueueRef.current) {
-          await pc.addIceCandidate(candidate).catch(console.warn);
+        if (data.type === "accept") {
+          if (isCallerRef.current) {
+            await startOfferFlow(data.callType || "audio");
+          }
+          return;
         }
-        iceQueueRef.current = [];
 
-        setInCall(true);
-        return;
-      }
+        if (data.type === "offer") {
+          if (!acceptedRef.current) {
+            pendingOfferRef.current = data;
+            return;
+          }
 
-      if (data.type === "ice") {
-        const pc = pcRef.current;
-        if (!pc) return;
-
-        const candidate = new RTCIceCandidate(data.candidate);
-
-        if (!pc.remoteDescription) {
-          iceQueueRef.current.push(candidate);
-        } else {
-          await pc.addIceCandidate(candidate).catch(console.warn);
+          await handleOffer(data);
+          return;
         }
-        return;
+
+        if (data.type === "answer") {
+          const pc = pcRef.current;
+          if (!pc) return;
+
+          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+
+          for (const candidate of iceQueueRef.current) {
+            await pc.addIceCandidate(candidate).catch(console.warn);
+          }
+          iceQueueRef.current = [];
+
+          setInCall(true);
+          return;
+        }
+
+        if (data.type === "ice") {
+          const pc = pcRef.current;
+          if (!pc) return;
+
+          const candidate = new RTCIceCandidate(data.candidate);
+
+          if (!pc.remoteDescription) {
+            iceQueueRef.current.push(candidate);
+          } else {
+            await pc.addIceCandidate(candidate).catch(console.warn);
+          }
+          return;
+        }
+
+        if (data.type === "hangup") {
+          cleanupCall();
+        }
+      } catch (err) {
+        console.error("Signal error:", err);
+      }
+    };
+
+    s.on("signal", onSignal);
+    return () => s.off("signal", onSignal);
+  }, [roomId, myName]);
+
+  useEffect(() => {
+    if (!remoteStream) return;
+
+    console.log("Attaching remote stream", {
+      callType,
+      hasRemoteVideoEl: !!remoteVideoRef.current,
+      hasRemoteAudioEl: !!remoteAudioRef.current,
+      trackKinds: remoteStream.getTracks().map((t) => t.kind),
+    });
+
+    if (callType === "video") {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.autoplay = true;
+        remoteVideoRef.current.playsInline = true;
+        remoteVideoRef.current.muted = false;
+        remoteVideoRef.current.volume = 1;
+
+        remoteVideoRef.current.play().catch((err) => {
+          console.error("Remote video play failed:", err);
+        });
       }
 
-      if (data.type === "hangup") {
-        cleanupCall();
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = null;
       }
+    } else {
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.autoplay = true;
+        remoteAudioRef.current.playsInline = true;
+        remoteAudioRef.current.muted = false;
+        remoteAudioRef.current.volume = 1;
+
+        remoteAudioRef.current.play().catch((err) => {
+          console.error("Remote audio play failed:", err);
+        });
+      }
+
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null;
+      }
+    }
+  }, [remoteStream, inCall, callType]);
+
+  useEffect(() => {
+    if (!localStreamRef.current) return;
+    if (!localVideoRef.current) return;
+
+    if (callType === "video") {
+      localVideoRef.current.srcObject = localStreamRef.current;
+      localVideoRef.current.muted = true;
+      localVideoRef.current.playsInline = true;
+      localVideoRef.current.autoplay = true;
+
+      localVideoRef.current.play().catch((err) => {
+        console.error("Local video play failed:", err);
+      });
+    } else {
+      localVideoRef.current.srcObject = null;
+    }
+  }, [inCall, callType, cameraOff]);
+
+  const startCall = async (type) => {
+    if (!socketRef.current || !joinedRoom) {
+      alert("Please wait a moment and try again.");
+      return;
+    }
+
+    if (inCall) return;
+
+    cleanupCall();
+
+    try {
+      setCallType(type);
+      setRemoteName("Contact");
+      isCallerRef.current = true;
+      acceptedRef.current = false;
+      pendingOfferRef.current = null;
+      iceQueueRef.current = [];
+
+      socketRef.current.emit("signal", {
+        roomId,
+        data: {
+          type: "call",
+          callType: type,
+          from: myName,
+        },
+      });
     } catch (err) {
-      console.error("Signal error:", err);
+      console.error("startCall failed", err);
     }
   };
 
-  s.on("signal", onSignal);
-  return () => s.off("signal", onSignal);
-}, [roomId, myName]);
+  const answerCall = async () => {
+    try {
+      acceptedRef.current = true;
 
-const startCall = async (type) => {
-  if (!socketRef.current || !joinedRoom) {
-    alert("Please wait a moment and try again.");
-    return;
-  }
+      socketRef.current?.emit("signal", {
+        roomId,
+        data: {
+          type: "accept",
+          callType: incoming?.callType || "audio",
+        },
+      });
 
-  if (inCall) return;
-
-  cleanupCall();
-
-  try {
-    setCallType(type);
-    setRemoteName("Contact");
-    isCallerRef.current = true;
-    acceptedRef.current = false;
-    pendingOfferRef.current = null;
-    iceQueueRef.current = [];
-
-    socketRef.current.emit("signal", {
-      roomId,
-      data: {
-        type: "call",
-        callType: type,
-        from: myName,
-      },
-    });
-  } catch (err) {
-    console.error("startCall failed", err);
-  }
-};
-
-const answerCall = async () => {
-  try {
-    acceptedRef.current = true;
-
-    socketRef.current?.emit("signal", {
-      roomId,
-      data: {
-        type: "accept",
-        callType: incoming?.callType || "audio",
-      },
-    });
-
-    if (pendingOfferRef.current) {
-      const offerData = pendingOfferRef.current;
-      pendingOfferRef.current = null;
-      setIncoming(null);
-      await handleOffer(offerData);
-    } else {
-      setIncoming(null);
+      if (pendingOfferRef.current) {
+        const offerData = pendingOfferRef.current;
+        pendingOfferRef.current = null;
+        setIncoming(null);
+        await handleOffer(offerData);
+      } else {
+        setIncoming(null);
+      }
+    } catch (err) {
+      console.error("answerCall failed", err);
     }
-  } catch (err) {
-    console.error("answerCall failed", err);
-  }
-};
+  };
 
   const declineCall = () => {
     socketRef.current?.emit("signal", {
@@ -941,15 +973,15 @@ const answerCall = async () => {
       <div style={{ height: 68, flexShrink: 0 }} />
 
       <FullScreenCallOverlay
-  visible={overlayVisible}
-  inCall={inCall}
-  incoming={incoming}
-  callType={incoming?.callType || callType}
-  remoteName={incoming?.from || remoteName}
-  localVideoRef={localVideoRef}
-  remoteVideoRef={remoteVideoRef}
-  remoteAudioRef={remoteAudioRef}
-  onAnswer={answerCall}
+        visible={overlayVisible}
+        inCall={inCall}
+        incoming={incoming}
+        callType={incoming?.callType || callType}
+        remoteName={incoming?.from || remoteName}
+        localVideoRef={localVideoRef}
+        remoteVideoRef={remoteVideoRef}
+        remoteAudioRef={remoteAudioRef}
+        onAnswer={answerCall}
         onDecline={declineCall}
         onHangup={hangup}
         onToggleMute={toggleMute}
@@ -1064,29 +1096,31 @@ export default function App() {
       setJoining(false);
     }
   }
-async function deleteAllRooms() {
-  const ok = window.confirm("Delete all rooms?");
-  if (!ok) return;
 
-  const adminKey = window.prompt("Enter admin key");
-  if (!adminKey) return;
+  async function deleteAllRooms() {
+    const ok = window.confirm("Delete all rooms?");
+    if (!ok) return;
 
-  const res = await fetch("http://localhost:4000/api/delete-all-rooms", {
-    method: "POST",
-    headers: {
-      "x-admin-key": adminKey,
-    },
-  });
+    const adminKey = window.prompt("Enter admin key");
+    if (!adminKey) return;
 
-  const data = await res.json();
+    const res = await fetch("https://myroom-ms7g.onrender.com/api/delete-all-rooms", {
+      method: "POST",
+      headers: {
+        "x-admin-key": adminKey,
+      },
+    });
 
-  if (!res.ok) {
-    alert(data.error || "Failed");
-    return;
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Failed");
+      return;
+    }
+
+    alert(`Deleted ${data.deleted} rooms`);
   }
 
-  alert(`Deleted ${data.deleted} rooms`);
-}
   const MyMessage = (props) => {
     const message = props?.message;
 
@@ -1283,23 +1317,24 @@ async function deleteAllRooms() {
               >
                 {joining ? "Joining..." : "Join Room"}
               </button>
+
               <button
-  onClick={deleteAllRooms}
-  style={{
-    width: "100%",
-    marginTop: 12,
-    padding: "14px 18px",
-    border: "none",
-    borderRadius: 18,
-    background: "#B00020",
-    color: "#fff",
-    fontWeight: 700,
-    fontSize: 16,
-    cursor: "pointer",
-  }}
->
-  Delete All Rooms
-</button>
+                onClick={deleteAllRooms}
+                style={{
+                  width: "100%",
+                  marginTop: 12,
+                  padding: "14px 18px",
+                  border: "none",
+                  borderRadius: 18,
+                  background: "#B00020",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: 16,
+                  cursor: "pointer",
+                }}
+              >
+                Delete All Rooms
+              </button>
             </div>
           </div>
         </div>
