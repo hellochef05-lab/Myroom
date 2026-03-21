@@ -253,6 +253,7 @@ function FullScreenCallOverlay({
   incoming,
   callType,
   remoteName,
+  connectionMessage,
   localVideoRef,
   remoteVideoRef,
   remoteAudioRef,
@@ -318,6 +319,26 @@ function FullScreenCallOverlay({
           </div>
         </div>
       </div>
+
+      {connectionMessage && (
+        <div
+          style={{
+            position: "absolute",
+            top: 78,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "rgba(0,0,0,0.55)",
+            color: "#fff",
+            padding: "8px 14px",
+            borderRadius: 999,
+            fontSize: 13,
+            fontWeight: 600,
+            zIndex: 4,
+          }}
+        >
+          {connectionMessage}
+        </div>
+      )}
 
       {isVideo ? (
         <>
@@ -491,6 +512,7 @@ function WebRTCCall({ roomId, myName }) {
   const iceQueueRef = useRef([]);
   const acceptedRef = useRef(false);
   const isCallerRef = useRef(false);
+  const disconnectTimeoutRef = useRef(null);
 
   const [joinedRoom, setJoinedRoom] = useState(false);
   const [remoteStream, setRemoteStream] = useState(null);
@@ -500,6 +522,7 @@ function WebRTCCall({ roomId, myName }) {
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const [remoteName, setRemoteName] = useState("Contact");
+  const [connectionMessage, setConnectionMessage] = useState("");
 
   const [debugInfo, setDebugInfo] = useState({
     pcConnectionState: "new",
@@ -554,6 +577,12 @@ function WebRTCCall({ roomId, myName }) {
   };
 
   const cleanupCall = () => {
+    if (disconnectTimeoutRef.current) {
+      clearTimeout(disconnectTimeoutRef.current);
+      disconnectTimeoutRef.current = null;
+    }
+
+    setConnectionMessage("");
     setInCall(false);
     setIncoming(null);
     setCallType(null);
@@ -653,11 +682,38 @@ function WebRTCCall({ roomId, myName }) {
       console.log("pc connection state:", pc.connectionState);
       refreshDebugInfo();
 
-      if (
-        pc.connectionState === "failed" ||
-        pc.connectionState === "disconnected" ||
-        pc.connectionState === "closed"
-      ) {
+      if (pc.connectionState === "connected") {
+        setConnectionMessage("");
+
+        if (disconnectTimeoutRef.current) {
+          clearTimeout(disconnectTimeoutRef.current);
+          disconnectTimeoutRef.current = null;
+        }
+        return;
+      }
+
+      if (pc.connectionState === "disconnected") {
+        setConnectionMessage("Reconnecting...");
+
+        if (disconnectTimeoutRef.current) {
+          clearTimeout(disconnectTimeoutRef.current);
+        }
+
+        disconnectTimeoutRef.current = setTimeout(() => {
+          console.log("Call stayed disconnected too long, ending call");
+          cleanupCall();
+        }, 10000);
+
+        return;
+      }
+
+      if (pc.connectionState === "failed") {
+        setConnectionMessage("Connection failed");
+        cleanupCall();
+        return;
+      }
+
+      if (pc.connectionState === "closed") {
         cleanupCall();
       }
     };
@@ -665,6 +721,26 @@ function WebRTCCall({ roomId, myName }) {
     pc.oniceconnectionstatechange = () => {
       console.log("ice connection state:", pc.iceConnectionState);
       refreshDebugInfo();
+
+      if (
+        pc.iceConnectionState === "checking" ||
+        pc.iceConnectionState === "disconnected"
+      ) {
+        setConnectionMessage("Weak connection");
+        return;
+      }
+
+      if (
+        pc.iceConnectionState === "connected" ||
+        pc.iceConnectionState === "completed"
+      ) {
+        setConnectionMessage("");
+        return;
+      }
+
+      if (pc.iceConnectionState === "failed") {
+        setConnectionMessage("Connection failed");
+      }
     };
 
     pcRef.current = pc;
@@ -1165,6 +1241,7 @@ function WebRTCCall({ roomId, myName }) {
         incoming={incoming}
         callType={incoming?.callType || callType}
         remoteName={incoming?.from || remoteName}
+        connectionMessage={connectionMessage}
         localVideoRef={localVideoRef}
         remoteVideoRef={remoteVideoRef}
         remoteAudioRef={remoteAudioRef}
