@@ -1256,18 +1256,7 @@ function WebRTCCall({ roomId, myName }) {
         remoteStream={remoteStream}
       />
 
-      {inCall && (
-        <div
-          style={{
-            position: "fixed",
-            left: 12,
-            bottom: 12,
-            zIndex: 1200,
-          }}
-        >
-          <CallDebugPanel debugInfo={debugInfo} />
-        </div>
-      )}
+      
     </>
   );
 }
