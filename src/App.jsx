@@ -391,7 +391,7 @@ function FullScreenCallOverlay({
           style={{
             position: "absolute",
             left: "50%",
-            bottom: 40,
+            bottom: 80,
             transform: "translateX(-50%)",
             display: "flex",
             gap: 18,
@@ -1179,7 +1179,7 @@ function WebRTCCall({ roomId, myName }) {
         remoteStream={remoteStream}
       />
 
-      {overlayVisible && (
+      {inCall && (
         <div
           style={{
             position: "fixed",
