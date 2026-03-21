@@ -21,6 +21,7 @@ import {
   Phone,
   PhoneOff,
   Video,
+  Bug,
 } from "lucide-react";
 import { io } from "socket.io-client";
 
@@ -113,8 +114,8 @@ function CallHeader({
               ? "Video call in progress"
               : "Audio call in progress"
             : joinedRoom
-            ? "Online"
-            : "Connecting..."}
+              ? "Online"
+              : "Connecting..."}
         </div>
       </div>
 
@@ -168,6 +169,79 @@ function CallHeader({
             Video
           </span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CallDebugPanel({ debugInfo }) {
+  const boxStyle = {
+    background: "rgba(0,0,0,0.72)",
+    color: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 12,
+    lineHeight: 1.5,
+    width: 280,
+    maxWidth: "90vw",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+  };
+
+  const titleStyle = {
+    fontWeight: 700,
+    marginBottom: 6,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  };
+
+  const sectionStyle = {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTop: "1px solid rgba(255,255,255,0.12)",
+  };
+
+  const renderTracks = (tracks, emptyText) => {
+    if (!tracks.length) return <div>{emptyText}</div>;
+
+    return tracks.map((track, index) => (
+      <div key={index} style={{ marginBottom: 6 }}>
+        <div>readyState: {track.readyState}</div>
+        <div>enabled: {String(track.enabled)}</div>
+        <div>muted: {String(track.muted)}</div>
+        <div style={{ opacity: 0.75 }}>{track.label || "No label"}</div>
+      </div>
+    ));
+  };
+
+  return (
+    <div style={boxStyle}>
+      <div style={titleStyle}>
+        <Bug size={14} />
+        Call Diagnostics
+      </div>
+
+      <div>PC: {debugInfo.pcConnectionState}</div>
+      <div>ICE: {debugInfo.iceConnectionState}</div>
+
+      <div style={sectionStyle}>
+        <div style={{ fontWeight: 700 }}>Local audio</div>
+        {renderTracks(debugInfo.localAudio, "No local audio track")}
+      </div>
+
+      <div style={sectionStyle}>
+        <div style={{ fontWeight: 700 }}>Local video</div>
+        {renderTracks(debugInfo.localVideo, "No local video track")}
+      </div>
+
+      <div style={sectionStyle}>
+        <div style={{ fontWeight: 700 }}>Remote audio</div>
+        {renderTracks(debugInfo.remoteAudio, "No remote audio track")}
+      </div>
+
+      <div style={sectionStyle}>
+        <div style={{ fontWeight: 700 }}>Remote video</div>
+        {renderTracks(debugInfo.remoteVideo, "No remote video track")}
       </div>
     </div>
   );
@@ -237,10 +311,10 @@ function FullScreenCallOverlay({
                 ? "Incoming video call"
                 : "Incoming audio call"
               : inCall
-              ? isVideo
-                ? "Video call connected"
-                : "Audio call connected"
-              : "Calling..."}
+                ? isVideo
+                  ? "Video call connected"
+                  : "Audio call connected"
+                : "Calling..."}
           </div>
         </div>
       </div>
@@ -427,9 +501,57 @@ function WebRTCCall({ roomId, myName }) {
   const [cameraOff, setCameraOff] = useState(false);
   const [remoteName, setRemoteName] = useState("Contact");
 
+  const [debugInfo, setDebugInfo] = useState({
+    pcConnectionState: "new",
+    iceConnectionState: "new",
+    localAudio: [],
+    localVideo: [],
+    remoteAudio: [],
+    remoteVideo: [],
+  });
+
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
+
+  const refreshDebugInfo = () => {
+    const pc = pcRef.current;
+    const localStream = localStreamRef.current;
+    const remoteStream = remoteStreamRef.current;
+
+    setDebugInfo({
+      pcConnectionState: pc?.connectionState || "none",
+      iceConnectionState: pc?.iceConnectionState || "none",
+      localAudio:
+        localStream?.getAudioTracks().map((t) => ({
+          enabled: t.enabled,
+          muted: t.muted,
+          readyState: t.readyState,
+          label: t.label,
+        })) || [],
+      localVideo:
+        localStream?.getVideoTracks().map((t) => ({
+          enabled: t.enabled,
+          muted: t.muted,
+          readyState: t.readyState,
+          label: t.label,
+        })) || [],
+      remoteAudio:
+        remoteStream?.getAudioTracks().map((t) => ({
+          enabled: t.enabled,
+          muted: t.muted,
+          readyState: t.readyState,
+          label: t.label,
+        })) || [],
+      remoteVideo:
+        remoteStream?.getVideoTracks().map((t) => ({
+          enabled: t.enabled,
+          muted: t.muted,
+          readyState: t.readyState,
+          label: t.label,
+        })) || [],
+    });
+  };
 
   const cleanupCall = () => {
     setInCall(false);
@@ -453,6 +575,7 @@ function WebRTCCall({ roomId, myName }) {
       pcRef.current.ontrack = null;
       pcRef.current.onicecandidate = null;
       pcRef.current.onconnectionstatechange = null;
+      pcRef.current.oniceconnectionstatechange = null;
       pcRef.current.close();
       pcRef.current = null;
     }
@@ -472,6 +595,15 @@ function WebRTCCall({ roomId, myName }) {
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+
+    setDebugInfo({
+      pcConnectionState: "new",
+      iceConnectionState: "new",
+      localAudio: [],
+      localVideo: [],
+      remoteAudio: [],
+      remoteVideo: [],
+    });
   };
 
   const createPC = () => {
@@ -504,6 +636,8 @@ function WebRTCCall({ roomId, myName }) {
           label: t.label,
         }))
       );
+
+      refreshDebugInfo();
     };
 
     pc.onicecandidate = (event) => {
@@ -517,6 +651,7 @@ function WebRTCCall({ roomId, myName }) {
 
     pc.onconnectionstatechange = () => {
       console.log("pc connection state:", pc.connectionState);
+      refreshDebugInfo();
 
       if (
         pc.connectionState === "failed" ||
@@ -525,6 +660,11 @@ function WebRTCCall({ roomId, myName }) {
       ) {
         cleanupCall();
       }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log("ice connection state:", pc.iceConnectionState);
+      refreshDebugInfo();
     };
 
     pcRef.current = pc;
@@ -598,6 +738,7 @@ function WebRTCCall({ roomId, myName }) {
       localVideoRef.current.srcObject = null;
     }
 
+    refreshDebugInfo();
     return stream;
   };
 
@@ -629,6 +770,7 @@ function WebRTCCall({ roomId, myName }) {
 
     setInCall(true);
     setIncoming(null);
+    refreshDebugInfo();
   };
 
   const startOfferFlow = async (type) => {
@@ -655,6 +797,8 @@ function WebRTCCall({ roomId, myName }) {
         from: myName,
       },
     });
+
+    refreshDebugInfo();
   };
 
   useEffect(() => {
@@ -744,6 +888,7 @@ function WebRTCCall({ roomId, myName }) {
           iceQueueRef.current = [];
 
           setInCall(true);
+          refreshDebugInfo();
           return;
         }
 
@@ -758,6 +903,7 @@ function WebRTCCall({ roomId, myName }) {
           } else {
             await pc.addIceCandidate(candidate).catch(console.warn);
           }
+          refreshDebugInfo();
           return;
         }
 
@@ -835,6 +981,8 @@ function WebRTCCall({ roomId, myName }) {
           remoteVideoRef.current.srcObject = null;
         }
       }
+
+      refreshDebugInfo();
     };
 
     const id = setTimeout(() => {
@@ -861,6 +1009,8 @@ function WebRTCCall({ roomId, myName }) {
     } else {
       localVideoRef.current.srcObject = null;
     }
+
+    refreshDebugInfo();
   }, [overlayVisible, inCall, callType, cameraOff]);
 
   const startCall = async (type) => {
@@ -946,6 +1096,7 @@ function WebRTCCall({ roomId, myName }) {
       track.enabled = !nextMuted;
     });
     setMuted(nextMuted);
+    refreshDebugInfo();
   };
 
   const toggleCamera = () => {
@@ -957,6 +1108,7 @@ function WebRTCCall({ roomId, myName }) {
       track.enabled = !nextCameraOff;
     });
     setCameraOff(nextCameraOff);
+    refreshDebugInfo();
   };
 
   const shareScreen = async () => {
@@ -985,7 +1137,10 @@ function WebRTCCall({ roomId, myName }) {
         }
         displayStream.getTracks().forEach((t) => t.stop());
         screenStreamRef.current = null;
+        refreshDebugInfo();
       };
+
+      refreshDebugInfo();
     } catch (err) {
       console.error("screen share failed", err);
     }
@@ -1023,6 +1178,19 @@ function WebRTCCall({ roomId, myName }) {
         cameraOff={cameraOff}
         remoteStream={remoteStream}
       />
+
+      {overlayVisible && (
+        <div
+          style={{
+            position: "fixed",
+            left: 12,
+            bottom: 12,
+            zIndex: 1200,
+          }}
+        >
+          <CallDebugPanel debugInfo={debugInfo} />
+        </div>
+      )}
     </>
   );
 }
