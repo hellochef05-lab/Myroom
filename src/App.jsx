@@ -1448,6 +1448,7 @@ export default function App() {
     <div
       style={{
         minHeight: "100dvh",
+        width: "100%",
         background: `
           radial-gradient(circle at 20% 20%, rgba(120,255,220,0.18), transparent 22%),
           radial-gradient(circle at 80% 30%, rgba(120,255,220,0.12), transparent 20%),
@@ -1457,7 +1458,7 @@ export default function App() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: isMobile ? 14 : 24,
+        padding: isMobile ? 16 : 24,
         boxSizing: "border-box",
         overflow: "hidden",
       }}
@@ -1466,6 +1467,7 @@ export default function App() {
         style={{
           width: "100%",
           maxWidth: isMobile ? 360 : 430,
+          margin: "0 auto",
           position: "relative",
         }}
       >
