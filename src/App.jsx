@@ -1447,40 +1447,30 @@ export default function App() {
       style={{
         minHeight: "100dvh",
         background: `
-          radial-gradient(circle at 20% 20%, rgba(120,255,220,0.22), transparent 22%),
-          radial-gradient(circle at 80% 30%, rgba(120,255,220,0.18), transparent 20%),
-          radial-gradient(circle at 50% 85%, rgba(120,255,220,0.14), transparent 24%),
+          radial-gradient(circle at 20% 20%, rgba(120,255,220,0.18), transparent 22%),
+          radial-gradient(circle at 80% 30%, rgba(120,255,220,0.12), transparent 20%),
+          radial-gradient(circle at 50% 85%, rgba(120,255,220,0.10), transparent 24%),
           linear-gradient(135deg, #062c2a 0%, #0b5d57 38%, #117a72 65%, #0b4c47 100%)
         `,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         padding: 20,
-        position: "relative",
+        boxSizing: "border-box",
         overflow: "hidden",
       }}
     >
       <div
         style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(circle at center, rgba(255,255,255,0.06), transparent 45%)",
-          pointerEvents: "none",
-        }}
-      />
-
-      <div
-        style={{
           width: "100%",
-          maxWidth: 430,
+          maxWidth: 420,
           position: "relative",
         }}
       >
         <div
           style={{
             textAlign: "center",
-            marginBottom: 16,
+            marginBottom: 14,
           }}
         >
           <span
@@ -1506,37 +1496,36 @@ export default function App() {
         <div
           style={{
             position: "relative",
-            background: "rgba(255,255,255,0.14)",
             borderRadius: 34,
-            padding: "78px 24px 24px",
-            border: "1px solid rgba(255,255,255,0.24)",
+            padding: "70px 20px 20px",
+            background: "rgba(255,255,255,0.14)",
+            border: "1px solid rgba(255,255,255,0.22)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
             boxShadow:
-              "0 24px 70px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.30)",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
+              "0 22px 60px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25)",
           }}
         >
           <div
             style={{
               position: "absolute",
-              top: -46,
+              top: -42,
               left: "50%",
               transform: "translateX(-50%)",
-              width: 104,
-              height: 104,
+              width: 96,
+              height: 96,
               borderRadius: "50%",
               background: `
-                radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.15) 36%, rgba(0,0,0,0.08) 100%),
-                linear-gradient(180deg, rgba(130,255,225,0.55), rgba(20,120,110,0.35))
+                radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.2) 38%, rgba(0,0,0,0.08) 100%),
+                linear-gradient(180deg, rgba(130,255,225,0.50), rgba(20,120,110,0.30))
               `,
-              border: "1px solid rgba(255,255,255,0.38)",
+              border: "1px solid rgba(255,255,255,0.35)",
               boxShadow:
-                "0 10px 34px rgba(0,0,0,0.25), inset 0 2px 12px rgba(255,255,255,0.35)",
+                "0 10px 34px rgba(0,0,0,0.24), inset 0 2px 12px rgba(255,255,255,0.35)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 36,
-              color: "#134c47",
+              fontSize: 34,
             }}
           >
             💬
@@ -1544,12 +1533,12 @@ export default function App() {
 
           <div
             style={{
-              background: "rgba(255,255,255,0.72)",
+              background: "rgba(255,255,255,0.78)",
               borderRadius: 28,
-              padding: "32px 24px 22px",
+              padding: "28px 22px 20px",
+              border: "1px solid rgba(255,255,255,0.58)",
               boxShadow:
-                "inset 0 1px 0 rgba(255,255,255,0.85), 0 12px 28px rgba(0,0,0,0.16)",
-              border: "1px solid rgba(255,255,255,0.55)",
+                "inset 0 1px 0 rgba(255,255,255,0.85), 0 10px 24px rgba(0,0,0,0.14)",
             }}
           >
             <h1
@@ -1557,9 +1546,9 @@ export default function App() {
                 margin: 0,
                 textAlign: "center",
                 fontSize: 28,
-                lineHeight: 1.15,
                 fontWeight: 800,
-                color: "#18343b",
+                color: "#17343a",
+                lineHeight: 1.1,
               }}
             >
               Private Room
@@ -1571,7 +1560,7 @@ export default function App() {
                 textAlign: "center",
                 fontSize: 14,
                 lineHeight: 1.45,
-                color: "#52646a",
+                color: "#56666b",
               }}
             >
               Join securely to chat, share media,
@@ -1601,7 +1590,7 @@ export default function App() {
                     width: "100%",
                     height: 50,
                     borderRadius: 999,
-                    border: "1px solid rgba(16,72,68,0.12)",
+                    border: "1px solid rgba(16,72,68,0.10)",
                     background: "#f8fbfb",
                     padding: "0 18px 0 44px",
                     fontSize: 15,
@@ -1634,7 +1623,7 @@ export default function App() {
                     width: "100%",
                     height: 50,
                     borderRadius: 999,
-                    border: "1px solid rgba(16,72,68,0.12)",
+                    border: "1px solid rgba(16,72,68,0.10)",
                     background: "#f8fbfb",
                     padding: "0 18px 0 44px",
                     fontSize: 15,
@@ -1661,14 +1650,13 @@ export default function App() {
                 fontSize: 16,
                 fontWeight: 800,
                 letterSpacing: 0.2,
-                background: `
-                  linear-gradient(180deg, #7dffb1 0%, #27c16e 40%, #0a7e43 100%)
-                `,
+                background:
+                  "linear-gradient(180deg, #7dffb1 0%, #27c16e 40%, #0a7e43 100%)",
                 boxShadow:
                   "0 8px 20px rgba(18,102,58,0.35), inset 0 2px 8px rgba(255,255,255,0.35), inset 0 -2px 6px rgba(0,0,0,0.18)",
               }}
             >
-              {joining ? "Entering..." : "Enter Room  ›"}
+              {joining ? "Entering..." : "Enter Room ›"}
             </button>
 
             <div
@@ -1692,7 +1680,7 @@ export default function App() {
                 onClick={deleteAllRooms}
                 style={{
                   position: "relative",
-                  background: "transparent",
+                  background: "rgba(255,255,255,0.78)",
                   border: "none",
                   padding: "0 14px",
                   color: "#35535a",
