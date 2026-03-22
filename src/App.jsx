@@ -1447,255 +1447,263 @@ export default function App() {
   return (
     <div
       style={{
-        minHeight: "100dvh",
+        position: "fixed",
+        inset: 0,
         width: "100%",
+        height: "100dvh",
         background: `
           radial-gradient(circle at 20% 20%, rgba(120,255,220,0.18), transparent 22%),
           radial-gradient(circle at 80% 30%, rgba(120,255,220,0.12), transparent 20%),
           radial-gradient(circle at 50% 85%, rgba(120,255,220,0.10), transparent 24%),
           linear-gradient(135deg, #062c2a 0%, #0b5d57 38%, #117a72 65%, #0b4c47 100%)
         `,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: isMobile ? "max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom))" : 24,
-        boxSizing: "border-box",
         overflow: "hidden",
       }}
     >
       <div
         style={{
-          width: "100%",
-          maxWidth: isMobile ? 370 : 430,
-          margin: "0 auto",
-          position: "relative",
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: isMobile ? "18px" : "24px",
+          boxSizing: "border-box",
         }}
       >
         <div
           style={{
-            textAlign: "center",
-            marginBottom: isMobile ? 10 : 16,
-          }}
-        >
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: isMobile ? "8px 16px" : "8px 18px",
-              borderRadius: 999,
-              color: "#e7fffb",
-              fontSize: isMobile ? 13 : 14,
-              fontWeight: 700,
-              background: "rgba(255,255,255,0.08)",
-              border: "1px solid rgba(255,255,255,0.16)",
-              boxShadow: "0 8px 20px rgba(0,0,0,0.15)",
-              backdropFilter: "blur(10px)",
-            }}
-          >
-            🔒 Secure Access
-          </span>
-        </div>
-
-        <div
-          style={{
+            width: "100%",
+            maxWidth: isMobile ? 340 : 430,
             position: "relative",
-            borderRadius: isMobile ? 28 : 34,
-            padding: isMobile ? "52px 14px 14px" : "70px 20px 20px",
-            background: "rgba(255,255,255,0.14)",
-            border: "1px solid rgba(255,255,255,0.22)",
-            backdropFilter: "blur(14px)",
-            WebkitBackdropFilter: "blur(14px)",
-            boxShadow:
-              "0 22px 60px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25)",
           }}
         >
           <div
             style={{
-              position: "absolute",
-              top: isMobile ? -32 : -42,
-              left: "50%",
-              transform: "translateX(-50%)",
-              width: isMobile ? 78 : 96,
-              height: isMobile ? 78 : 96,
-              borderRadius: "50%",
-              background: `
-                radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.2) 38%, rgba(0,0,0,0.08) 100%),
-                linear-gradient(180deg, rgba(130,255,225,0.50), rgba(20,120,110,0.30))
-              `,
-              border: "1px solid rgba(255,255,255,0.35)",
-              boxShadow:
-                "0 10px 34px rgba(0,0,0,0.24), inset 0 2px 12px rgba(255,255,255,0.35)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: isMobile ? 28 : 34,
+              textAlign: "center",
+              marginBottom: isMobile ? 10 : 16,
             }}
           >
-            💬
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: isMobile ? "7px 14px" : "8px 18px",
+                borderRadius: 999,
+                color: "#e7fffb",
+                fontSize: isMobile ? 12 : 14,
+                fontWeight: 700,
+                background: "rgba(255,255,255,0.08)",
+                border: "1px solid rgba(255,255,255,0.16)",
+                boxShadow: "0 8px 20px rgba(0,0,0,0.15)",
+                backdropFilter: "blur(10px)",
+              }}
+            >
+              🔒 Secure Access
+            </span>
           </div>
 
           <div
             style={{
-              background: "rgba(255,255,255,0.82)",
-              borderRadius: isMobile ? 22 : 28,
-              padding: isMobile ? "20px 14px 14px" : "28px 22px 20px",
-              border: "1px solid rgba(255,255,255,0.58)",
+              position: "relative",
+              borderRadius: isMobile ? 26 : 34,
+              padding: isMobile ? "50px 14px 14px" : "70px 20px 20px",
+              background: "rgba(255,255,255,0.14)",
+              border: "1px solid rgba(255,255,255,0.22)",
+              backdropFilter: "blur(14px)",
+              WebkitBackdropFilter: "blur(14px)",
               boxShadow:
-                "inset 0 1px 0 rgba(255,255,255,0.85), 0 10px 24px rgba(0,0,0,0.14)",
+                "0 22px 60px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25)",
             }}
           >
-            <h1
+            <div
               style={{
-                margin: 0,
-                textAlign: "center",
-                fontSize: isMobile ? 22 : 28,
-                fontWeight: 800,
-                color: "#17343a",
-                lineHeight: 1.1,
-              }}
-            >
-              Private Room
-            </h1>
-
-            <p
-              style={{
-                margin: isMobile ? "10px 0 16px" : "12px 0 22px",
-                textAlign: "center",
-                fontSize: isMobile ? 13 : 14,
-                lineHeight: 1.45,
-                color: "#56666b",
-              }}
-            >
-              Join securely to chat, share media,
-              <br />
-              and connect instantly.
-            </p>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 10 : 12 }}>
-              <div style={{ position: "relative" }}>
-                <span
-                  style={{
-                    position: "absolute",
-                    left: 14,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    fontSize: isMobile ? 16 : 18,
-                    opacity: 0.8,
-                  }}
-                >
-                  👤
-                </span>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter your name"
-                  style={{
-                    width: "100%",
-                    height: isMobile ? 46 : 50,
-                    borderRadius: 999,
-                    border: "1px solid rgba(16,72,68,0.10)",
-                    background: "#f8fbfb",
-                    padding: "0 18px 0 44px",
-                    fontSize: isMobile ? 14 : 15,
-                    outline: "none",
-                    boxSizing: "border-box",
-                    color: "#1f2937",
-                    boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
-                  }}
-                />
-              </div>
-
-              <div style={{ position: "relative" }}>
-                <span
-                  style={{
-                    position: "absolute",
-                    left: 14,
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    fontSize: isMobile ? 16 : 18,
-                    opacity: 0.8,
-                  }}
-                >
-                  🔑
-                </span>
-                <input
-                  value={room}
-                  onChange={(e) => setRoom(e.target.value)}
-                  placeholder="Enter room code"
-                  style={{
-                    width: "100%",
-                    height: isMobile ? 46 : 50,
-                    borderRadius: 999,
-                    border: "1px solid rgba(16,72,68,0.10)",
-                    background: "#f8fbfb",
-                    padding: "0 18px 0 44px",
-                    fontSize: isMobile ? 14 : 15,
-                    outline: "none",
-                    boxSizing: "border-box",
-                    color: "#1f2937",
-                    boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
-                  }}
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={joinRoom}
-              disabled={joining}
-              style={{
-                width: "100%",
-                marginTop: isMobile ? 14 : 16,
-                height: isMobile ? 48 : 52,
-                border: "none",
-                borderRadius: 999,
-                cursor: joining ? "not-allowed" : "pointer",
-                color: "#fff",
-                fontSize: isMobile ? 15 : 16,
-                fontWeight: 800,
-                letterSpacing: 0.2,
-                background:
-                  "linear-gradient(180deg, #7dffb1 0%, #27c16e 40%, #0a7e43 100%)",
+                position: "absolute",
+                top: isMobile ? -30 : -42,
+                left: "50%",
+                transform: "translateX(-50%)",
+                width: isMobile ? 74 : 96,
+                height: isMobile ? 74 : 96,
+                borderRadius: "50%",
+                background: `
+                  radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.2) 38%, rgba(0,0,0,0.08) 100%),
+                  linear-gradient(180deg, rgba(130,255,225,0.50), rgba(20,120,110,0.30))
+                `,
+                border: "1px solid rgba(255,255,255,0.35)",
                 boxShadow:
-                  "0 8px 20px rgba(18,102,58,0.35), inset 0 2px 8px rgba(255,255,255,0.35), inset 0 -2px 6px rgba(0,0,0,0.18)",
+                  "0 10px 34px rgba(0,0,0,0.24), inset 0 2px 12px rgba(255,255,255,0.35)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: isMobile ? 26 : 34,
               }}
             >
-              {joining ? "Entering..." : "Enter Room ›"}
-            </button>
+              💬
+            </div>
 
             <div
               style={{
-                marginTop: isMobile ? 12 : 14,
-                textAlign: "center",
-                position: "relative",
+                background: "rgba(255,255,255,0.82)",
+                borderRadius: isMobile ? 20 : 28,
+                padding: isMobile ? "18px 14px 14px" : "28px 22px 20px",
+                border: "1px solid rgba(255,255,255,0.58)",
+                boxShadow:
+                  "inset 0 1px 0 rgba(255,255,255,0.85), 0 10px 24px rgba(0,0,0,0.14)",
               }}
             >
-              <div
+              <h1
                 style={{
-                  height: 1,
-                  background: "rgba(24,52,59,0.14)",
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  top: "50%",
-                }}
-              />
-              <button
-                onClick={deleteAllRooms}
-                style={{
-                  position: "relative",
-                  background: "rgba(255,255,255,0.90)",
-                  border: "none",
-                  padding: "0 14px",
-                  color: "#35535a",
-                  fontSize: isMobile ? 13 : 14,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  borderRadius: 999,
+                  margin: 0,
+                  textAlign: "center",
+                  fontSize: isMobile ? 22 : 28,
+                  fontWeight: 800,
+                  color: "#17343a",
+                  lineHeight: 1.1,
                 }}
               >
-                Manage Rooms
+                Private Room
+              </h1>
+
+              <p
+                style={{
+                  margin: isMobile ? "10px 0 16px" : "12px 0 22px",
+                  textAlign: "center",
+                  fontSize: isMobile ? 12.5 : 14,
+                  lineHeight: 1.45,
+                  color: "#56666b",
+                }}
+              >
+                Join securely to chat, share media,
+                <br />
+                and connect instantly.
+              </p>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ position: "relative" }}>
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: 14,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      fontSize: isMobile ? 15 : 18,
+                      opacity: 0.8,
+                    }}
+                  >
+                    👤
+                  </span>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Enter your name"
+                    style={{
+                      width: "100%",
+                      height: isMobile ? 44 : 50,
+                      borderRadius: 999,
+                      border: "1px solid rgba(16,72,68,0.10)",
+                      background: "#f8fbfb",
+                      padding: "0 18px 0 42px",
+                      fontSize: isMobile ? 14 : 15,
+                      outline: "none",
+                      boxSizing: "border-box",
+                      color: "#1f2937",
+                      boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
+                    }}
+                  />
+                </div>
+
+                <div style={{ position: "relative" }}>
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: 14,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      fontSize: isMobile ? 15 : 18,
+                      opacity: 0.8,
+                    }}
+                  >
+                    🔑
+                  </span>
+                  <input
+                    value={room}
+                    onChange={(e) => setRoom(e.target.value)}
+                    placeholder="Enter room code"
+                    style={{
+                      width: "100%",
+                      height: isMobile ? 44 : 50,
+                      borderRadius: 999,
+                      border: "1px solid rgba(16,72,68,0.10)",
+                      background: "#f8fbfb",
+                      padding: "0 18px 0 42px",
+                      fontSize: isMobile ? 14 : 15,
+                      outline: "none",
+                      boxSizing: "border-box",
+                      color: "#1f2937",
+                      boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={joinRoom}
+                disabled={joining}
+                style={{
+                  width: "100%",
+                  marginTop: 14,
+                  height: isMobile ? 46 : 52,
+                  border: "none",
+                  borderRadius: 999,
+                  cursor: joining ? "not-allowed" : "pointer",
+                  color: "#fff",
+                  fontSize: isMobile ? 14.5 : 16,
+                  fontWeight: 800,
+                  letterSpacing: 0.2,
+                  background:
+                    "linear-gradient(180deg, #7dffb1 0%, #27c16e 40%, #0a7e43 100%)",
+                  boxShadow:
+                    "0 8px 20px rgba(18,102,58,0.35), inset 0 2px 8px rgba(255,255,255,0.35), inset 0 -2px 6px rgba(0,0,0,0.18)",
+                }}
+              >
+                {joining ? "Entering..." : "Enter Room ›"}
               </button>
+
+              <div
+                style={{
+                  marginTop: 12,
+                  textAlign: "center",
+                  position: "relative",
+                }}
+              >
+                <div
+                  style={{
+                    height: 1,
+                    background: "rgba(24,52,59,0.14)",
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    top: "50%",
+                  }}
+                />
+                <button
+                  onClick={deleteAllRooms}
+                  style={{
+                    position: "relative",
+                    background: "rgba(255,255,255,0.90)",
+                    border: "none",
+                    padding: "0 14px",
+                    color: "#35535a",
+                    fontSize: isMobile ? 12.5 : 14,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    borderRadius: 999,
+                  }}
+                >
+                  Manage Rooms
+                </button>
+              </div>
             </div>
           </div>
         </div>
