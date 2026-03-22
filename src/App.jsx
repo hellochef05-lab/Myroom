@@ -1442,6 +1442,8 @@ export default function App() {
   };
 
   if (!client) {
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+
   return (
     <div
       style={{
@@ -1455,7 +1457,7 @@ export default function App() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 20,
+        padding: isMobile ? 14 : 24,
         boxSizing: "border-box",
         overflow: "hidden",
       }}
@@ -1463,14 +1465,14 @@ export default function App() {
       <div
         style={{
           width: "100%",
-          maxWidth: 420,
+          maxWidth: isMobile ? 360 : 430,
           position: "relative",
         }}
       >
         <div
           style={{
             textAlign: "center",
-            marginBottom: 14,
+            marginBottom: isMobile ? 12 : 16,
           }}
         >
           <span
@@ -1478,10 +1480,10 @@ export default function App() {
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
-              padding: "8px 18px",
+              padding: isMobile ? "8px 16px" : "8px 18px",
               borderRadius: 999,
               color: "#e7fffb",
-              fontSize: 14,
+              fontSize: isMobile ? 13 : 14,
               fontWeight: 700,
               background: "rgba(255,255,255,0.08)",
               border: "1px solid rgba(255,255,255,0.16)",
@@ -1496,8 +1498,8 @@ export default function App() {
         <div
           style={{
             position: "relative",
-            borderRadius: 34,
-            padding: "70px 20px 20px",
+            borderRadius: isMobile ? 28 : 34,
+            padding: isMobile ? "58px 16px 16px" : "70px 20px 20px",
             background: "rgba(255,255,255,0.14)",
             border: "1px solid rgba(255,255,255,0.22)",
             backdropFilter: "blur(14px)",
@@ -1509,11 +1511,11 @@ export default function App() {
           <div
             style={{
               position: "absolute",
-              top: -42,
+              top: isMobile ? -36 : -42,
               left: "50%",
               transform: "translateX(-50%)",
-              width: 96,
-              height: 96,
+              width: isMobile ? 84 : 96,
+              height: isMobile ? 84 : 96,
               borderRadius: "50%",
               background: `
                 radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.2) 38%, rgba(0,0,0,0.08) 100%),
@@ -1525,7 +1527,7 @@ export default function App() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 34,
+              fontSize: isMobile ? 30 : 34,
             }}
           >
             💬
@@ -1533,9 +1535,9 @@ export default function App() {
 
           <div
             style={{
-              background: "rgba(255,255,255,0.78)",
-              borderRadius: 28,
-              padding: "28px 22px 20px",
+              background: "rgba(255,255,255,0.80)",
+              borderRadius: isMobile ? 24 : 28,
+              padding: isMobile ? "22px 16px 16px" : "28px 22px 20px",
               border: "1px solid rgba(255,255,255,0.58)",
               boxShadow:
                 "inset 0 1px 0 rgba(255,255,255,0.85), 0 10px 24px rgba(0,0,0,0.14)",
@@ -1545,7 +1547,7 @@ export default function App() {
               style={{
                 margin: 0,
                 textAlign: "center",
-                fontSize: 28,
+                fontSize: isMobile ? 24 : 28,
                 fontWeight: 800,
                 color: "#17343a",
                 lineHeight: 1.1,
@@ -1556,9 +1558,9 @@ export default function App() {
 
             <p
               style={{
-                margin: "12px 0 22px",
+                margin: isMobile ? "10px 0 18px" : "12px 0 22px",
                 textAlign: "center",
-                fontSize: 14,
+                fontSize: isMobile ? 13 : 14,
                 lineHeight: 1.45,
                 color: "#56666b",
               }}
@@ -1568,7 +1570,7 @@ export default function App() {
               and connect instantly.
             </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ position: "relative" }}>
                 <span
                   style={{
@@ -1576,7 +1578,7 @@ export default function App() {
                     left: 14,
                     top: "50%",
                     transform: "translateY(-50%)",
-                    fontSize: 18,
+                    fontSize: isMobile ? 16 : 18,
                     opacity: 0.8,
                   }}
                 >
@@ -1588,12 +1590,12 @@ export default function App() {
                   placeholder="Enter your name"
                   style={{
                     width: "100%",
-                    height: 50,
+                    height: isMobile ? 48 : 50,
                     borderRadius: 999,
                     border: "1px solid rgba(16,72,68,0.10)",
                     background: "#f8fbfb",
                     padding: "0 18px 0 44px",
-                    fontSize: 15,
+                    fontSize: isMobile ? 14 : 15,
                     outline: "none",
                     boxSizing: "border-box",
                     color: "#1f2937",
@@ -1609,7 +1611,7 @@ export default function App() {
                     left: 14,
                     top: "50%",
                     transform: "translateY(-50%)",
-                    fontSize: 18,
+                    fontSize: isMobile ? 16 : 18,
                     opacity: 0.8,
                   }}
                 >
@@ -1621,12 +1623,12 @@ export default function App() {
                   placeholder="Enter room code"
                   style={{
                     width: "100%",
-                    height: 50,
+                    height: isMobile ? 48 : 50,
                     borderRadius: 999,
                     border: "1px solid rgba(16,72,68,0.10)",
                     background: "#f8fbfb",
                     padding: "0 18px 0 44px",
-                    fontSize: 15,
+                    fontSize: isMobile ? 14 : 15,
                     outline: "none",
                     boxSizing: "border-box",
                     color: "#1f2937",
@@ -1641,13 +1643,13 @@ export default function App() {
               disabled={joining}
               style={{
                 width: "100%",
-                marginTop: 18,
-                height: 52,
+                marginTop: 16,
+                height: isMobile ? 50 : 52,
                 border: "none",
                 borderRadius: 999,
                 cursor: joining ? "not-allowed" : "pointer",
                 color: "#fff",
-                fontSize: 16,
+                fontSize: isMobile ? 15 : 16,
                 fontWeight: 800,
                 letterSpacing: 0.2,
                 background:
@@ -1661,7 +1663,7 @@ export default function App() {
 
             <div
               style={{
-                marginTop: 16,
+                marginTop: 14,
                 textAlign: "center",
                 position: "relative",
               }}
@@ -1680,13 +1682,14 @@ export default function App() {
                 onClick={deleteAllRooms}
                 style={{
                   position: "relative",
-                  background: "rgba(255,255,255,0.78)",
+                  background: "rgba(255,255,255,0.90)",
                   border: "none",
                   padding: "0 14px",
                   color: "#35535a",
-                  fontSize: 14,
+                  fontSize: isMobile ? 13 : 14,
                   fontWeight: 600,
                   cursor: "pointer",
+                  borderRadius: 999,
                 }}
               >
                 Manage Rooms
