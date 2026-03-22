@@ -1458,7 +1458,7 @@ export default function App() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: isMobile ? 16 : 24,
+        padding: isMobile ? "max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom))" : 24,
         boxSizing: "border-box",
         overflow: "hidden",
       }}
@@ -1466,7 +1466,7 @@ export default function App() {
       <div
         style={{
           width: "100%",
-          maxWidth: isMobile ? 360 : 430,
+          maxWidth: isMobile ? 370 : 430,
           margin: "0 auto",
           position: "relative",
         }}
@@ -1474,7 +1474,7 @@ export default function App() {
         <div
           style={{
             textAlign: "center",
-            marginBottom: isMobile ? 12 : 16,
+            marginBottom: isMobile ? 10 : 16,
           }}
         >
           <span
@@ -1501,7 +1501,7 @@ export default function App() {
           style={{
             position: "relative",
             borderRadius: isMobile ? 28 : 34,
-            padding: isMobile ? "58px 16px 16px" : "70px 20px 20px",
+            padding: isMobile ? "52px 14px 14px" : "70px 20px 20px",
             background: "rgba(255,255,255,0.14)",
             border: "1px solid rgba(255,255,255,0.22)",
             backdropFilter: "blur(14px)",
@@ -1513,11 +1513,11 @@ export default function App() {
           <div
             style={{
               position: "absolute",
-              top: isMobile ? -36 : -42,
+              top: isMobile ? -32 : -42,
               left: "50%",
               transform: "translateX(-50%)",
-              width: isMobile ? 84 : 96,
-              height: isMobile ? 84 : 96,
+              width: isMobile ? 78 : 96,
+              height: isMobile ? 78 : 96,
               borderRadius: "50%",
               background: `
                 radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.2) 38%, rgba(0,0,0,0.08) 100%),
@@ -1529,7 +1529,7 @@ export default function App() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: isMobile ? 30 : 34,
+              fontSize: isMobile ? 28 : 34,
             }}
           >
             💬
@@ -1537,9 +1537,9 @@ export default function App() {
 
           <div
             style={{
-              background: "rgba(255,255,255,0.80)",
-              borderRadius: isMobile ? 24 : 28,
-              padding: isMobile ? "22px 16px 16px" : "28px 22px 20px",
+              background: "rgba(255,255,255,0.82)",
+              borderRadius: isMobile ? 22 : 28,
+              padding: isMobile ? "20px 14px 14px" : "28px 22px 20px",
               border: "1px solid rgba(255,255,255,0.58)",
               boxShadow:
                 "inset 0 1px 0 rgba(255,255,255,0.85), 0 10px 24px rgba(0,0,0,0.14)",
@@ -1549,7 +1549,7 @@ export default function App() {
               style={{
                 margin: 0,
                 textAlign: "center",
-                fontSize: isMobile ? 24 : 28,
+                fontSize: isMobile ? 22 : 28,
                 fontWeight: 800,
                 color: "#17343a",
                 lineHeight: 1.1,
@@ -1560,7 +1560,7 @@ export default function App() {
 
             <p
               style={{
-                margin: isMobile ? "10px 0 18px" : "12px 0 22px",
+                margin: isMobile ? "10px 0 16px" : "12px 0 22px",
                 textAlign: "center",
                 fontSize: isMobile ? 13 : 14,
                 lineHeight: 1.45,
@@ -1572,7 +1572,7 @@ export default function App() {
               and connect instantly.
             </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 10 : 12 }}>
               <div style={{ position: "relative" }}>
                 <span
                   style={{
@@ -1592,7 +1592,7 @@ export default function App() {
                   placeholder="Enter your name"
                   style={{
                     width: "100%",
-                    height: isMobile ? 48 : 50,
+                    height: isMobile ? 46 : 50,
                     borderRadius: 999,
                     border: "1px solid rgba(16,72,68,0.10)",
                     background: "#f8fbfb",
@@ -1625,7 +1625,7 @@ export default function App() {
                   placeholder="Enter room code"
                   style={{
                     width: "100%",
-                    height: isMobile ? 48 : 50,
+                    height: isMobile ? 46 : 50,
                     borderRadius: 999,
                     border: "1px solid rgba(16,72,68,0.10)",
                     background: "#f8fbfb",
@@ -1645,8 +1645,8 @@ export default function App() {
               disabled={joining}
               style={{
                 width: "100%",
-                marginTop: 16,
-                height: isMobile ? 50 : 52,
+                marginTop: isMobile ? 14 : 16,
+                height: isMobile ? 48 : 52,
                 border: "none",
                 borderRadius: 999,
                 cursor: joining ? "not-allowed" : "pointer",
@@ -1665,7 +1665,7 @@ export default function App() {
 
             <div
               style={{
-                marginTop: 14,
+                marginTop: isMobile ? 12 : 14,
                 textAlign: "center",
                 position: "relative",
               }}
