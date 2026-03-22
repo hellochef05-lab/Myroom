@@ -1727,84 +1727,105 @@ export default function App() {
       }}
     >
       <div
+  style={{
+    width: "100%",
+    maxWidth: 1100,
+    height: "100dvh",
+    background: "#EFEAE2",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    position: "relative",
+  }}
+>
+        <Chat client={client} theme="messaging light">
+  <Channel channel={channel}>
+    <Window>
+      <div
         style={{
-          width: "100%",
-          maxWidth: 1100,
           height: "100dvh",
-          background: "#EFEAE2",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          background: "#EFEAE2",
         }}
       >
-        <Chat client={client} theme="messaging light">
-          <Channel channel={channel}>
-            <Window>
-              <WebRTCCall roomId={room} myName={name} />
+        <WebRTCCall roomId={room} myName={name} />
 
-              <div
-                style={{
-                  flex: 1,
-                  minHeight: 0,
-                  overflowY: "auto",
-                  WebkitOverflowScrolling: "touch",
-                  backgroundImage:
-                    "radial-gradient(rgba(255,255,255,0.35) 1px, transparent 1px)",
-                  backgroundSize: "18px 18px",
+        <div
+          style={{
+            height: 68,
+            flexShrink: 0,
+          }}
+        />
+
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            WebkitOverflowScrolling: "touch",
+            backgroundImage:
+              "radial-gradient(rgba(255,255,255,0.35) 1px, transparent 1px)",
+            backgroundSize: "18px 18px",
+            paddingBottom: 8,
+          }}
+        >
+          <MessageList Message={MyMessage} />
+        </div>
+
+        <div
+          style={{
+            flexShrink: 0,
+            background: "#EFEAE2",
+            padding: "0 14px 4px",
+          }}
+        >
+          <TypingIndicator />
+        </div>
+
+        <div
+          style={{
+            flexShrink: 0,
+            padding: "8px 10px calc(10px + env(safe-area-inset-bottom))",
+            borderTop: "1px solid rgba(0,0,0,0.06)",
+            background: "#F0F2F5",
+            position: "sticky",
+            bottom: 0,
+            zIndex: 90,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              background: "#fff",
+              borderRadius: 999,
+              padding: "8px 12px",
+            }}
+          >
+            <Paperclip size={18} color="#667781" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <MessageInput
+                focus
+                grow
+                audioRecordingEnabled
+                asyncMessagesMultiSendEnabled
+                audioRecordingConfig={audioRecordingConfig}
+                additionalTextareaProps={{
+                  placeholder: "Type a message",
                 }}
-              >
-                <MessageList Message={MyMessage} />
-              </div>
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </Window>
 
-              <div
-                style={{
-                  padding: "0 14px 4px",
-                  background: "#EFEAE2",
-                }}
-              >
-                <TypingIndicator />
-              </div>
-
-              <div
-                style={{
-                  padding: 10,
-                  borderTop: "1px solid rgba(0,0,0,0.06)",
-                  background: "#F0F2F5",
-                  position: "sticky",
-                  bottom: 0,
-                  zIndex: 90,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    background: "#fff",
-                    borderRadius: 999,
-                    padding: "8px 12px",
-                  }}
-                >
-                  <Paperclip size={18} color="#667781" />
-                  <div style={{ flex: 1 }}>
-                    <MessageInput
-                      focus
-                      grow
-                      audioRecordingEnabled
-                      asyncMessagesMultiSendEnabled
-                      audioRecordingConfig={audioRecordingConfig}
-                      additionalTextareaProps={{
-                        placeholder: "Type a message",
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </Window>
-
-            <Thread />
-          </Channel>
-        </Chat>
+    <Thread />
+  </Channel>
+</Chat>
       </div>
     </div>
   );
