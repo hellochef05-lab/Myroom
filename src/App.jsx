@@ -1252,7 +1252,7 @@ function WebRTCCall({ roomId, myName }) {
         joinedRoom={joinedRoom}
       />
 
-      <div style={{ height: 68, flexShrink: 0 }} />
+      <div style={{ height: 62, flexShrink: 0 }} />
 
       <FullScreenCallOverlay
         visible={overlayVisible}
@@ -1774,7 +1774,7 @@ return (
             >
               <WebRTCCall roomId={room} myName={name} />
 
-              <div style={{ height: 84, flexShrink: 0 }} />
+              <div style={{ height: 62, flexShrink: 0 }} />
 
               <div
                 style={{
@@ -1808,7 +1808,7 @@ return (
               <div
                 style={{
                   flexShrink: 0,
-                  padding: "8px 10px calc(10px + env(safe-area-inset-bottom))",
+                  padding: "6px 10px calc(6px + env(safe-area-inset-bottom))",
                   background: "rgba(240,242,245,0.94)",
                   backdropFilter: "blur(10px)",
                   borderTop: "1px solid rgba(0,0,0,0.05)",
