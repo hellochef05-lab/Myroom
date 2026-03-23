@@ -91,10 +91,11 @@ function CallHeader({
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "12px 14px",
-        background: "#075E54",
+        padding: "14px 16px",
+        background:
+          "linear-gradient(135deg, #0b6158 0%, #0f766e 50%, #115e59 100%)",
         color: "#fff",
-        borderBottom: "1px solid rgba(0,0,0,0.08)",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
         position: "fixed",
         top: 0,
         left: "50%",
@@ -102,13 +103,15 @@ function CallHeader({
         width: "100%",
         maxWidth: 1100,
         zIndex: 100,
-        flexShrink: 0,
         boxSizing: "border-box",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
       }}
     >
       <div>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Room {room}</div>
-        <div style={{ fontSize: 12, opacity: 0.9 }}>
+        <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: 0.2 }}>
+          Room {room}
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
           {inCall
             ? callType === "video"
               ? "Video call in progress"
@@ -125,22 +128,30 @@ function CallHeader({
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: 4,
+            gap: 6,
           }}
         >
           <button
             onClick={onStartAudio}
             title="Audio call"
             style={{
-              ...iconButtonStyle("#25D366"),
-              opacity: joinedRoom ? 1 : 0.5,
+              width: 52,
+              height: 52,
+              borderRadius: 999,
+              border: "none",
+              background: "linear-gradient(180deg, #34d399 0%, #16a34a 100%)",
               cursor: joinedRoom ? "pointer" : "not-allowed",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 8px 20px rgba(0,0,0,0.20)",
+              opacity: joinedRoom ? 1 : 0.5,
             }}
             disabled={!joinedRoom}
           >
-            <Phone size={22} color="#fff" />
+            <Phone size={20} color="#fff" />
           </button>
-          <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>
+          <span style={{ fontSize: 12, color: "#fff", fontWeight: 700 }}>
             Call
           </span>
         </div>
@@ -150,22 +161,30 @@ function CallHeader({
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: 4,
+            gap: 6,
           }}
         >
           <button
             onClick={onStartVideo}
             title="Video call"
             style={{
-              ...iconButtonStyle("#34B7F1"),
-              opacity: joinedRoom ? 1 : 0.5,
+              width: 52,
+              height: 52,
+              borderRadius: 999,
+              border: "none",
+              background: "linear-gradient(180deg, #38bdf8 0%, #2563eb 100%)",
               cursor: joinedRoom ? "pointer" : "not-allowed",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 8px 20px rgba(0,0,0,0.20)",
+              opacity: joinedRoom ? 1 : 0.5,
             }}
             disabled={!joinedRoom}
           >
-            <Video size={22} color="#fff" />
+            <Video size={20} color="#fff" />
           </button>
-          <span style={{ fontSize: 11, color: "#fff", fontWeight: 600 }}>
+          <span style={{ fontSize: 12, color: "#fff", fontWeight: 700 }}>
             Video
           </span>
         </div>
@@ -1391,55 +1410,58 @@ export default function App() {
   }
 
   const MyMessage = (props) => {
-    const message = props?.message;
+  const message = props?.message;
 
-    if (!message || !message.type || message.type === "system") {
-      return <MessageSimple {...props} />;
-    }
+  if (!message || !message.type || message.type === "system") {
+    return <MessageSimple {...props} />;
+  }
 
-    const isMine = message?.user?.id === client?.userID;
-    const readCount = message?.read_by?.length || 0;
-    const sentAt = message?.created_at || message?.updated_at;
+  const isMine = message?.user?.id === client?.userID;
+  const readCount = message?.read_by?.length || 0;
+  const sentAt = message?.created_at || message?.updated_at;
 
-    return (
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: isMine ? "flex-end" : "flex-start",
+        padding: "3px 12px",
+      }}
+    >
       <div
         style={{
-          display: "flex",
-          justifyContent: isMine ? "flex-end" : "flex-start",
-          padding: "2px 12px",
+          maxWidth: "78%",
+          background: isMine
+            ? "linear-gradient(180deg, #dcfce7 0%, #d1fae5 100%)"
+            : "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+          borderRadius: isMine ? "18px 18px 6px 18px" : "18px 18px 18px 6px",
+          padding: "8px 10px 18px 10px",
+          boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
+          position: "relative",
+          border: "1px solid rgba(0,0,0,0.04)",
         }}
       >
+        <MessageSimple {...props} />
+
         <div
           style={{
-            maxWidth: "78%",
-            background: isMine ? "#DCF8C6" : "#fff",
-            borderRadius: 14,
-            padding: "6px 10px 18px 10px",
-            boxShadow: "0 1px 1px rgba(0,0,0,0.08)",
-            position: "relative",
+            position: "absolute",
+            right: 10,
+            bottom: 4,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 11,
+            color: "#667781",
           }}
         >
-          <MessageSimple {...props} />
-
-          <div
-            style={{
-              position: "absolute",
-              right: 10,
-              bottom: 4,
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              fontSize: 11,
-              color: "#667781",
-            }}
-          >
-            <span>{sentAt ? formatTime(sentAt) : ""}</span>
-            {isMine && <span>{readCount > 1 ? "✓✓" : "✓"}</span>}
-          </div>
+          <span>{sentAt ? formatTime(sentAt) : ""}</span>
+          {isMine && <span>{readCount > 1 ? "✓✓" : "✓"}</span>}
         </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   if (!client) {
   const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
@@ -1716,117 +1738,119 @@ export default function App() {
     return <div style={{ padding: 20 }}>Loading chat...</div>;
   }
 
-  return (
+return (
+  <div
+    style={{
+      minHeight: "100dvh",
+      background: "#dfe5e1",
+      display: "flex",
+      justifyContent: "center",
+      padding: 0,
+    }}
+  >
     <div
       style={{
-        minHeight: "100dvh",
-        background: "#D9DBD5",
+        width: "100%",
+        maxWidth: 1100,
+        height: "100dvh",
+        background: "#efeae2",
         display: "flex",
-        justifyContent: "center",
-        padding: 0,
+        flexDirection: "column",
+        overflow: "hidden",
+        position: "relative",
       }}
     >
-      <div
-  style={{
-    width: "100%",
-    maxWidth: 1100,
-    height: "100dvh",
-    background: "#EFEAE2",
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden",
-    position: "relative",
-  }}
->
-        <Chat client={client} theme="messaging light">
-  <Channel channel={channel}>
-    <Window>
-      <div
-        style={{
-          height: "100dvh",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          background: "#EFEAE2",
-        }}
-      >
-        <WebRTCCall roomId={room} myName={name} />
+      <Chat client={client} theme="messaging light">
+        <Channel channel={channel}>
+          <Window>
+            <div
+              style={{
+                height: "100dvh",
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+                background: "#efeae2",
+              }}
+            >
+              <WebRTCCall roomId={room} myName={name} />
 
-        <div
-          style={{
-            height: 68,
-            flexShrink: 0,
-          }}
-        />
+              <div style={{ height: 84, flexShrink: 0 }} />
 
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            WebkitOverflowScrolling: "touch",
-            backgroundImage:
-              "radial-gradient(rgba(255,255,255,0.35) 1px, transparent 1px)",
-            backgroundSize: "18px 18px",
-            paddingBottom: 8,
-          }}
-        >
-          <MessageList Message={MyMessage} />
-        </div>
-
-        <div
-          style={{
-            flexShrink: 0,
-            background: "#EFEAE2",
-            padding: "0 14px 4px",
-          }}
-        >
-          <TypingIndicator />
-        </div>
-
-        <div
-          style={{
-            flexShrink: 0,
-            padding: "8px 10px calc(10px + env(safe-area-inset-bottom))",
-            borderTop: "1px solid rgba(0,0,0,0.06)",
-            background: "#F0F2F5",
-            position: "sticky",
-            bottom: 0,
-            zIndex: 90,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              background: "#fff",
-              borderRadius: 999,
-              padding: "8px 12px",
-            }}
-          >
-            <Paperclip size={18} color="#667781" />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <MessageInput
-                focus
-                grow
-                audioRecordingEnabled
-                asyncMessagesMultiSendEnabled
-                audioRecordingConfig={audioRecordingConfig}
-                additionalTextareaProps={{
-                  placeholder: "Type a message",
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: "auto",
+                  WebkitOverflowScrolling: "touch",
+                  padding: "10px 0 8px",
+                  backgroundColor: "#ece5dd",
+                  backgroundImage: `
+                    radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px),
+                    radial-gradient(rgba(0,0,0,0.02) 1px, transparent 1px)
+                  `,
+                  backgroundSize: "18px 18px, 32px 32px",
+                  backgroundPosition: "0 0, 8px 8px",
                 }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    </Window>
+              >
+                <MessageList Message={MyMessage} />
+              </div>
 
-    <Thread />
-  </Channel>
-</Chat>
-      </div>
+              <div
+                style={{
+                  flexShrink: 0,
+                  background: "transparent",
+                  padding: "0 14px 4px",
+                }}
+              >
+                <TypingIndicator />
+              </div>
+
+              <div
+                style={{
+                  flexShrink: 0,
+                  padding: "8px 10px calc(10px + env(safe-area-inset-bottom))",
+                  background: "rgba(240,242,245,0.94)",
+                  backdropFilter: "blur(10px)",
+                  borderTop: "1px solid rgba(0,0,0,0.05)",
+                  position: "sticky",
+                  bottom: 0,
+                  zIndex: 90,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    background: "#fff",
+                    borderRadius: 999,
+                    padding: "10px 12px",
+                    boxShadow: "0 6px 20px rgba(0,0,0,0.08)",
+                  }}
+                >
+                  <Paperclip size={18} color="#667781" />
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <MessageInput
+                      focus
+                      grow
+                      audioRecordingEnabled
+                      asyncMessagesMultiSendEnabled
+                      audioRecordingConfig={audioRecordingConfig}
+                      additionalTextareaProps={{
+                        placeholder: "Type a message",
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Window>
+
+          <Thread />
+        </Channel>
+      </Chat>
     </div>
-  );
+  </div>
+);
 }
