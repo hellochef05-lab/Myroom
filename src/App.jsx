@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { StreamChat } from "stream-chat";
 import {
+  Attachment,
   Chat,
   Channel,
   MessageInput,
@@ -21,7 +22,6 @@ import {
   Phone,
   PhoneOff,
   Video,
-  Bug,
 } from "lucide-react";
 import { io } from "socket.io-client";
 
@@ -47,21 +47,6 @@ function formatTime(dateValue) {
   });
 }
 
-function iconButtonStyle(background) {
-  return {
-    width: 46,
-    height: 46,
-    borderRadius: 999,
-    border: "none",
-    background,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
-  };
-}
-
 function roundActionButton(background) {
   return {
     width: 58,
@@ -84,6 +69,7 @@ function CallHeader({
   inCall,
   callType,
   joinedRoom,
+  onExitRoom,
 }) {
   return (
     <div
@@ -188,79 +174,37 @@ function CallHeader({
             Video
           </span>
         </div>
-      </div>
-    </div>
-  );
-}
 
-function CallDebugPanel({ debugInfo }) {
-  const boxStyle = {
-    background: "rgba(0,0,0,0.72)",
-    color: "#fff",
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 12,
-    lineHeight: 1.5,
-    width: 280,
-    maxWidth: "90vw",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-  };
-
-  const titleStyle = {
-    fontWeight: 700,
-    marginBottom: 6,
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-  };
-
-  const sectionStyle = {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTop: "1px solid rgba(255,255,255,0.12)",
-  };
-
-  const renderTracks = (tracks, emptyText) => {
-    if (!tracks.length) return <div>{emptyText}</div>;
-
-    return tracks.map((track, index) => (
-      <div key={index} style={{ marginBottom: 6 }}>
-        <div>readyState: {track.readyState}</div>
-        <div>enabled: {String(track.enabled)}</div>
-        <div>muted: {String(track.muted)}</div>
-        <div style={{ opacity: 0.75 }}>{track.label || "No label"}</div>
-      </div>
-    ));
-  };
-
-  return (
-    <div style={boxStyle}>
-      <div style={titleStyle}>
-        <Bug size={14} />
-        Call Diagnostics
-      </div>
-
-      <div>PC: {debugInfo.pcConnectionState}</div>
-      <div>ICE: {debugInfo.iceConnectionState}</div>
-
-      <div style={sectionStyle}>
-        <div style={{ fontWeight: 700 }}>Local audio</div>
-        {renderTracks(debugInfo.localAudio, "No local audio track")}
-      </div>
-
-      <div style={sectionStyle}>
-        <div style={{ fontWeight: 700 }}>Local video</div>
-        {renderTracks(debugInfo.localVideo, "No local video track")}
-      </div>
-
-      <div style={sectionStyle}>
-        <div style={{ fontWeight: 700 }}>Remote audio</div>
-        {renderTracks(debugInfo.remoteAudio, "No remote audio track")}
-      </div>
-
-      <div style={sectionStyle}>
-        <div style={{ fontWeight: 700 }}>Remote video</div>
-        {renderTracks(debugInfo.remoteVideo, "No remote video track")}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <button
+            onClick={onExitRoom}
+            title="Exit room"
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 999,
+              border: "none",
+              background: "linear-gradient(180deg, #f87171 0%, #dc2626 100%)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 8px 20px rgba(0,0,0,0.20)",
+            }}
+          >
+            <PhoneOff size={20} color="#fff" />
+          </button>
+          <span style={{ fontSize: 12, color: "#fff", fontWeight: 700 }}>
+            Exit
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -521,7 +465,7 @@ function FullScreenCallOverlay({
   );
 }
 
-function WebRTCCall({ roomId, myName }) {
+function WebRTCCall({ roomId, myName, onExitRoom }) {
   const socketRef = useRef(null);
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -543,57 +487,9 @@ function WebRTCCall({ roomId, myName }) {
   const [remoteName, setRemoteName] = useState("Contact");
   const [connectionMessage, setConnectionMessage] = useState("");
 
-  const [debugInfo, setDebugInfo] = useState({
-    pcConnectionState: "new",
-    iceConnectionState: "new",
-    localAudio: [],
-    localVideo: [],
-    remoteAudio: [],
-    remoteVideo: [],
-  });
-
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
-
-  const refreshDebugInfo = () => {
-    const pc = pcRef.current;
-    const localStream = localStreamRef.current;
-    const remoteStream = remoteStreamRef.current;
-
-    setDebugInfo({
-      pcConnectionState: pc?.connectionState || "none",
-      iceConnectionState: pc?.iceConnectionState || "none",
-      localAudio:
-        localStream?.getAudioTracks().map((t) => ({
-          enabled: t.enabled,
-          muted: t.muted,
-          readyState: t.readyState,
-          label: t.label,
-        })) || [],
-      localVideo:
-        localStream?.getVideoTracks().map((t) => ({
-          enabled: t.enabled,
-          muted: t.muted,
-          readyState: t.readyState,
-          label: t.label,
-        })) || [],
-      remoteAudio:
-        remoteStream?.getAudioTracks().map((t) => ({
-          enabled: t.enabled,
-          muted: t.muted,
-          readyState: t.readyState,
-          label: t.label,
-        })) || [],
-      remoteVideo:
-        remoteStream?.getVideoTracks().map((t) => ({
-          enabled: t.enabled,
-          muted: t.muted,
-          readyState: t.readyState,
-          label: t.label,
-        })) || [],
-    });
-  };
 
   const cleanupCall = () => {
     if (disconnectTimeoutRef.current) {
@@ -643,15 +539,6 @@ function WebRTCCall({ roomId, myName }) {
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
-
-    setDebugInfo({
-      pcConnectionState: "new",
-      iceConnectionState: "new",
-      localAudio: [],
-      localVideo: [],
-      remoteAudio: [],
-      remoteVideo: [],
-    });
   };
 
   const createPC = () => {
@@ -670,22 +557,8 @@ function WebRTCCall({ roomId, myName }) {
     pc.ontrack = (event) => {
       const stream = event.streams[0];
       if (!stream) return;
-
       remoteStreamRef.current = stream;
       setRemoteStream(stream);
-
-      console.log(
-        "Remote tracks:",
-        stream.getTracks().map((t) => ({
-          kind: t.kind,
-          enabled: t.enabled,
-          muted: t.muted,
-          readyState: t.readyState,
-          label: t.label,
-        }))
-      );
-
-      refreshDebugInfo();
     };
 
     pc.onicecandidate = (event) => {
@@ -698,9 +571,6 @@ function WebRTCCall({ roomId, myName }) {
     };
 
     pc.onconnectionstatechange = () => {
-      console.log("pc connection state:", pc.connectionState);
-      refreshDebugInfo();
-
       if (pc.connectionState === "connected") {
         setConnectionMessage("");
 
@@ -719,7 +589,6 @@ function WebRTCCall({ roomId, myName }) {
         }
 
         disconnectTimeoutRef.current = setTimeout(() => {
-          console.log("Call stayed disconnected too long, ending call");
           cleanupCall();
         }, 10000);
 
@@ -738,9 +607,6 @@ function WebRTCCall({ roomId, myName }) {
     };
 
     pc.oniceconnectionstatechange = () => {
-      console.log("ice connection state:", pc.iceConnectionState);
-      refreshDebugInfo();
-
       if (
         pc.iceConnectionState === "checking" ||
         pc.iceConnectionState === "disconnected"
@@ -791,17 +657,6 @@ function WebRTCCall({ roomId, myName }) {
 
     localStreamRef.current = stream;
 
-    console.log(
-      "Local tracks:",
-      stream.getTracks().map((t) => ({
-        kind: t.kind,
-        enabled: t.enabled,
-        muted: t.muted,
-        readyState: t.readyState,
-        label: t.label,
-      }))
-    );
-
     stream.getTracks().forEach((track) => {
       const alreadyAdded = pc
         .getSenders()
@@ -811,17 +666,6 @@ function WebRTCCall({ roomId, myName }) {
         pc.addTrack(track, stream);
       }
     });
-
-    console.log(
-      "Senders:",
-      pc.getSenders().map((s) => ({
-        kind: s.track?.kind,
-        enabled: s.track?.enabled,
-        muted: s.track?.muted,
-        readyState: s.track?.readyState,
-        label: s.track?.label,
-      }))
-    );
 
     if (type === "video" && localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
@@ -833,7 +677,6 @@ function WebRTCCall({ roomId, myName }) {
       localVideoRef.current.srcObject = null;
     }
 
-    refreshDebugInfo();
     return stream;
   };
 
@@ -865,7 +708,6 @@ function WebRTCCall({ roomId, myName }) {
 
     setInCall(true);
     setIncoming(null);
-    refreshDebugInfo();
   };
 
   const startOfferFlow = async (type) => {
@@ -892,8 +734,6 @@ function WebRTCCall({ roomId, myName }) {
         from: myName,
       },
     });
-
-    refreshDebugInfo();
   };
 
   useEffect(() => {
@@ -909,7 +749,6 @@ function WebRTCCall({ roomId, myName }) {
 
       s.emit("join-room", { roomId }, (res) => {
         if (res?.ok) {
-          console.log("joined room", roomId);
           setJoinedRoom(true);
         } else {
           setJoinedRoom(false);
@@ -918,13 +757,11 @@ function WebRTCCall({ roomId, myName }) {
     };
 
     s.on("connect", () => {
-      console.log("socket connected", s.id);
       setJoinedRoom(false);
       joinCurrentRoom();
     });
 
-    s.on("disconnect", (reason) => {
-      console.log("socket disconnected", reason);
+    s.on("disconnect", () => {
       setJoinedRoom(false);
     });
 
@@ -983,7 +820,6 @@ function WebRTCCall({ roomId, myName }) {
           iceQueueRef.current = [];
 
           setInCall(true);
-          refreshDebugInfo();
           return;
         }
 
@@ -998,7 +834,6 @@ function WebRTCCall({ roomId, myName }) {
           } else {
             await pc.addIceCandidate(candidate).catch(console.warn);
           }
-          refreshDebugInfo();
           return;
         }
 
@@ -1021,14 +856,6 @@ function WebRTCCall({ roomId, myName }) {
     if (!overlayVisible) return;
 
     const attachRemoteMedia = async () => {
-      console.log("Attaching remote stream", {
-        callType,
-        overlayVisible,
-        hasRemoteVideoEl: !!remoteVideoRef.current,
-        hasRemoteAudioEl: !!remoteAudioRef.current,
-        trackKinds: remoteStream.getTracks().map((t) => t.kind),
-      });
-
       if (callType === "video") {
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
@@ -1076,8 +903,6 @@ function WebRTCCall({ roomId, myName }) {
           remoteVideoRef.current.srcObject = null;
         }
       }
-
-      refreshDebugInfo();
     };
 
     const id = setTimeout(() => {
@@ -1104,8 +929,6 @@ function WebRTCCall({ roomId, myName }) {
     } else {
       localVideoRef.current.srcObject = null;
     }
-
-    refreshDebugInfo();
   }, [overlayVisible, inCall, callType, cameraOff]);
 
   const startCall = async (type) => {
@@ -1191,7 +1014,6 @@ function WebRTCCall({ roomId, myName }) {
       track.enabled = !nextMuted;
     });
     setMuted(nextMuted);
-    refreshDebugInfo();
   };
 
   const toggleCamera = () => {
@@ -1203,7 +1025,6 @@ function WebRTCCall({ roomId, myName }) {
       track.enabled = !nextCameraOff;
     });
     setCameraOff(nextCameraOff);
-    refreshDebugInfo();
   };
 
   const shareScreen = async () => {
@@ -1232,10 +1053,7 @@ function WebRTCCall({ roomId, myName }) {
         }
         displayStream.getTracks().forEach((t) => t.stop());
         screenStreamRef.current = null;
-        refreshDebugInfo();
       };
-
-      refreshDebugInfo();
     } catch (err) {
       console.error("screen share failed", err);
     }
@@ -1250,6 +1068,7 @@ function WebRTCCall({ roomId, myName }) {
         inCall={inCall}
         callType={callType}
         joinedRoom={joinedRoom}
+        onExitRoom={onExitRoom}
       />
 
       <div style={{ height: 62, flexShrink: 0 }} />
@@ -1274,8 +1093,6 @@ function WebRTCCall({ roomId, myName }) {
         cameraOff={cameraOff}
         remoteStream={remoteStream}
       />
-
-      
     </>
   );
 }
@@ -1286,20 +1103,9 @@ export default function App() {
   const [name, setName] = useState("");
   const [room, setRoom] = useState("");
   const [joining, setJoining] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
 
   const audioRecordingConfig = {};
-
-  const loginInputStyle = {
-    width: "100%",
-    padding: "16px 18px",
-    borderRadius: 16,
-    border: "1px solid #d7dbe0",
-    outline: "none",
-    fontSize: 16,
-    background: "#fff",
-    color: "#374151",
-    boxSizing: "border-box",
-  };
 
   useEffect(() => {
     return () => {
@@ -1382,6 +1188,23 @@ export default function App() {
     }
   }
 
+  const exitRoom = async () => {
+    try {
+      if (client) {
+        await client.disconnectUser();
+      }
+    } catch (err) {
+      console.error("exitRoom error", err);
+    } finally {
+      setChannel(null);
+      setClient(null);
+      setName("");
+      setRoom("");
+      setJoining(false);
+      setPreviewImage(null);
+    }
+  };
+
   async function deleteAllRooms() {
     const ok = window.confirm("Delete all rooms?");
     if (!ok) return;
@@ -1409,448 +1232,530 @@ export default function App() {
     alert(`Deleted ${data.deleted} rooms`);
   }
 
+  const CustomImage = (props) => {
+    const imageUrl =
+      props?.image_url ||
+      props?.thumb_url ||
+      props?.asset_url ||
+      props?.og?.image_url ||
+      props?.og?.asset_url ||
+      props?.og?.thumb_url;
+
+    if (!imageUrl) return null;
+
+    return (
+      <img
+        src={imageUrl}
+        alt="attachment"
+        onClick={() => setPreviewImage(imageUrl)}
+        style={{
+          maxWidth: "100%",
+          borderRadius: 12,
+          cursor: "pointer",
+          display: "block",
+        }}
+      />
+    );
+  };
+
+  const CustomAttachment = (props) => {
+    return <Attachment {...props} Image={CustomImage} />;
+  };
+
   const MyMessage = (props) => {
-  const message = props?.message;
+    const message = props?.message;
 
-  if (!message || !message.type || message.type === "system") {
-    return <MessageSimple {...props} />;
-  }
+    if (!message || !message.type || message.type === "system") {
+      return <MessageSimple {...props} />;
+    }
 
-  const isMine = message?.user?.id === client?.userID;
-  const readCount = message?.read_by?.length || 0;
-  const sentAt = message?.created_at || message?.updated_at;
+    const isMine = message?.user?.id === client?.userID;
+    const readCount = message?.read_by?.length || 0;
+    const sentAt = message?.created_at || message?.updated_at;
 
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: isMine ? "flex-end" : "flex-start",
-        padding: "3px 12px",
-      }}
-    >
+    return (
       <div
         style={{
-          maxWidth: "78%",
-          background: isMine
-            ? "linear-gradient(180deg, #dcfce7 0%, #d1fae5 100%)"
-            : "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
-          borderRadius: isMine ? "18px 18px 6px 18px" : "18px 18px 18px 6px",
-          padding: "8px 10px 18px 10px",
-          boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
-          position: "relative",
-          border: "1px solid rgba(0,0,0,0.04)",
+          display: "flex",
+          justifyContent: isMine ? "flex-end" : "flex-start",
+          padding: "3px 12px",
         }}
       >
-        <MessageSimple {...props} />
+        <div
+          style={{
+            maxWidth: "78%",
+            background: isMine
+              ? "linear-gradient(180deg, #dcfce7 0%, #d1fae5 100%)"
+              : "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+            borderRadius: isMine ? "18px 18px 6px 18px" : "18px 18px 18px 6px",
+            padding: "8px 10px 18px 10px",
+            boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
+            position: "relative",
+            border: "1px solid rgba(0,0,0,0.04)",
+          }}
+        >
+          <MessageSimple {...props} />
 
+          <div
+            style={{
+              position: "absolute",
+              right: 10,
+              bottom: 4,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: 11,
+              color: "#667781",
+            }}
+          >
+            <span>{sentAt ? formatTime(sentAt) : ""}</span>
+            {isMine && <span>{readCount > 1 ? "✓✓" : "✓"}</span>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  if (!client) {
+    const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          width: "100%",
+          height: "100dvh",
+          background: `
+            radial-gradient(circle at 20% 20%, rgba(120,255,220,0.18), transparent 22%),
+            radial-gradient(circle at 80% 30%, rgba(120,255,220,0.12), transparent 20%),
+            radial-gradient(circle at 50% 85%, rgba(120,255,220,0.10), transparent 24%),
+            linear-gradient(135deg, #062c2a 0%, #0b5d57 38%, #117a72 65%, #0b4c47 100%)
+          `,
+          overflow: "hidden",
+        }}
+      >
         <div
           style={{
             position: "absolute",
-            right: 10,
-            bottom: 4,
+            inset: 0,
             display: "flex",
             alignItems: "center",
-            gap: 4,
-            fontSize: 11,
-            color: "#667781",
-          }}
-        >
-          <span>{sentAt ? formatTime(sentAt) : ""}</span>
-          {isMine && <span>{readCount > 1 ? "✓✓" : "✓"}</span>}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-  if (!client) {
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        width: "100%",
-        height: "100dvh",
-        background: `
-          radial-gradient(circle at 20% 20%, rgba(120,255,220,0.18), transparent 22%),
-          radial-gradient(circle at 80% 30%, rgba(120,255,220,0.12), transparent 20%),
-          radial-gradient(circle at 50% 85%, rgba(120,255,220,0.10), transparent 24%),
-          linear-gradient(135deg, #062c2a 0%, #0b5d57 38%, #117a72 65%, #0b4c47 100%)
-        `,
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: isMobile ? "18px" : "24px",
-          boxSizing: "border-box",
-        }}
-      >
-        <div
-          style={{
-            width: "100%",
-            maxWidth: isMobile ? 340 : 430,
-            position: "relative",
+            justifyContent: "center",
+            padding: isMobile ? "18px" : "24px",
+            boxSizing: "border-box",
           }}
         >
           <div
             style={{
-              textAlign: "center",
-              marginBottom: isMobile ? 10 : 16,
-            }}
-          >
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: isMobile ? "7px 14px" : "8px 18px",
-                borderRadius: 999,
-                color: "#e7fffb",
-                fontSize: isMobile ? 12 : 14,
-                fontWeight: 700,
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.16)",
-                boxShadow: "0 8px 20px rgba(0,0,0,0.15)",
-                backdropFilter: "blur(10px)",
-              }}
-            >
-              🔒 Secure Access
-            </span>
-          </div>
-
-          <div
-            style={{
+              width: "100%",
+              maxWidth: isMobile ? 340 : 430,
               position: "relative",
-              borderRadius: isMobile ? 26 : 34,
-              padding: isMobile ? "50px 14px 14px" : "70px 20px 20px",
-              background: "rgba(255,255,255,0.14)",
-              border: "1px solid rgba(255,255,255,0.22)",
-              backdropFilter: "blur(14px)",
-              WebkitBackdropFilter: "blur(14px)",
-              boxShadow:
-                "0 22px 60px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25)",
             }}
           >
             <div
               style={{
-                position: "absolute",
-                top: isMobile ? -30 : -42,
-                left: "50%",
-                transform: "translateX(-50%)",
-                width: isMobile ? 74 : 96,
-                height: isMobile ? 74 : 96,
-                borderRadius: "50%",
-                background: `
-                  radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.2) 38%, rgba(0,0,0,0.08) 100%),
-                  linear-gradient(180deg, rgba(130,255,225,0.50), rgba(20,120,110,0.30))
-                `,
-                border: "1px solid rgba(255,255,255,0.35)",
-                boxShadow:
-                  "0 10px 34px rgba(0,0,0,0.24), inset 0 2px 12px rgba(255,255,255,0.35)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: isMobile ? 26 : 34,
+                textAlign: "center",
+                marginBottom: isMobile ? 10 : 16,
               }}
             >
-              💬
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: isMobile ? "7px 14px" : "8px 18px",
+                  borderRadius: 999,
+                  color: "#e7fffb",
+                  fontSize: isMobile ? 12 : 14,
+                  fontWeight: 700,
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.16)",
+                  boxShadow: "0 8px 20px rgba(0,0,0,0.15)",
+                  backdropFilter: "blur(10px)",
+                }}
+              >
+                🔒 Secure Access
+              </span>
             </div>
 
             <div
               style={{
-                background: "rgba(255,255,255,0.82)",
-                borderRadius: isMobile ? 20 : 28,
-                padding: isMobile ? "18px 14px 14px" : "28px 22px 20px",
-                border: "1px solid rgba(255,255,255,0.58)",
+                position: "relative",
+                borderRadius: isMobile ? 26 : 34,
+                padding: isMobile ? "50px 14px 14px" : "70px 20px 20px",
+                background: "rgba(255,255,255,0.14)",
+                border: "1px solid rgba(255,255,255,0.22)",
+                backdropFilter: "blur(14px)",
+                WebkitBackdropFilter: "blur(14px)",
                 boxShadow:
-                  "inset 0 1px 0 rgba(255,255,255,0.85), 0 10px 24px rgba(0,0,0,0.14)",
+                  "0 22px 60px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25)",
               }}
             >
-              <h1
+              <div
                 style={{
-                  margin: 0,
-                  textAlign: "center",
-                  fontSize: isMobile ? 22 : 28,
-                  fontWeight: 800,
-                  color: "#17343a",
-                  lineHeight: 1.1,
-                }}
-              >
-                Private Room
-              </h1>
-
-              <p
-                style={{
-                  margin: isMobile ? "10px 0 16px" : "12px 0 22px",
-                  textAlign: "center",
-                  fontSize: isMobile ? 12.5 : 14,
-                  lineHeight: 1.45,
-                  color: "#56666b",
-                }}
-              >
-                Join securely to chat, share media,
-                <br />
-                and connect instantly.
-              </p>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ position: "relative" }}>
-                  <span
-                    style={{
-                      position: "absolute",
-                      left: 14,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      fontSize: isMobile ? 15 : 18,
-                      opacity: 0.8,
-                    }}
-                  >
-                    👤
-                  </span>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Enter your name"
-                    style={{
-                      width: "100%",
-                      height: isMobile ? 44 : 50,
-                      borderRadius: 999,
-                      border: "1px solid rgba(16,72,68,0.10)",
-                      background: "#f8fbfb",
-                      padding: "0 18px 0 42px",
-                      fontSize: isMobile ? 14 : 15,
-                      outline: "none",
-                      boxSizing: "border-box",
-                      color: "#1f2937",
-                      boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
-                    }}
-                  />
-                </div>
-
-                <div style={{ position: "relative" }}>
-                  <span
-                    style={{
-                      position: "absolute",
-                      left: 14,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      fontSize: isMobile ? 15 : 18,
-                      opacity: 0.8,
-                    }}
-                  >
-                    🔑
-                  </span>
-                  <input
-                    value={room}
-                    onChange={(e) => setRoom(e.target.value)}
-                    placeholder="Enter room code"
-                    style={{
-                      width: "100%",
-                      height: isMobile ? 44 : 50,
-                      borderRadius: 999,
-                      border: "1px solid rgba(16,72,68,0.10)",
-                      background: "#f8fbfb",
-                      padding: "0 18px 0 42px",
-                      fontSize: isMobile ? 14 : 15,
-                      outline: "none",
-                      boxSizing: "border-box",
-                      color: "#1f2937",
-                      boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
-                    }}
-                  />
-                </div>
-              </div>
-
-              <button
-                onClick={joinRoom}
-                disabled={joining}
-                style={{
-                  width: "100%",
-                  marginTop: 14,
-                  height: isMobile ? 46 : 52,
-                  border: "none",
-                  borderRadius: 999,
-                  cursor: joining ? "not-allowed" : "pointer",
-                  color: "#fff",
-                  fontSize: isMobile ? 14.5 : 16,
-                  fontWeight: 800,
-                  letterSpacing: 0.2,
-                  background:
-                    "linear-gradient(180deg, #7dffb1 0%, #27c16e 40%, #0a7e43 100%)",
+                  position: "absolute",
+                  top: isMobile ? -30 : -42,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  width: isMobile ? 74 : 96,
+                  height: isMobile ? 74 : 96,
+                  borderRadius: "50%",
+                  background: `
+                    radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.2) 38%, rgba(0,0,0,0.08) 100%),
+                    linear-gradient(180deg, rgba(130,255,225,0.50), rgba(20,120,110,0.30))
+                  `,
+                  border: "1px solid rgba(255,255,255,0.35)",
                   boxShadow:
-                    "0 8px 20px rgba(18,102,58,0.35), inset 0 2px 8px rgba(255,255,255,0.35), inset 0 -2px 6px rgba(0,0,0,0.18)",
+                    "0 10px 34px rgba(0,0,0,0.24), inset 0 2px 12px rgba(255,255,255,0.35)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: isMobile ? 26 : 34,
                 }}
               >
-                {joining ? "Entering..." : "Enter Room ›"}
-              </button>
+                💬
+              </div>
 
               <div
                 style={{
-                  marginTop: 12,
-                  textAlign: "center",
-                  position: "relative",
+                  background: "rgba(255,255,255,0.82)",
+                  borderRadius: isMobile ? 20 : 28,
+                  padding: isMobile ? "18px 14px 14px" : "28px 22px 20px",
+                  border: "1px solid rgba(255,255,255,0.58)",
+                  boxShadow:
+                    "inset 0 1px 0 rgba(255,255,255,0.85), 0 10px 24px rgba(0,0,0,0.14)",
                 }}
               >
-                <div
+                <h1
                   style={{
-                    height: 1,
-                    background: "rgba(24,52,59,0.14)",
-                    position: "absolute",
-                    left: 0,
-                    right: 0,
-                    top: "50%",
-                  }}
-                />
-                <button
-                  onClick={deleteAllRooms}
-                  style={{
-                    position: "relative",
-                    background: "rgba(255,255,255,0.90)",
-                    border: "none",
-                    padding: "0 14px",
-                    color: "#35535a",
-                    fontSize: isMobile ? 12.5 : 14,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    borderRadius: 999,
+                    margin: 0,
+                    textAlign: "center",
+                    fontSize: isMobile ? 22 : 28,
+                    fontWeight: 800,
+                    color: "#17343a",
+                    lineHeight: 1.1,
                   }}
                 >
-                  Manage Rooms
+                  Private Room
+                </h1>
+
+                <p
+                  style={{
+                    margin: isMobile ? "10px 0 16px" : "12px 0 22px",
+                    textAlign: "center",
+                    fontSize: isMobile ? 12.5 : 14,
+                    lineHeight: 1.45,
+                    color: "#56666b",
+                  }}
+                >
+                  Join securely to chat, share media,
+                  <br />
+                  and connect instantly.
+                </p>
+
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 10 }}
+                >
+                  <div style={{ position: "relative" }}>
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: 14,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        fontSize: isMobile ? 15 : 18,
+                        opacity: 0.8,
+                      }}
+                    >
+                      👤
+                    </span>
+                    <input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Enter your name"
+                      style={{
+                        width: "100%",
+                        height: isMobile ? 44 : 50,
+                        borderRadius: 999,
+                        border: "1px solid rgba(16,72,68,0.10)",
+                        background: "#f8fbfb",
+                        padding: "0 18px 0 42px",
+                        fontSize: isMobile ? 14 : 15,
+                        outline: "none",
+                        boxSizing: "border-box",
+                        color: "#1f2937",
+                        boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ position: "relative" }}>
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: 14,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        fontSize: isMobile ? 15 : 18,
+                        opacity: 0.8,
+                      }}
+                    >
+                      🔑
+                    </span>
+                    <input
+                      value={room}
+                      onChange={(e) => setRoom(e.target.value)}
+                      placeholder="Enter room code"
+                      style={{
+                        width: "100%",
+                        height: isMobile ? 44 : 50,
+                        borderRadius: 999,
+                        border: "1px solid rgba(16,72,68,0.10)",
+                        background: "#f8fbfb",
+                        padding: "0 18px 0 42px",
+                        fontSize: isMobile ? 14 : 15,
+                        outline: "none",
+                        boxSizing: "border-box",
+                        color: "#1f2937",
+                        boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={joinRoom}
+                  disabled={joining}
+                  style={{
+                    width: "100%",
+                    marginTop: 14,
+                    height: isMobile ? 46 : 52,
+                    border: "none",
+                    borderRadius: 999,
+                    cursor: joining ? "not-allowed" : "pointer",
+                    color: "#fff",
+                    fontSize: isMobile ? 14.5 : 16,
+                    fontWeight: 800,
+                    letterSpacing: 0.2,
+                    background:
+                      "linear-gradient(180deg, #7dffb1 0%, #27c16e 40%, #0a7e43 100%)",
+                    boxShadow:
+                      "0 8px 20px rgba(18,102,58,0.35), inset 0 2px 8px rgba(255,255,255,0.35), inset 0 -2px 6px rgba(0,0,0,0.18)",
+                  }}
+                >
+                  {joining ? "Entering..." : "Enter Room ›"}
                 </button>
+
+                <div
+                  style={{
+                    marginTop: 12,
+                    textAlign: "center",
+                    position: "relative",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: 1,
+                      background: "rgba(24,52,59,0.14)",
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      top: "50%",
+                    }}
+                  />
+                  <button
+                    onClick={deleteAllRooms}
+                    style={{
+                      position: "relative",
+                      background: "rgba(255,255,255,0.90)",
+                      border: "none",
+                      padding: "0 14px",
+                      color: "#35535a",
+                      fontSize: isMobile ? 12.5 : 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      borderRadius: 999,
+                    }}
+                  >
+                    Manage Rooms
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   if (!channel) {
     return <div style={{ padding: 20 }}>Loading chat...</div>;
   }
 
-return (
-  <div
-    style={{
-      minHeight: "100dvh",
-      background: "#dfe5e1",
-      display: "flex",
-      justifyContent: "center",
-      padding: 0,
-    }}
-  >
+  return (
     <div
       style={{
-        width: "100%",
-        maxWidth: 1100,
-        height: "100dvh",
-        background: "#efeae2",
+        minHeight: "100dvh",
+        background: "#dfe5e1",
         display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        position: "relative",
+        justifyContent: "center",
+        padding: 0,
       }}
     >
-      <Chat client={client} theme="messaging light">
-        <Channel channel={channel}>
-          <Window>
-            <div
-              style={{
-                height: "100dvh",
-                display: "flex",
-                flexDirection: "column",
-                overflow: "hidden",
-                background: "#efeae2",
-              }}
-            >
-              <WebRTCCall roomId={room} myName={name} />
-
-              <div style={{ height: 62, flexShrink: 0 }} />
-
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 1100,
+          height: "100dvh",
+          background: "#efeae2",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          position: "relative",
+        }}
+      >
+        <Chat client={client} theme="messaging light">
+          <Channel channel={channel} Attachment={CustomAttachment}>
+            <Window>
               <div
                 style={{
-                  flex: 1,
-                  minHeight: 0,
-                  overflowY: "auto",
-                  WebkitOverflowScrolling: "touch",
-                  padding: "10px 0 8px",
-                  backgroundColor: "#ece5dd",
-                  backgroundImage: `
-                    radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px),
-                    radial-gradient(rgba(0,0,0,0.02) 1px, transparent 1px)
-                  `,
-                  backgroundSize: "18px 18px, 32px 32px",
-                  backgroundPosition: "0 0, 8px 8px",
+                  height: "100dvh",
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                  background: "#efeae2",
                 }}
               >
-                <MessageList Message={MyMessage} />
-              </div>
+                <WebRTCCall
+                  roomId={room}
+                  myName={name}
+                  onExitRoom={exitRoom}
+                />
 
-              <div
-                style={{
-                  flexShrink: 0,
-                  background: "transparent",
-                  padding: "0 14px 4px",
-                }}
-              >
-                <TypingIndicator />
-              </div>
+                <div style={{ height: 62, flexShrink: 0 }} />
 
-              <div
-                style={{
-                  flexShrink: 0,
-                  padding: "6px 10px calc(6px + env(safe-area-inset-bottom))",
-                  background: "rgba(240,242,245,0.94)",
-                  backdropFilter: "blur(10px)",
-                  borderTop: "1px solid rgba(0,0,0,0.05)",
-                  position: "sticky",
-                  bottom: 0,
-                  zIndex: 90,
-                }}
-              >
                 <div
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    background: "#fff",
-                    borderRadius: 999,
-                    padding: "10px 12px",
-                    boxShadow: "0 6px 20px rgba(0,0,0,0.08)",
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: "auto",
+                    WebkitOverflowScrolling: "touch",
+                    padding: "10px 0 8px",
+                    backgroundColor: "#ece5dd",
+                    backgroundImage: `
+                      radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px),
+                      radial-gradient(rgba(0,0,0,0.02) 1px, transparent 1px)
+                    `,
+                    backgroundSize: "18px 18px, 32px 32px",
+                    backgroundPosition: "0 0, 8px 8px",
                   }}
                 >
-                  <Paperclip size={18} color="#667781" />
+                  <MessageList Message={MyMessage} />
+                </div>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <MessageInput
-                      focus
-                      grow
-                      audioRecordingEnabled
-                      asyncMessagesMultiSendEnabled
-                      audioRecordingConfig={audioRecordingConfig}
-                      additionalTextareaProps={{
-                        placeholder: "Type a message",
-                      }}
-                    />
+                <div
+                  style={{
+                    flexShrink: 0,
+                    background: "transparent",
+                    padding: "0 14px 4px",
+                  }}
+                >
+                  <TypingIndicator />
+                </div>
+
+                <div
+                  style={{
+                    flexShrink: 0,
+                    padding: "6px 10px calc(6px + env(safe-area-inset-bottom))",
+                    background: "rgba(240,242,245,0.94)",
+                    backdropFilter: "blur(10px)",
+                    borderTop: "1px solid rgba(0,0,0,0.05)",
+                    position: "sticky",
+                    bottom: 0,
+                    zIndex: 90,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      background: "#fff",
+                      borderRadius: 999,
+                      padding: "10px 12px",
+                      boxShadow: "0 6px 20px rgba(0,0,0,0.08)",
+                    }}
+                  >
+                    <Paperclip size={18} color="#667781" />
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <MessageInput
+                        focus
+                        grow
+                        audioRecordingEnabled
+                        asyncMessagesMultiSendEnabled
+                        audioRecordingConfig={audioRecordingConfig}
+                        additionalTextareaProps={{
+                          placeholder: "Type a message",
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </Window>
+            </Window>
 
-          <Thread />
-        </Channel>
-      </Chat>
+            <Thread />
+          </Channel>
+        </Chat>
+
+        {previewImage && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.92)",
+              zIndex: 2000,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 20,
+              boxSizing: "border-box",
+            }}
+          >
+            <button
+              onClick={() => setPreviewImage(null)}
+              style={{
+                position: "absolute",
+                top: 18,
+                left: 18,
+                border: "none",
+                borderRadius: 999,
+                padding: "10px 16px",
+                background: "rgba(255,255,255,0.16)",
+                color: "#fff",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              ← Back to chat
+            </button>
+
+            <img
+              src={previewImage}
+              alt="preview"
+              style={{
+                maxWidth: "100%",
+                maxHeight: "100%",
+                objectFit: "contain",
+                borderRadius: 12,
+              }}
+            />
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
 }
