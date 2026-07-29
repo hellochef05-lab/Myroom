@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+.env
+server/.env
+server/db.json
+server/server/
