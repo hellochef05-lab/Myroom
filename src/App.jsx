@@ -26,6 +26,23 @@ import {
 import { io } from "socket.io-client";
 
 const apiKey = import.meta.env.VITE_STREAM_API_KEY;
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+
+function getDeviceId() {
+  let deviceId = localStorage.getItem("device_id");
+
+  if (!deviceId) {
+    deviceId = `device_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem("device_id", deviceId);
+  }
+
+  return deviceId;
+}
+
+function getDeviceName() {
+  return navigator.userAgent || "Unknown Device";
+}
+
 
 let turnServers = [];
 try {
@@ -465,6 +482,324 @@ function FullScreenCallOverlay({
   );
 }
 
+
+function SupportModal({
+  open,
+  mode,
+  form,
+  onChange,
+  onClose,
+  onSubmit,
+  sending,
+  tickets = [],
+  loading = false,
+  replyText = "",
+  setReplyText = () => {},
+  onReply = () => {},
+}) {
+  if (!open) return null;
+
+  const isRoom = mode === "room";
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 2500,
+        background: "rgba(0,0,0,0.55)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 18,
+        boxSizing: "border-box",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 430,
+          background: "#ffffff",
+          borderRadius: 24,
+          padding: 20,
+          boxShadow: "0 24px 70px rgba(0,0,0,0.32)",
+          boxSizing: "border-box",
+        }}
+      >
+        <h2
+          style={{
+            margin: "0 0 6px",
+            color: "#17343a",
+            fontSize: 22,
+            fontWeight: 800,
+          }}
+        >
+          {isRoom ? "Room Support" : "Contact Support"}
+        </h2>
+
+        <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: 14 }}>
+          {isRoom
+            ? "Tell us what is wrong in this room."
+            : "Send a message before login or for subscription help."}
+        </p>
+
+        {!isRoom && (
+          <>
+            <input
+              value={form.name}
+              onChange={(e) => onChange({ name: e.target.value })}
+              placeholder="Your name"
+              style={supportInputStyle}
+            />
+
+            <input
+              value={form.contact}
+              onChange={(e) => onChange({ contact: e.target.value })}
+              placeholder="Phone or email"
+              style={supportInputStyle}
+            />
+
+            <input
+              value={form.accessKey}
+              onChange={(e) => onChange({ accessKey: e.target.value })}
+              placeholder="Access Key, optional"
+              style={supportInputStyle}
+            />
+          </>
+        )}
+
+        <select
+  value={form.issueType}
+  onChange={(e) => onChange({ issueType: e.target.value })}
+  style={{
+    width: "100%",
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 999,
+    border: "1px solid #d1d5db",
+    background: "#f8fafc",
+    boxSizing: "border-box",
+  }}
+
+        >
+          {isRoom ? (
+            <>
+              <option>Room issue</option>
+              <option>Technical issue</option>
+              <option>Device issue</option>
+              <option>Access Key issue</option>
+              <option>Other</option>
+            </>
+          ) : (
+            <>
+              <option>I want to buy a subscription</option>
+              <option>Payment issue</option>
+              <option>Access Key not received</option>
+              <option>Login problem</option>
+              <option>Subscription renewal</option>
+              <option>Device reset request</option>
+              <option>Other</option>
+            </>
+          )}
+        </select>
+{tickets.length > 0 && (
+  <div
+    style={{
+      marginTop: 12,
+      marginBottom: 12,
+      padding: 12,
+      borderRadius: 14,
+      background: "#f8fafc",
+      border: "1px solid #e2e8f0",
+      maxHeight: 260,
+      overflowY: "auto",
+    }}
+  >
+    <div style={{ fontWeight: 900, marginBottom: 10 }}>
+      Support Conversation
+    </div>
+
+    {tickets
+  .filter(
+    (ticket) =>
+      ticket.status !== "closed" &&
+      ticket.status !== "solved" &&
+      ticket.status !== "archived"
+  )
+  .map((ticket) => (
+      <div
+        key={ticket.id}
+        style={{
+          marginBottom: 14,
+          paddingBottom: 12,
+          borderBottom: "1px solid #e2e8f0",
+        }}
+      >
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
+          Ticket: {ticket.status} · {ticket.issueType || "Support"}
+        </div>
+
+        {(ticket.messages || []).map((msg) => (
+          <div
+            key={msg.id}
+            style={{
+              marginBottom: 8,
+              padding: 10,
+              borderRadius: 12,
+              background: msg.senderType === "admin" ? "#ecfdf5" : "#eef2ff",
+              color: "#0f172a",
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 900, marginBottom: 4 }}>
+              {msg.senderType === "admin" ? "Admin" : "You"}
+            </div>
+
+            <div style={{ fontSize: 13 }}>{msg.message}</div>
+
+            <div style={{ fontSize: 10, color: "#64748b", marginTop: 5 }}>
+              {msg.createdAt ? new Date(msg.createdAt).toLocaleString() : ""}
+            </div>
+          </div>
+        ))}
+
+        <textarea
+          value={replyText}
+          onChange={(e) => setReplyText(e.target.value)}
+          placeholder="Reply to admin..."
+          rows={2}
+          style={{
+            width: "100%",
+            marginTop: 8,
+            padding: 10,
+            borderRadius: 10,
+            border: "1px solid #cbd5e1",
+            boxSizing: "border-box",
+          }}
+        />
+
+        <button
+          type="button"
+          onClick={() => onReply(ticket.id)}
+          disabled={sending}
+          style={{
+            marginTop: 8,
+            width: "100%",
+            padding: 10,
+            borderRadius: 999,
+            border: "none",
+            background: "#0f766e",
+            color: "#fff",
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          Reply to Support
+        </button>
+      </div>
+    ))}
+  </div>
+)}
+        <textarea
+          value={form.message}
+          onChange={(e) => onChange({ message: e.target.value })}
+          placeholder="Write your message"
+          rows={5}
+          style={{
+            ...supportInputStyle,
+            height: "auto",
+            borderRadius: 16,
+            resize: "vertical",
+            paddingTop: 12,
+          }}
+        />
+
+        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+          <button
+            onClick={onClose}
+            disabled={sending}
+            style={{
+              flex: 1,
+              height: 46,
+              borderRadius: 999,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              color: "#334155",
+              fontWeight: 800,
+              cursor: sending ? "not-allowed" : "pointer",
+            }}
+          >
+            Cancel
+          </button>
+
+          <button
+            onClick={onSubmit}
+            disabled={sending}
+            style={{
+              flex: 1,
+              height: 46,
+              borderRadius: 999,
+              border: "none",
+              background: "linear-gradient(180deg, #34d399 0%, #059669 100%)",
+              color: "#fff",
+              fontWeight: 800,
+              cursor: sending ? "not-allowed" : "pointer",
+            }}
+          >
+            {sending ? "Sending..." : "Send"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const supportInputStyle = {
+  width: "100%",
+  height: 46,
+  borderRadius: 999,
+  border: "1px solid #dbe3ea",
+  background: "#f8fafc",
+  padding: "0 14px",
+  fontSize: 14,
+  outline: "none",
+  color: "#0f172a",
+  boxSizing: "border-box",
+  marginBottom: 10,
+};
+
+const adminInputStyle = {
+  width: "100%",
+  minHeight: 44,
+  borderRadius: 12,
+  border: "1px solid #d1d5db",
+  background: "#fff",
+  padding: "10px 12px",
+  fontSize: 14,
+  outline: "none",
+  color: "#0f172a",
+  boxSizing: "border-box",
+  marginBottom: 10,
+};
+
+const adminButtonStyle = {
+  width: "100%",
+  minHeight: 44,
+  borderRadius: 12,
+  border: "none",
+  color: "#fff",
+  fontWeight: 800,
+  cursor: "pointer",
+  padding: "10px 12px",
+};
+
+const adminCardStyle = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 18,
+  padding: 18,
+  background: "#f8fafc",
+  boxSizing: "border-box",
+};
+
 function WebRTCCall({ roomId, myName, onExitRoom }) {
   const socketRef = useRef(null);
   const pcRef = useRef(null);
@@ -737,7 +1072,7 @@ function WebRTCCall({ roomId, myName, onExitRoom }) {
   };
 
   useEffect(() => {
-    const s = io("https://myroom-ms7g.onrender.com", {
+    const s = io(API_BASE, {
       transports: ["polling", "websocket"],
       reconnection: true,
     });
@@ -1104,14 +1439,124 @@ export default function App() {
   const [room, setRoom] = useState("");
   const [joining, setJoining] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
+  const [accessKey, setAccessKey] = useState("");
+  const [loggedUser, setLoggedUser] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportMode, setSupportMode] = useState("public");
+  const [supportSending, setSupportSending] = useState(false);
+  const [supportTickets, setSupportTickets] = useState([]);
+const [supportLoading, setSupportLoading] = useState(false);
+const [supportReplyText, setSupportReplyText] = useState("");
+
+  const [subscribeOpen, setSubscribeOpen] = useState(false);
+  const [subscribePlan, setSubscribePlan] = useState(null);
+  const [subscribeName, setSubscribeName] = useState("");
+  const [subscribeContact, setSubscribeContact] = useState("");
+  const [generatedAccessKey, setGeneratedAccessKey] = useState("");
+  const [subscribeUpiReference, setSubscribeUpiReference] = useState("");
+  const [paymentRequestStatus, setPaymentRequestStatus] = useState(null);
+  const [paymentSettings, setPaymentSettings] = useState({
+  upiId: "9781723138@sbi",
+  upiName: "Private Room Subscription",
+});
+
+  const [adminPin, setAdminPin] = useState("");
+  const [adminAccessKeySearch, setAdminAccessKeySearch] = useState("");
+  const [adminSupportResults, setAdminSupportResults] = useState([]);
+  const [adminReplyDrafts, setAdminReplyDrafts] = useState({});
+  const [adminReplyText, setAdminReplyText] = useState({});
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [adminRooms, setAdminRooms] = useState([]);
+  const [adminPayments, setAdminPayments] = useState([]);
+  const [adminPaymentSearch, setAdminPaymentSearch] = useState("");
+  const [adminPaymentComments, setAdminPaymentComments] = useState({});
+  const [adminRoomsAccessKey, setAdminRoomsAccessKey] = useState("");
+  const [adminDeleteKey, setAdminDeleteKey] = useState("");
+  const [adminLoading, setAdminLoading] = useState(false);
+
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserAccessKey, setNewUserAccessKey] = useState("");
+  const [newUserContact, setNewUserContact] = useState("");
+  const [newUserEndDate, setNewUserEndDate] = useState("2026-12-31");
+  const [newUserDeviceLimit, setNewUserDeviceLimit] = useState(2);
+
+  const [planDrafts, setPlanDrafts] = useState({});
+  const [userEditDrafts, setUserEditDrafts] = useState({});
+  const [supportForm, setSupportForm] = useState({
+    
+    name: "",
+    contact: "",
+    accessKey: "",
+    issueType: "I want to buy a subscription",
+    message: "",
+  });
 
   const audioRecordingConfig = {};
 
   useEffect(() => {
+  return () => {
+    if (client) client.disconnectUser();
+  };
+}, [client]);
+
+useEffect(() => {
+  let cancelled = false;
+
+  fetch(`${API_BASE}/api/payment-settings`)
+    .then((res) => res.json())
+    .then((data) => {
+      if (!cancelled) {
+        setPaymentSettings({
+          upiId: data.upiId || "9781723138@sbi",
+          upiName: data.upiName || "Private Room Subscription",
+        });
+      }
+    })
+    .catch(() => {
+      if (!cancelled) {
+        setPaymentSettings({
+          upiId: "9781723138@sbi",
+          upiName: "Private Room Subscription",
+        });
+      }
+    });
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
+useEffect(() => {
+  let cancelled = false;
+
+  fetch(`${API_BASE}/api/plans`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) {
+          const nextPlans = Array.isArray(data) ? data : [];
+          setPlans(nextPlans);
+          setPlanDrafts(
+            nextPlans.reduce((acc, plan) => {
+              acc[plan.id] = {
+                name: plan.name || "",
+                price: plan.price ?? 0,
+                days: plan.days ?? 30,
+              };
+              return acc;
+            }, {})
+          );
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load plans:", err);
+        if (!cancelled) setPlans([]);
+      });
+
     return () => {
-      if (client) client.disconnectUser();
+      cancelled = true;
     };
-  }, [client]);
+  }, []);
 
   useEffect(() => {
     if (!client || !room) return;
@@ -1141,11 +1586,841 @@ export default function App() {
     };
   }, [client, room]);
 
-  async function joinRoom() {
-    if (!name || !room) {
-      alert("Enter your name and room number");
+  function updateSupportForm(nextValues) {
+    setSupportForm((current) => ({
+      ...current,
+      ...nextValues,
+    }));
+  }
+
+  function openPublicSupport(issueType = "I want to buy a subscription") {
+  setSupportMode("public");
+
+  setSupportForm({
+    name: name || "",
+    contact: "",
+    accessKey: "",
+    issueType,
+    message: "",
+  });
+
+  setSupportTickets([]);
+  setSupportReplyText("");
+  setSupportOpen(true);
+}
+
+  function openRoomSupport() {
+  const key = String(accessKey || "").trim();
+
+  setSupportMode(key ? "room" : "public");
+
+  setSupportForm((current) => ({
+    ...current,
+    name: name || current.name || "Guest",
+    contact: current.contact || "",
+    accessKey: key,
+    issueType: "Room issue",
+    message: "",
+  }));
+
+  setSupportOpen(true);
+
+  if (key) {
+    loadSupportTickets(key);
+  }
+}
+  async function loadSupportTickets(currentAccessKey = accessKey) {
+  const key = String(currentAccessKey || "").trim();
+
+  if (!key) {
+    setSupportTickets([]);
+    return;
+  }
+
+  try {
+    setSupportLoading(true);
+
+    const res = await fetch(
+      `${API_BASE}/api/support/${encodeURIComponent(key)}`
+    );
+
+    const data = await res.json().catch(() => []);
+
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to load support messages");
+    }
+
+    setSupportTickets(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.error("loadSupportTickets error", err);
+  } finally {
+    setSupportLoading(false);
+  }
+}
+
+async function sendSupportMessage() {
+  const key = String(accessKey || supportForm.accessKey || "").trim();
+  const message = String(supportForm.message || "").trim();
+
+  if (!key) {
+    alert("Please enter your Access Key first.");
+    return;
+  }
+
+  if (!message) {
+    alert("Please type your support message.");
+    return;
+  }
+
+  try {
+    setSupportSending(true);
+
+    const res = await fetch(`${API_BASE}/api/support`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        accessKey: key,
+        username: name || supportForm.name || "Guest",
+        contact: supportForm.contact || "",
+        roomName: room || "",
+        roomId: room || "",
+        issueType: supportForm.issueType || "Support",
+        message,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to send support message");
+    }
+
+    setSupportForm((current) => ({
+      ...current,
+      accessKey: key,
+      message: "",
+    }));
+
+    await loadSupportTickets(key);
+  } catch (err) {
+    alert(err.message || "Failed to send support message");
+  } finally {
+    setSupportSending(false);
+  }
+}
+
+async function replyToSupportTicket(ticketId) {
+  const key = String(accessKey || supportForm.accessKey || "").trim();
+  const message = String(supportReplyText || "").trim();
+
+  if (!key) {
+    alert("Access Key is required.");
+    return;
+  }
+
+  if (!message) {
+    alert("Please type your reply.");
+    return;
+  }
+
+  try {
+    setSupportSending(true);
+
+    const res = await fetch(
+      `${API_BASE}/api/support/${encodeURIComponent(ticketId)}/reply`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          accessKey: key,
+          message,
+        }),
+      }
+    );
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to send reply");
+    }
+
+    setSupportReplyText("");
+    await loadSupportTickets(key);
+  } catch (err) {
+    alert(err.message || "Failed to send reply");
+  } finally {
+    setSupportSending(false);
+  }
+}
+
+  async function submitSupport() {
+  if (supportMode === "public") {
+    if (!supportForm.message.trim()) {
+      alert("Please write your message");
       return;
     }
+
+    try {
+      setSupportSending(true);
+
+      const res = await fetch(`${API_BASE}/api/support`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+  accessKey: supportForm.accessKey || "PUBLIC",
+  username: supportForm.name || "Guest",
+  contact: supportForm.contact || "",
+  roomName: "",
+  roomId: "",
+  issueType: supportForm.issueType || "I want to buy a subscription",
+  message: supportForm.message,
+}),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to send support message");
+      }
+
+      alert("Support message sent");
+      setSupportOpen(false);
+      setSupportForm((current) => ({
+        ...current,
+        message: "",
+      }));
+    } catch (err) {
+      alert(err.message || "Failed to send support message");
+    } finally {
+      setSupportSending(false);
+    }
+
+    return;
+  }
+
+  await sendSupportMessage();
+}
+async function subscribeAndGenerateAccessKey(e) {
+  e?.preventDefault?.();
+  if (!subscribeName || !subscribeContact || !subscribePlan || !subscribeUpiReference) {
+    alert("Enter username, phone/email, and UPI payment reference number");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/subscribe/request`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username: subscribeName,
+        contact: subscribeContact,
+        planId: subscribePlan.id,
+        upiReference: subscribeUpiReference,
+      }),
+    });
+
+    const result = await res.json().catch(() => ({}));
+    if (result.alreadySubmitted) {
+  setPaymentRequestStatus(result);
+
+  if (result.status === "approved" && result.accessKey) {
+    alert(`Payment approved. Your Access Key is: ${result.accessKey}`);
+  } else if (result.status === "rejected") {
+    alert(result.message || "Your payment request was rejected.");
+  } else {
+    alert("Your payment request is already pending admin approval.");
+  }
+
+  return;
+}
+
+    if (!res.ok) {
+      alert(result.error || "Subscription failed");
+      return;
+    }
+
+    alert(
+      "Payment submitted successfully. Please wait for admin approval. Your 5-digit Access Key will be generated after approval."
+    );
+
+    setSubscribeOpen(false);
+    setSubscribeName("");
+    setSubscribeContact("");
+    setSubscribeUpiReference("");
+    setGeneratedAccessKey("");
+  } catch (err) {
+    console.error("subscribe error:", err);
+    alert("Subscription failed");
+  }
+}
+
+async function adminCreateUser() {
+  if (!adminPin || !newUserName.trim()) {
+    alert("Enter admin PIN and username");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/users`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-pin": adminPin,
+      },
+      body: JSON.stringify({
+        username: newUserName.trim(),
+        contact: newUserContact.trim(),
+        accessKey: newUserAccessKey.trim() || undefined,
+        subscriptionEnd: newUserEndDate,
+        deviceLimit: Number(newUserDeviceLimit) || 2,
+        status: "active",
+        subscriptionStatus: "active",
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to create user");
+      return;
+    }
+
+    alert(`User created successfully. Access Key: ${data.user?.accessKey || data.accessKey || "created"}`);
+    setNewUserName("");
+    setNewUserContact("");
+    setNewUserAccessKey("");
+    adminLoadUsers();
+  } catch (err) {
+    console.error("Create user error:", err);
+    alert("Failed to create user");
+  }
+}
+
+async function adminLoadUsers() {
+  if (!adminPin) {
+    alert("Enter admin PIN");
+    return;
+  }
+
+  setAdminLoading(true);
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/users`, {
+      headers: {
+        "x-admin-pin": adminPin,
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to load users");
+      return;
+    }
+
+    const users = Array.isArray(data) ? data : data.users || [];
+    setAdminUsers(users);
+    setUserEditDrafts(
+      users.reduce((acc, user) => {
+        acc[user.id] = {
+          username: user.username || "",
+          contact: user.contact || "",
+          accessKey: user.accessKey || "",
+          subscriptionEnd: user.subscriptionEnd || user.subscription_end || "",
+          deviceLimit: user.deviceLimit || user.device_limit || 2,
+          status: user.status || "active",
+          subscriptionStatus: user.subscriptionStatus || user.subscription_status || "active",
+        };
+        return acc;
+      }, {})
+    );
+  } catch (err) {
+    console.error("Load users error:", err);
+    alert("Failed to load users");
+  } finally {
+    setAdminLoading(false);
+  }
+}
+
+async function adminSaveUser(userId) {
+  if (!adminPin) {
+    alert("Enter admin PIN");
+    return;
+  }
+
+  const draft = userEditDrafts[userId];
+
+  if (!draft) {
+    alert("User details not found");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-pin": adminPin,
+      },
+      body: JSON.stringify({
+        ...draft,
+        deviceLimit: Number(draft.deviceLimit) || 2,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to update user");
+      return;
+    }
+
+    alert("User updated");
+    adminLoadUsers();
+  } catch (err) {
+    console.error("Save user error:", err);
+    alert("Failed to update user");
+  }
+}
+
+async function adminExtendUser(userId, days = 30) {
+  if (!adminPin) {
+    alert("Enter admin PIN");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/users/${userId}/extend`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-pin": adminPin,
+      },
+      body: JSON.stringify({ days }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to extend subscription");
+      return;
+    }
+
+    alert(`Subscription extended by ${days} days`);
+    adminLoadUsers();
+  } catch (err) {
+    console.error("Extend user error:", err);
+    alert("Failed to extend subscription");
+  }
+}
+
+async function adminLoadRooms() {
+  if (!adminPin) {
+    alert("Enter admin PIN");
+    return;
+  }
+
+  try {
+    const query = adminRoomsAccessKey
+      ? `?accessKey=${encodeURIComponent(adminRoomsAccessKey)}`
+      : "";
+
+    const res = await fetch(`${API_BASE}/api/admin/rooms${query}`, {
+      headers: {
+        "x-admin-pin": adminPin,
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to load rooms");
+      return;
+    }
+
+    setAdminRooms(Array.isArray(data) ? data : data.rooms || []);
+  } catch (err) {
+    console.error("Load rooms error:", err);
+    alert("Failed to load rooms");
+  }
+}
+
+async function adminDeleteRoom(roomId) {
+  if (!adminPin) {
+    alert("Enter admin PIN");
+    return;
+  }
+
+  const ok = window.confirm(`Delete room ${roomId}?`);
+  if (!ok) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/rooms/${encodeURIComponent(roomId)}`, {
+      method: "DELETE",
+      headers: {
+        "x-admin-pin": adminPin,
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to delete room");
+      return;
+    }
+
+    alert("Room deleted");
+    adminLoadRooms();
+  } catch (err) {
+    console.error("Delete room error:", err);
+    alert("Failed to delete room");
+  }
+}
+
+async function adminDeleteRoomsByAccessKey() {
+  if (!adminPin || !adminRoomsAccessKey) {
+    alert("Enter admin PIN and Access Key");
+    return;
+  }
+
+  const ok = window.confirm(`Delete all rooms for Access Key ${adminRoomsAccessKey}?`);
+  if (!ok) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/rooms/delete-by-access-key`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-pin": adminPin,
+      },
+      body: JSON.stringify({
+        accessKey: adminRoomsAccessKey,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to delete rooms");
+      return;
+    }
+
+    alert(`Deleted ${data.deleted || 0} room(s)`);
+    adminLoadRooms();
+  } catch (err) {
+    console.error("Delete rooms by key error:", err);
+    alert("Failed to delete rooms");
+  }
+}
+
+async function adminDeleteAllRooms() {
+  if (!adminDeleteKey) {
+    alert("Enter admin delete key");
+    return;
+  }
+
+  const ok = window.confirm("ADMIN: Delete all rooms for everyone?");
+  if (!ok) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/delete-all-rooms`, {
+      method: "POST",
+      headers: {
+        "x-admin-key": adminDeleteKey,
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to delete all rooms");
+      return;
+    }
+
+    alert(`Deleted ${data.deleted || 0} room(s)`);
+    setAdminRooms([]);
+  } catch (err) {
+    console.error("Admin delete all rooms error:", err);
+    alert("Failed to delete all rooms");
+  }
+}
+
+async function adminSavePlan(planId) {
+  if (!adminPin) {
+    alert("Enter admin PIN");
+    return;
+  }
+
+  const draft = planDrafts[planId];
+
+  if (!draft) {
+    alert("Plan details not found");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/plans/${planId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-pin": adminPin,
+      },
+      body: JSON.stringify({
+        name: draft.name,
+        price: Number(draft.price),
+        days: Number(draft.days),
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to update plan");
+      return;
+    }
+
+    alert("Subscription plan updated");
+
+    const refreshed = await fetch(`${API_BASE}/api/plans`).then((r) => r.json());
+    setPlans(Array.isArray(refreshed) ? refreshed : []);
+  } catch (err) {
+    console.error("Save plan error:", err);
+    alert("Failed to update plan");
+  }
+}
+
+async function adminSearchSupport() {
+  if (!adminPin) {
+    alert("Enter admin PIN");
+    return;
+  }
+
+  try {
+    const query = adminAccessKeySearch
+      ? `?accessKey=${encodeURIComponent(adminAccessKeySearch)}`
+      : "";
+
+    const res = await fetch(`${API_BASE}/api/admin/support${query}`, {
+      headers: {
+        "x-admin-pin": adminPin,
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to load support");
+      return;
+    }
+
+    setAdminSupportResults(Array.isArray(data) ? data : data.supportRequests || []);
+  } catch (err) {
+    console.error("Support search error:", err);
+    alert("Failed to search support");
+  }
+}
+
+async function adminLoadPayments() {
+  if (!adminPin) {
+    alert("Enter admin PIN");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/payments`, {
+      headers: {
+        "x-admin-pin": adminPin,
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to load payments");
+      return;
+    }
+
+    setAdminPayments(Array.isArray(data) ? data : data.payments || []);
+  } catch (err) {
+    console.error("Load payments error:", err);
+    alert("Failed to load payments");
+  }
+}
+
+async function adminApprovePayment(paymentId) {
+  if (!adminPin) {
+    alert("Enter admin PIN");
+    return;
+  }
+
+  const ok = window.confirm("Approve this payment and generate Access Key?");
+  if (!ok) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/payments/${paymentId}/approve`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-admin-pin": adminPin,
+  },
+  body: JSON.stringify({
+    comment: adminPaymentComments[paymentId] || "",
+  }),
+});
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to approve payment");
+      return;
+    }
+
+    alert(`Payment approved. Access Key: ${data.accessKey || data.user?.accessKey}`);
+
+setAdminPayments((current) =>
+  current.filter((payment) => payment.id !== paymentId)
+);
+
+adminLoadPayments();
+adminLoadUsers();
+  } catch (err) {
+    console.error("Approve payment error:", err);
+    alert("Failed to approve payment");
+  }
+}
+
+async function adminRejectPayment(paymentId) {
+  if (!adminPin) {
+    alert("Enter admin PIN");
+    return;
+  }
+
+  const reason = window.prompt("Reason for rejection", "Payment not verified");
+  if (reason === null) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/payments/${paymentId}/reject`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-pin": adminPin,
+      },
+      body: JSON.stringify({
+        reason,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to reject payment");
+      return;
+    }
+
+    alert("Payment rejected");
+
+setAdminPayments((current) =>
+  current.filter((payment) => payment.id !== paymentId)
+);
+
+adminLoadPayments();
+  } catch (err) {
+    console.error("Reject payment error:", err);
+    alert("Failed to reject payment");
+  }
+}
+async function adminReplyToSupport(requestId) {
+  if (!adminPin) {
+    alert("Enter admin PIN");
+    return;
+  }
+
+  const message = adminReplyDrafts[requestId];
+
+  if (!message || !message.trim()) {
+    alert("Write a reply first");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/support/${requestId}/reply`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-pin": adminPin,
+      },
+      body: JSON.stringify({ message }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to send reply");
+      return;
+    }
+
+    setAdminReplyDrafts((current) => ({
+      ...current,
+      [requestId]: "",
+    }));
+
+    alert("Reply sent");
+    adminSearchSupport();
+  } catch (err) {
+    console.error("Admin reply error:", err);
+    alert("Failed to send reply");
+  }
+}
+
+async function adminUpdateTicketStatus(requestId, status) {
+  if (!adminPin) {
+    alert("Enter admin PIN");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/support/${requestId}/status`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-pin": adminPin,
+      },
+      body: JSON.stringify({ status }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      alert(data.error || "Failed to update ticket");
+      return;
+    }
+
+    if (status === "closed" || status === "solved") {
+  setAdminSupportResults((current) =>
+    current.filter((ticket) => ticket.id !== requestId)
+  );
+} else {
+  adminSearchSupport();
+}
+  } catch (err) {
+    console.error("Ticket status error:", err);
+    alert("Failed to update ticket");
+  }
+}
+
+async function joinRoom() {
+  if (!name || !accessKey || !room) {
+    alert("Enter your name, Access Key and room number");
+    return;
+  }
 
     if (!apiKey) {
       alert("Missing VITE_STREAM_API_KEY in frontend .env");
@@ -1156,33 +2431,61 @@ export default function App() {
     const userId = name.trim().toLowerCase().replace(/\s+/g, "_");
 
     try {
-      const res = await fetch("https://myroom-ms7g.onrender.com/api/token", {
+      const loginRes = await fetch(`${API_BASE}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, name, room }),
+        body: JSON.stringify({
+          username: name,
+          accessKey,
+          deviceId: getDeviceId(),
+          deviceName: getDeviceName(),
+        }),
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("token request failed", res.status, text);
-        alert("Token fetch failed: " + text);
+      const loginData = await loginRes.json().catch(() => ({}));
+
+      if (!loginRes.ok) {
+        alert(loginData.error || "Login failed");
         return;
       }
 
-      const data = await res.json();
+      setLoggedUser(loginData.user);
+      localStorage.setItem("logged_user", JSON.stringify(loginData.user));
 
-      if (!data.token) {
-        console.error("no token returned", data);
-        alert("Token error - check console");
-        return;
-      }
+      const tokenRes = await fetch(`${API_BASE}/api/token`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    userId: loginData.userId || loginData.user?.id || accessKey,
+    name: name || username || "Guest",
+    username: name || username || "Guest",
+    room,
+    roomCode: room,
+    accessKey,
+  }),
+});
 
+const tokenData = await tokenRes.json().catch(() => ({}));
+
+if (!tokenRes.ok) {
+  throw new Error(tokenData.error || tokenData.details || "Failed to create token");
+}
+
+      
       const chatClient = StreamChat.getInstance(apiKey);
-      await chatClient.connectUser({ id: userId, name }, data.token);
+      await chatClient.connectUser(
+  {
+    id: tokenData.userId,
+    name: tokenData.name || name || username || "Guest",
+  },
+  tokenData.token
+);
       setClient(chatClient);
     } catch (err) {
       console.error("joinRoom error", err);
-      alert("Join failed - see console");
+alert(err.message || "Join failed - see console");
     } finally {
       setJoining(false);
     }
@@ -1199,7 +2502,9 @@ export default function App() {
       setChannel(null);
       setClient(null);
       setName("");
+      setAccessKey("");
       setRoom("");
+      setLoggedUser(null);
       setJoining(false);
       setPreviewImage(null);
     }
@@ -1213,7 +2518,7 @@ export default function App() {
     if (!adminKey) return;
 
     const res = await fetch(
-      "https://myroom-ms7g.onrender.com/api/delete-all-rooms",
+      `${API_BASE}/api/delete-all-rooms`,
       {
         method: "POST",
         headers: {
@@ -1315,6 +2620,831 @@ export default function App() {
       </div>
     );
   };
+
+
+  const isAdminPage = window.location.pathname === "/admin";
+
+  if (isAdminPage) {
+    const visibleAdminPayments = adminPayments.filter((payment) => {
+  const search = adminPaymentSearch.trim().toLowerCase();
+
+  const isPending = payment.status === "pending";
+
+  const matchesSearch =
+    !search ||
+    String(payment.username || "").toLowerCase().includes(search) ||
+    String(payment.contact || "").toLowerCase().includes(search) ||
+    String(payment.upiReference || "").toLowerCase().includes(search) ||
+    String(payment.planName || "").toLowerCase().includes(search);
+
+  return isPending && matchesSearch;
+});
+    const totalUsers = adminUsers.length;
+    const activeUsers = adminUsers.filter((user) => user.status === "active").length;
+    const expiredUsers = adminUsers.filter(
+      (user) =>
+        user.subscriptionStatus === "expired" ||
+        (user.subscriptionEnd && new Date(user.subscriptionEnd) < new Date())
+    ).length;
+
+    return (
+      <div
+        style={{
+          minHeight: "100dvh",
+          background: "linear-gradient(135deg, #062c2a 0%, #0f766e 100%)",
+          padding: 24,
+          boxSizing: "border-box",
+          color: "#123c3a",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1200,
+            margin: "0 auto",
+            background: "#ffffff",
+            borderRadius: 24,
+            padding: 24,
+            boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              alignItems: "center",
+              marginBottom: 20,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <h1 style={{ margin: 0 }}>Admin Dashboard</h1>
+              <p style={{ margin: "6px 0 0", color: "#64748b" }}>
+                Manage users, 5-digit Access Keys, subscriptions, rooms, support, and devices.
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                window.location.href = "/";
+              }}
+              style={{
+                border: "none",
+                borderRadius: 999,
+                padding: "10px 16px",
+                background: "#0f766e",
+                color: "#fff",
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              Back to App
+            </button>
+          </div>
+
+          <div style={{ ...adminCardStyle, marginBottom: 18 }}>
+            <h2 style={{ marginTop: 0 }}>Admin Access</h2>
+            <input
+              value={adminPin}
+              onChange={(e) => setAdminPin(e.target.value)}
+              placeholder="Admin PIN"
+              type="password"
+              style={adminInputStyle}
+            />
+            <button
+              onClick={() => {
+  adminLoadUsers();
+  adminLoadRooms();
+  adminSearchSupport();
+  adminLoadPayments();
+}}
+              style={{ ...adminButtonStyle, background: "#0f766e" }}
+            >
+              Load Admin Data
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gap: 12,
+              marginBottom: 18,
+            }}
+          >
+            {[
+              ["Total users", totalUsers],
+              ["Active users", activeUsers],
+              ["Expired users", expiredUsers],
+              ["Rooms loaded", adminRooms.length],
+              ["Support tickets", adminSupportResults.length],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                style={{
+                  background: "#f8fafc",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 16,
+                  padding: 16,
+                }}
+              >
+                <div style={{ color: "#64748b", fontSize: 13 }}>{label}</div>
+                <div style={{ fontSize: 28, fontWeight: 900, color: "#0f766e" }}>
+                  {value}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+              gap: 18,
+            }}
+          >
+            <div style={{ ...adminCardStyle, gridColumn: "1 / -1" }}>
+  <h2 style={{ marginTop: 0 }}>Pending Payment / Access Key Requests</h2>
+
+  <p style={{ color: "#64748b" }}>
+    Users who paid by UPI and submitted reference number will appear here.
+    Approving payment will generate a 5-digit Access Key with 2-device limit.
+  </p>
+  <input
+  value={adminPaymentSearch}
+  onChange={(e) => setAdminPaymentSearch(e.target.value)}
+  placeholder="Search by name, mobile number, email, or UPI reference"
+  style={{
+    ...adminInputStyle,
+    maxWidth: 520,
+  }}
+/>
+
+  <button
+    onClick={adminLoadPayments}
+    style={{
+      ...adminButtonStyle,
+      background: "#0f766e",
+      maxWidth: 220,
+      marginBottom: 12,
+    }}
+  >
+    Load Pending Payments
+  </button>
+
+  {visibleAdminPayments.length === 0 ? (
+  <p style={{ color: "#64748b" }}>
+    No pending payment requests found.
+  </p>
+) : (
+  visibleAdminPayments.map((payment) => (
+      <div
+        key={payment.id}
+        style={{
+          background: "#ffffff",
+          border: "1px solid #e5e7eb",
+          borderRadius: 14,
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+            gap: 10,
+          }}
+        >
+          <p><strong>User:</strong> {payment.username}</p>
+          <p><strong>Contact:</strong> {payment.contact}</p>
+          <p><strong>Plan:</strong> {payment.planName}</p>
+          <p>
+  <strong>Package Used:</strong> {payment.planName || payment.planId || "N/A"}
+</p>
+
+<p>
+  <strong>Package Duration:</strong> {payment.days || "N/A"} days
+</p>
+<p>
+  <strong>Package Used:</strong>{" "}
+  {payment.planName || payment.planId || "N/A"}
+</p>
+
+<p>
+  <strong>Package Duration:</strong> {payment.days || "N/A"} days
+</p>
+
+<p>
+  <strong>Package Amount:</strong> AED {payment.amount || payment.price || "N/A"}
+</p>
+          <p><strong>Amount:</strong> AED {payment.amount}</p>
+          <p><strong>UPI ID:</strong> {payment.upiId}</p>
+          <p><strong>UPI Ref:</strong> {payment.upiReference}</p>
+          <p><strong>Status:</strong> {payment.status}</p>
+          <p><strong>Access Key:</strong> {payment.accessKey || "Not generated yet"}</p>
+          <p>
+  <strong>Request Date:</strong>{" "}
+  {payment.createdAt ? new Date(payment.createdAt).toLocaleDateString() : "N/A"}
+</p>
+
+<p>
+  <strong>Subscription Days:</strong> {payment.days || "N/A"}
+</p>
+
+<p>
+  <strong>Expiry After Approval:</strong>{" "}
+  {payment.days
+    ? new Date(Date.now() + Number(payment.days) * 24 * 60 * 60 * 1000).toLocaleDateString()
+    : "N/A"}
+</p>
+
+<p>
+  <strong>Admin Comment:</strong> {payment.adminComment || "No comment yet"}
+</p>
+
+<textarea
+  value={adminPaymentComments[payment.id] || payment.adminComment || ""}
+  onChange={(e) =>
+    setAdminPaymentComments((current) => ({
+      ...current,
+      [payment.id]: e.target.value,
+    }))
+  }
+  placeholder="Admin payment comment / verification note"
+  rows={3}
+  style={{
+    width: "100%",
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 10,
+    border: "1px solid #d1d5db",
+    boxSizing: "border-box",
+  }}
+/>
+        </div>
+
+        {payment.status === "pending" && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+            <button
+              onClick={() => adminApprovePayment(payment.id)}
+              style={{
+                ...adminButtonStyle,
+                background: "#0f766e",
+                width: 180,
+              }}
+            >
+              Approve & Generate Key
+            </button>
+
+            <button
+              onClick={() => adminRejectPayment(payment.id)}
+              style={{
+                ...adminButtonStyle,
+                background: "#dc2626",
+                width: 140,
+              }}
+            >
+              Reject
+            </button>
+          </div>
+        )}
+      </div>
+    ))
+  )}
+</div>
+            <div style={adminCardStyle}>
+              <h2 style={{ marginTop: 0 }}>Subscription Rates</h2>
+              <p style={{ color: "#64748b" }}>
+                Edit plan price and days shown on the first page.
+              </p>
+
+              {plans.map((plan) => (
+                <div
+                  key={plan.id}
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 14,
+                    padding: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <input
+                    value={planDrafts[plan.id]?.name ?? plan.name}
+                    onChange={(e) =>
+                      setPlanDrafts((current) => ({
+                        ...current,
+                        [plan.id]: {
+                          ...(current[plan.id] || plan),
+                          name: e.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="Plan name"
+                    style={adminInputStyle}
+                  />
+
+                  <input
+                    value={planDrafts[plan.id]?.price ?? plan.price}
+                    onChange={(e) =>
+                      setPlanDrafts((current) => ({
+                        ...current,
+                        [plan.id]: {
+                          ...(current[plan.id] || plan),
+                          price: e.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="Price"
+                    type="number"
+                    style={adminInputStyle}
+                  />
+
+                  <input
+                    value={planDrafts[plan.id]?.days ?? plan.days}
+                    onChange={(e) =>
+                      setPlanDrafts((current) => ({
+                        ...current,
+                        [plan.id]: {
+                          ...(current[plan.id] || plan),
+                          days: e.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="Days"
+                    type="number"
+                    style={adminInputStyle}
+                  />
+
+                  <button
+                    onClick={() => adminSavePlan(plan.id)}
+                    style={{ ...adminButtonStyle, background: "#2563eb" }}
+                  >
+                    Save Plan
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div style={adminCardStyle}>
+              <h2 style={{ marginTop: 0 }}>Create User / Access Key</h2>
+              <p style={{ color: "#64748b" }}>
+                Access Key is 5 digits. Leave Access Key empty to let the system generate it.
+                Default device limit is 2.
+              </p>
+
+              <input
+                value={newUserName}
+                onChange={(e) => setNewUserName(e.target.value)}
+                placeholder="Username"
+                style={adminInputStyle}
+              />
+
+              <input
+                value={newUserContact}
+                onChange={(e) => setNewUserContact(e.target.value)}
+                placeholder="Phone or email"
+                style={adminInputStyle}
+              />
+
+              <input
+                value={newUserAccessKey}
+                onChange={(e) => setNewUserAccessKey(e.target.value)}
+                placeholder="Access Key, optional"
+                maxLength={5}
+                style={adminInputStyle}
+              />
+
+              <input
+                value={newUserEndDate}
+                onChange={(e) => setNewUserEndDate(e.target.value)}
+                placeholder="Subscription end date"
+                style={adminInputStyle}
+              />
+
+              <input
+                value={newUserDeviceLimit}
+                onChange={(e) => setNewUserDeviceLimit(e.target.value)}
+                placeholder="Device limit"
+                type="number"
+                style={adminInputStyle}
+              />
+
+              <button
+                onClick={adminCreateUser}
+                style={{ ...adminButtonStyle, background: "#0f766e" }}
+              >
+                Create User
+              </button>
+            </div>
+
+            <div style={{ ...adminCardStyle, gridColumn: "1 / -1" }}>
+              <h2 style={{ marginTop: 0 }}>All Users</h2>
+              <p style={{ color: "#64748b" }}>
+                Admin can see Access Keys, update device limit, block users, and extend subscriptions.
+                Each Access Key works on 2 devices by default.
+              </p>
+
+              <button
+                onClick={adminLoadUsers}
+                style={{
+                  ...adminButtonStyle,
+                  background: "#0f766e",
+                  maxWidth: 220,
+                  marginBottom: 12,
+                }}
+              >
+                {adminLoading ? "Loading..." : "Load Users"}
+              </button>
+
+              {adminUsers.map((user) => {
+                const draft = userEditDrafts[user.id] || {};
+                return (
+                  <div
+                    key={user.id}
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 14,
+                      padding: 12,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                        gap: 10,
+                      }}
+                    >
+                      <input
+                        value={draft.username || ""}
+                        onChange={(e) =>
+                          setUserEditDrafts((current) => ({
+                            ...current,
+                            [user.id]: { ...(current[user.id] || {}), username: e.target.value },
+                          }))
+                        }
+                        placeholder="Username"
+                        style={adminInputStyle}
+                      />
+
+                      <input
+                        value={draft.contact || ""}
+                        onChange={(e) =>
+                          setUserEditDrafts((current) => ({
+                            ...current,
+                            [user.id]: { ...(current[user.id] || {}), contact: e.target.value },
+                          }))
+                        }
+                        placeholder="Contact"
+                        style={adminInputStyle}
+                      />
+
+                      <input
+                        value={draft.accessKey || ""}
+                        onChange={(e) =>
+                          setUserEditDrafts((current) => ({
+                            ...current,
+                            [user.id]: { ...(current[user.id] || {}), accessKey: e.target.value },
+                          }))
+                        }
+                        placeholder="Access Key"
+                        maxLength={5}
+                        style={adminInputStyle}
+                      />
+
+                      <input
+                        value={draft.subscriptionEnd || ""}
+                        onChange={(e) =>
+                          setUserEditDrafts((current) => ({
+                            ...current,
+                            [user.id]: {
+                              ...(current[user.id] || {}),
+                              subscriptionEnd: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="Subscription end"
+                        style={adminInputStyle}
+                      />
+
+                      <input
+                        value={draft.deviceLimit || 2}
+                        onChange={(e) =>
+                          setUserEditDrafts((current) => ({
+                            ...current,
+                            [user.id]: {
+                              ...(current[user.id] || {}),
+                              deviceLimit: e.target.value,
+                            },
+                          }))
+                        }
+                        placeholder="Device limit"
+                        type="number"
+                        style={adminInputStyle}
+                      />
+
+                      <select
+                        value={draft.status || "active"}
+                        onChange={(e) =>
+                          setUserEditDrafts((current) => ({
+                            ...current,
+                            [user.id]: { ...(current[user.id] || {}), status: e.target.value },
+                          }))
+                        }
+                        style={adminInputStyle}
+                      >
+                        <option value="active">Active</option>
+                        <option value="blocked">Blocked</option>
+                      </select>
+                    </div>
+                    <div
+  style={{
+    gridColumn: "1 / -1",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 10,
+    marginTop: 10,
+    padding: 10,
+    background: "#f8fafc",
+    borderRadius: 12,
+    border: "1px solid #e2e8f0",
+  }}
+>
+  <p>
+    <strong>Package Used:</strong>{" "}
+    {user.planName || user.planId || "N/A"}
+  </p>
+
+  <p>
+    <strong>Subscription Start:</strong>{" "}
+    {user.subscriptionStart
+      ? new Date(user.subscriptionStart).toLocaleDateString()
+      : "N/A"}
+  </p>
+
+  <p>
+    <strong>Subscription Expiry:</strong>{" "}
+    {user.subscriptionEnd
+      ? new Date(user.subscriptionEnd).toLocaleDateString()
+      : "N/A"}
+  </p>
+
+  <p>
+    <strong>Joining Date:</strong>{" "}
+    {user.joiningDate || user.createdAt
+      ? new Date(user.joiningDate || user.createdAt).toLocaleDateString()
+      : "N/A"}
+  </p>
+
+  <p>
+    <strong>Paid Amount:</strong>{" "}
+    {user.paidAmount ? `AED ${user.paidAmount}` : "N/A"}
+  </p>
+</div>
+
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        onClick={() => adminSaveUser(user.id)}
+                        style={{ ...adminButtonStyle, background: "#2563eb", width: 160 }}
+                      >
+                        Save User
+                      </button>
+
+                      <button
+                        onClick={() => adminExtendUser(user.id, 30)}
+                        style={{ ...adminButtonStyle, background: "#0f766e", width: 180 }}
+                      >
+                        Extend 30 Days
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setAdminRoomsAccessKey(draft.accessKey || user.accessKey || "");
+                          setAdminAccessKeySearch(draft.accessKey || user.accessKey || "");
+                        }}
+                        style={{ ...adminButtonStyle, background: "#475569", width: 190 }}
+                      >
+                        Use Access Key
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={adminCardStyle}>
+              <h2 style={{ marginTop: 0 }}>Rooms by Access Key</h2>
+              <input
+                value={adminRoomsAccessKey}
+                onChange={(e) => setAdminRoomsAccessKey(e.target.value)}
+                placeholder="Access Key, leave empty for all rooms"
+                style={adminInputStyle}
+              />
+
+              <button
+                onClick={adminLoadRooms}
+                style={{ ...adminButtonStyle, background: "#2563eb", marginBottom: 10 }}
+              >
+                Load Rooms
+              </button>
+
+              <button
+                onClick={adminDeleteRoomsByAccessKey}
+                style={{ ...adminButtonStyle, background: "#991b1b", marginBottom: 10 }}
+              >
+                Delete Rooms for This Access Key
+              </button>
+
+              <input
+                value={adminDeleteKey}
+                onChange={(e) => setAdminDeleteKey(e.target.value)}
+                placeholder="Admin delete key"
+                type="password"
+                style={adminInputStyle}
+              />
+
+              <button
+                onClick={adminDeleteAllRooms}
+                style={{ ...adminButtonStyle, background: "#7f1d1d" }}
+              >
+                Admin Delete All Rooms
+              </button>
+
+              <div style={{ marginTop: 12 }}>
+                {adminRooms.map((item) => (
+                  <div
+                    key={item.id || item.roomId}
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 14,
+                      padding: 12,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <strong>Room {item.roomId || item.roomName}</strong>
+                    <p style={{ margin: "6px 0" }}>Access Key: {item.accessKey || "N/A"}</p>
+                    <p style={{ margin: "6px 0" }}>Owner: {item.ownerName || item.username || "N/A"}</p>
+                    <p style={{ margin: "6px 0" }}>Status: {item.status || item.roomStatus || "active"}</p>
+                    <button
+                      onClick={() => adminDeleteRoom(item.roomId)}
+                      style={{ ...adminButtonStyle, background: "#dc2626" }}
+                    >
+                      Delete Room
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={adminCardStyle}>
+              <h2 style={{ marginTop: 0 }}>Support Messages</h2>
+              <p style={{ color: "#64748b" }}>
+                Leave Access Key empty to see all tickets.
+              </p>
+
+              <input
+                value={adminAccessKeySearch}
+                onChange={(e) => setAdminAccessKeySearch(e.target.value)}
+                placeholder="Access Key filter, optional"
+                style={adminInputStyle}
+              />
+
+              <button
+                onClick={adminSearchSupport}
+                style={{ ...adminButtonStyle, background: "#2563eb", marginBottom: 12 }}
+              >
+                Search Support
+              </button>
+
+              {adminSupportResults
+  .filter((item) => {
+    const isSearchingByAccessKey = adminAccessKeySearch.trim().length > 0;
+
+    if (isSearchingByAccessKey) {
+      return true;
+    }
+
+    return item.status !== "closed" && item.status !== "solved";
+  })
+  .map((item) => (
+                <div
+                  key={item.id}
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 14,
+                    padding: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <p style={{ margin: "6px 0", fontWeight: 900 }}>
+  <strong>Subject:</strong> {item.issueType || "Support Request"}
+</p>
+                  <p style={{ margin: "6px 0" }}>
+                    <strong>User:</strong> {item.username || item.guestName || "Guest"}
+                  </p>
+                  
+  <p style={{ margin: "6px 0" }}>
+  <strong>Contact:</strong> {item.contact || item.phone || item.email || "N/A"}
+</p>
+                  <p style={{ margin: "6px 0" }}>
+                    <strong>Access Key:</strong> {item.accessKey || "N/A"}
+                  </p>
+                  <p style={{ margin: "6px 0" }}>
+                    <strong>Room:</strong> {item.roomName || item.roomId || "N/A"}
+                  </p>
+                  <p style={{ margin: "6px 0" }}>
+                    <strong>Status:</strong> {item.status || "open"}
+                  </p>
+
+                  <select
+                    value={item.status || "open"}
+                    onChange={(e) => adminUpdateTicketStatus(item.id, e.target.value)}
+                    style={adminInputStyle}
+                  >
+                    <option value="open">Open</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="waiting_for_user">Waiting for user</option>
+                    <option value="solved">Solved</option>
+                    <option value="closed">Closed</option>
+                  </select>
+
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: 10,
+                      background: "#f8fafc",
+                      borderRadius: 10,
+                    }}
+                  >
+                    {(item.messages || []).map((msg) => (
+                      <p key={msg.id} style={{ margin: "8px 0" }}>
+                        <strong>{msg.senderType || "user"}:</strong> {msg.message}
+                      </p>
+                    ))}
+                  </div>
+
+                  {item.status !== "closed" &&
+item.status !== "solved" &&
+item.status !== "archived" ? (
+  <>
+    <textarea
+      value={adminReplyDrafts[item.id] || ""}
+      onChange={(e) =>
+        setAdminReplyDrafts((current) => ({
+          ...current,
+          [item.id]: e.target.value,
+        }))
+      }
+      placeholder="Write admin reply"
+      style={{
+        width: "100%",
+        marginTop: 10,
+        padding: 10,
+        borderRadius: 10,
+        border: "1px solid #d1d5db",
+        boxSizing: "border-box",
+      }}
+    />
+
+    <button
+      onClick={() => adminReplyToSupport(item.id)}
+      style={{
+        ...adminButtonStyle,
+        width: "100%",
+        marginTop: 10,
+        background: "#0f766e",
+      }}
+    >
+      Reply to User
+    </button>
+  </>
+) : (
+  <div
+    style={{
+      marginTop: 10,
+      padding: 10,
+      borderRadius: 10,
+      background: "#f1f5f9",
+      color: "#64748b",
+      fontWeight: 700,
+      textAlign: "center",
+    }}
+  >
+    This ticket is closed. Reply disabled.
+  </div>
+)}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!client) {
     const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
@@ -1449,10 +3579,96 @@ export default function App() {
                     color: "#56666b",
                   }}
                 >
-                  Join securely to chat, share media,
+                  Join with your Access Key to chat,
                   <br />
-                  and connect instantly.
+                  share media and connect instantly.
                 </p>
+
+
+                {plans.length > 0 && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr",
+                      gap: 8,
+                      marginBottom: 14,
+                    }}
+                  >
+                    {plans.map((plan) => (
+                      <div
+                        key={plan.id}
+                        style={{
+                          background: "rgba(255,255,255,0.78)",
+                          border: "1px solid rgba(16,72,68,0.10)",
+                          borderRadius: 16,
+                          padding: "10px 12px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 10,
+                        }}
+                      >
+                        <div>
+                          <div
+                            style={{
+                              color: "#17343a",
+                              fontWeight: 800,
+                              fontSize: isMobile ? 13 : 14,
+                            }}
+                          >
+                            {plan.name}
+                          </div>
+                          <div style={{ color: "#64748b", fontSize: 12 }}>
+                            {plan.days} days · Default 2 devices · Support
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-end",
+                            gap: 6,
+                          }}
+                        >
+                          <div
+                            style={{
+                              color: "#0f766e",
+                              fontWeight: 900,
+                              fontSize: isMobile ? 14 : 16,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            AED {plan.price}
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              setSubscribePlan(plan);
+                              setPaymentRequestStatus(null);
+                              setSubscribeName(name || "");
+                              setSubscribeContact("");
+                              setGeneratedAccessKey("");
+                              setSubscribeOpen(true);
+                            }}
+                            style={{
+                              border: "none",
+                              borderRadius: 999,
+                              padding: "7px 11px",
+                              background: "#0f766e",
+                              color: "#fff",
+                              fontWeight: 800,
+                              fontSize: 12,
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Subscribe
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 10 }}
@@ -1474,6 +3690,39 @@ export default function App() {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Enter your name"
+                      style={{
+                        width: "100%",
+                        height: isMobile ? 44 : 50,
+                        borderRadius: 999,
+                        border: "1px solid rgba(16,72,68,0.10)",
+                        background: "#f8fbfb",
+                        padding: "0 18px 0 42px",
+                        fontSize: isMobile ? 14 : 15,
+                        outline: "none",
+                        boxSizing: "border-box",
+                        color: "#1f2937",
+                        boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ position: "relative" }}>
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: 14,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        fontSize: isMobile ? 15 : 18,
+                        opacity: 0.8,
+                      }}
+                    >
+                      🛡️
+                    </span>
+                    <input
+                      value={accessKey}
+                      onChange={(e) => setAccessKey(e.target.value)}
+                      placeholder="Enter Access Key"
                       style={{
                         width: "100%",
                         height: isMobile ? 44 : 50,
@@ -1547,6 +3796,25 @@ export default function App() {
                   {joining ? "Entering..." : "Enter Room ›"}
                 </button>
 
+              <button
+  type="button"
+  onClick={() => openPublicSupport("I want to buy a subscription")}
+  style={{
+    width: "100%",
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 999,
+    border: "none",
+    background: "#f8fafc",
+    color: "#0f766e",
+    fontWeight: 800,
+    cursor: "pointer",
+  }}
+>
+  Need Help? Contact Support
+</button>
+
+
                 <div
                   style={{
                     marginTop: 12,
@@ -1564,27 +3832,187 @@ export default function App() {
                       top: "50%",
                     }}
                   />
-                  <button
-                    onClick={deleteAllRooms}
-                    style={{
-                      position: "relative",
-                      background: "rgba(255,255,255,0.90)",
-                      border: "none",
-                      padding: "0 14px",
-                      color: "#35535a",
-                      fontSize: isMobile ? 12.5 : 14,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      borderRadius: 999,
-                    }}
-                  >
-                    Manage Rooms
-                  </button>
+                  
                 </div>
               </div>
             </div>
           </div>
         </div>
+        {subscribeOpen && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 2600,
+              background: "rgba(0,0,0,0.55)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 18,
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              style={{
+                width: "100%",
+                maxWidth: 430,
+                background: "#ffffff",
+                borderRadius: 24,
+                padding: 20,
+                boxShadow: "0 24px 70px rgba(0,0,0,0.32)",
+                boxSizing: "border-box",
+              }}
+            >
+              <h2 style={{ margin: "0 0 8px", color: "#17343a" }}>
+                Subscribe to {subscribePlan?.name}
+              </h2>
+
+              <p style={{ margin: "0 0 16px", color: "#64748b" }}>
+                AED {subscribePlan?.price} · {subscribePlan?.days} days · 1 Access Key · 2 devices only
+              </p>
+              <div
+  style={{
+    background: "#ecfdf5",
+    border: "1px solid #10b981",
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+    color: "#064e3b",
+  }}
+>
+  <div style={{ fontWeight: 900, marginBottom: 6 }}>
+    Pay first using UPI
+  </div>
+
+  <div style={{ fontSize: 14, marginBottom: 4 }}>
+    <strong>Amount:</strong> AED {subscribePlan?.price}
+  </div>
+
+  <div style={{ fontSize: 14, marginBottom: 4 }}>
+    <strong>UPI ID:</strong> {paymentSettings.upiId}
+  </div>
+
+  <div style={{ fontSize: 14, marginBottom: 8 }}>
+    <strong>Name:</strong> {paymentSettings.upiName}
+  </div>
+
+  <a
+    href={`upi://pay?pa=${encodeURIComponent(paymentSettings.upiId)}&pn=${encodeURIComponent(paymentSettings.upiName)}&am=${encodeURIComponent(subscribePlan?.price || "")}&cu=INR`}
+    style={{
+      display: "inline-block",
+      textDecoration: "none",
+      background: "#0f766e",
+      color: "#fff",
+      fontWeight: 800,
+      borderRadius: 999,
+      padding: "9px 14px",
+      fontSize: 13,
+      marginBottom: 8,
+    }}
+  >
+    Pay Now by UPI
+  </a>
+
+  <div style={{ fontSize: 12, color: "#64748b" }}>
+    After payment, enter the UPI transaction/reference number below and submit for admin approval.
+  </div>
+</div>
+
+              <input
+                value={subscribeName}
+                onChange={(e) => setSubscribeName(e.target.value)}
+                placeholder="Choose username"
+                style={supportInputStyle}
+              />
+
+              <input
+                value={subscribeContact}
+                onChange={(e) => setSubscribeContact(e.target.value)}
+                placeholder="Phone or email"
+                style={supportInputStyle}
+              />
+              <input
+                value={subscribeUpiReference}
+                onChange={(e) => setSubscribeUpiReference(e.target.value)}
+                placeholder="Enter UPI transaction/reference number after payment"
+                style={supportInputStyle}
+              />
+
+              {generatedAccessKey && (
+                <div
+                  style={{
+                    background: "#ecfdf5",
+                    border: "1px solid #10b981",
+                    borderRadius: 16,
+                    padding: 14,
+                    marginBottom: 12,
+                    color: "#065f46",
+                    fontWeight: 800,
+                    textAlign: "center",
+                  }}
+                >
+                  <div>Your Access Key</div>
+                  <div style={{ fontSize: 28, letterSpacing: 4 }}>
+                    {generatedAccessKey}
+                  </div>
+                  <div style={{ fontSize: 12, marginTop: 6 }}>
+                    This Access Key works on 2 devices only. It has been filled into the login form.
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={subscribeAndGenerateAccessKey}
+                style={{
+                  width: "100%",
+                  height: 46,
+                  borderRadius: 999,
+                  border: "none",
+                  background: "linear-gradient(180deg, #34d399 0%, #059669 100%)",
+                  color: "#fff",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  marginBottom: 10,
+                }}
+              >
+                Submit Payment for Approval
+              </button>
+
+              <button
+  type="button"
+  onClick={() => setSubscribeOpen(false)}
+                style={{
+                  width: "100%",
+                  height: 46,
+                  borderRadius: 999,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                  color: "#334155",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+
+        <SupportModal
+  open={supportOpen}
+  mode={supportMode}
+  form={supportForm}
+  onChange={updateSupportForm}
+  onClose={() => setSupportOpen(false)}
+  onSubmit={submitSupport}
+  sending={supportSending}
+  tickets={supportTickets}
+  loading={supportLoading}
+  replyText={supportReplyText}
+  setReplyText={setSupportReplyText}
+  onReply={replyToSupportTicket}
+/>
       </div>
     );
   }
@@ -1709,6 +4137,41 @@ export default function App() {
             <Thread />
           </Channel>
         </Chat>
+
+        <button
+          onClick={openRoomSupport}
+          style={{
+            position: "absolute",
+            right: 18,
+            bottom: 86,
+            zIndex: 120,
+            border: "none",
+            borderRadius: 999,
+            padding: "12px 16px",
+            background: "linear-gradient(180deg, #34d399 0%, #059669 100%)",
+            color: "#fff",
+            fontWeight: 900,
+            cursor: "pointer",
+            boxShadow: "0 10px 28px rgba(0,0,0,0.20)",
+          }}
+        >
+          Support
+        </button>
+
+        <SupportModal
+  open={supportOpen}
+  mode={supportMode}
+  form={supportForm}
+  onChange={updateSupportForm}
+  onClose={() => setSupportOpen(false)}
+  onSubmit={submitSupport}
+  sending={supportSending}
+  tickets={supportTickets}
+  loading={supportLoading}
+  replyText={supportReplyText}
+  setReplyText={setSupportReplyText}
+  onReply={replyToSupportTicket}
+/>
 
         {previewImage && (
           <div
