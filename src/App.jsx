@@ -31,6 +31,25 @@ const isMobile =
 const apiKey = import.meta.env.VITE_STREAM_API_KEY;
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 
+function normaliseIdentifier(value, fallback = "item") {
+  const cleaned = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+
+  return cleaned || fallback;
+}
+
+function createPrivateRoomId(accessKey, roomCode) {
+  return `key_${normaliseIdentifier(accessKey, "unknown")}_room_${normaliseIdentifier(roomCode, "room")}`;
+}
+
+function createStreamUserId(accessKey, displayName) {
+  return `key_${normaliseIdentifier(accessKey, "unknown")}_user_${normaliseIdentifier(displayName, "guest")}`;
+}
+
 const DEFAULT_API_TIMEOUT_MS = 25000;
 
 function wait(ms) {
@@ -138,250 +157,141 @@ function CallHeader({
   onExitRoom,
 }) {
   return (
-    <>
-      <style>{`
-        .private-room-call-header {
-          height: 72px;
-          padding: 10px 16px;
-        }
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "14px 16px",
+        background:
+          "linear-gradient(135deg, #0b6158 0%, #0f766e 50%, #115e59 100%)",
+        color: "#fff",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        position: "fixed",
+        top: 0,
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: "100%",
+        maxWidth: 1100,
+        zIndex: 100,
+        boxSizing: "border-box",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+      }}
+    >
+      <div>
+        <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: 0.2 }}>
+          Room {room}
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
+          {inCall
+            ? callType === "video"
+              ? "Video call in progress"
+              : "Audio call in progress"
+            : joinedRoom
+              ? "Online"
+              : "Connecting..."}
+        </div>
+      </div>
 
-        .private-room-header-avatar {
-          width: 42px;
-          height: 42px;
-        }
-
-        .private-room-header-action {
-          width: 42px;
-          height: 42px;
-        }
-
-        .private-room-header-label {
-          display: block;
-        }
-
-        @media (max-width: 767px) {
-          .private-room-call-header {
-            height: 64px;
-            padding: 8px 10px;
-          }
-
-          .private-room-header-avatar {
-            width: 38px;
-            height: 38px;
-          }
-
-          .private-room-header-action {
-            width: 38px;
-            height: 38px;
-          }
-
-          .private-room-header-label {
-            display: none;
-          }
-        }
-      `}</style>
-
-      <div
-        className="private-room-call-header"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-          background:
-            "linear-gradient(135deg, #0b7a68 0%, #079b77 58%, #0891b2 100%)",
-          color: "#fff",
-          borderBottom: "1px solid rgba(255,255,255,0.14)",
-          width: "100%",
-          zIndex: 100,
-          boxSizing: "border-box",
-          boxShadow: "0 8px 24px rgba(8,47,73,0.18)",
-          flexShrink: 0,
-        }}
-      >
+      <div style={{ display: "flex", gap: 12 }}>
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: 10,
-            minWidth: 0,
+            flexDirection: "column",
+            alignItems: isMobile ? "flex-start" : "center",
+            gap: 6,
           }}
         >
           <button
-            type="button"
-            onClick={onExitRoom}
-            title="Back to login"
+            onClick={onStartAudio}
+            title="Audio call"
             style={{
+              width: 52,
+              height: 52,
+              borderRadius: 999,
               border: "none",
-              background: "transparent",
-              color: "#fff",
-              fontSize: 27,
-              lineHeight: 1,
-              cursor: "pointer",
-              padding: "2px 4px",
-              flexShrink: 0,
-            }}
-          >
-            ‹
-          </button>
-
-          <div
-            className="private-room-header-avatar"
-            style={{
-              borderRadius: "50%",
-              background: "rgba(255,255,255,0.94)",
-              color: "#0f766e",
+              background: "linear-gradient(180deg, #34d399 0%, #16a34a 100%)",
+              cursor: joinedRoom ? "pointer" : "not-allowed",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontWeight: 950,
-              fontSize: 17,
-              boxShadow: "0 4px 14px rgba(0,0,0,0.13)",
-              flexShrink: 0,
-              position: "relative",
+              boxShadow: "0 8px 20px rgba(0,0,0,0.20)",
+              opacity: joinedRoom ? 1 : 0.5,
             }}
+            disabled={!joinedRoom}
           >
-            {String(room || "R").slice(0, 1).toUpperCase()}
-            <span
-              style={{
-                position: "absolute",
-                right: 0,
-                bottom: 1,
-                width: 9,
-                height: 9,
-                borderRadius: "50%",
-                background: joinedRoom ? "#4ade80" : "#fbbf24",
-                border: "2px solid #fff",
-              }}
-            />
-          </div>
-
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                fontWeight: 900,
-                fontSize: 15,
-                letterSpacing: 0.1,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Room {room}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                opacity: 0.94,
-                marginTop: 2,
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-              }}
-            >
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: "50%",
-                  background: joinedRoom ? "#4ade80" : "#fbbf24",
-                }}
-              />
-              {inCall
-                ? callType === "video"
-                  ? "Video call in progress"
-                  : "Audio call in progress"
-                : joinedRoom
-                  ? "Online"
-                  : "Connecting..."}
-            </div>
-          </div>
+            <Phone size={20} color="#fff" />
+          </button>
+          <span style={{ fontSize: 12, color: "#fff", fontWeight: 700 }}>
+            Call
+          </span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {[
-            {
-              title: "Audio call",
-              label: "Call",
-              onClick: onStartAudio,
-              disabled: !joinedRoom,
-              background: "rgba(255,255,255,0.17)",
-              icon: <Phone size={18} color="#fff" />,
-            },
-            {
-              title: "Video call",
-              label: "Video",
-              onClick: onStartVideo,
-              disabled: !joinedRoom,
-              background: "rgba(255,255,255,0.17)",
-              icon: <Video size={18} color="#fff" />,
-            },
-            {
-              title: "Exit room",
-              label: "Exit",
-              onClick: onExitRoom,
-              disabled: false,
-              background: "#ef4444",
-              icon: <PhoneOff size={18} color="#fff" />,
-            },
-          ].map((action) => (
-            <div
-              key={action.title}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 3,
-              }}
-            >
-              <button
-                type="button"
-                className="private-room-header-action"
-                onClick={action.onClick}
-                title={action.title}
-                disabled={action.disabled}
-                style={{
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  background: action.background,
-                  cursor: action.disabled ? "not-allowed" : "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  boxShadow: "0 5px 16px rgba(0,0,0,0.13)",
-                  opacity: action.disabled ? 0.48 : 1,
-                  padding: 0,
-                }}
-              >
-                {action.icon}
-              </button>
-              <span
-                className="private-room-header-label"
-                style={{ fontSize: 10, color: "#fff", fontWeight: 800 }}
-              >
-                {action.label}
-              </span>
-            </div>
-          ))}
-
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
           <button
-            type="button"
-            title="More options"
+            onClick={onStartVideo}
+            title="Video call"
             style={{
+              width: 52,
+              height: 52,
+              borderRadius: 999,
               border: "none",
-              background: "transparent",
-              color: "#fff",
-              fontSize: 24,
-              lineHeight: 1,
+              background: "linear-gradient(180deg, #38bdf8 0%, #2563eb 100%)",
+              cursor: joinedRoom ? "pointer" : "not-allowed",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 8px 20px rgba(0,0,0,0.20)",
+              opacity: joinedRoom ? 1 : 0.5,
+            }}
+            disabled={!joinedRoom}
+          >
+            <Video size={20} color="#fff" />
+          </button>
+          <span style={{ fontSize: 12, color: "#fff", fontWeight: 700 }}>
+            Video
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <button
+            onClick={onExitRoom}
+            title="Exit room"
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 999,
+              border: "none",
+              background: "linear-gradient(180deg, #f87171 0%, #dc2626 100%)",
               cursor: "pointer",
-              padding: "0 2px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 8px 20px rgba(0,0,0,0.20)",
             }}
           >
-            ⋮
+            <PhoneOff size={20} color="#fff" />
           </button>
+          <span style={{ fontSize: 12, color: "#fff", fontWeight: 700 }}>
+            Exit
+          </span>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -958,7 +868,7 @@ const adminCardStyle = {
   boxSizing: "border-box",
 };
 
-function WebRTCCall({ roomId, myName, onExitRoom }) {
+function WebRTCCall({ roomId, displayRoomId, myName, onExitRoom }) {
   const socketRef = useRef(null);
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -1555,7 +1465,7 @@ function WebRTCCall({ roomId, myName, onExitRoom }) {
   return (
     <>
       <CallHeader
-        room={roomId}
+        room={displayRoomId || roomId}
         onStartAudio={() => startCall("audio")}
         onStartVideo={() => startCall("video")}
         inCall={inCall}
@@ -1743,14 +1653,18 @@ useEffect(() => {
     };
   }, []);
 
+  const privateRoomId = createPrivateRoomId(accessKey, room);
+
   useEffect(() => {
-    if (!client || !room) return;
+    if (!client || !room || !accessKey) return;
     let cancelled = false;
 
     const init = async () => {
       try {
-        const ch = client.channel("messaging", room, {
+        const ch = client.channel("messaging", privateRoomId, {
           name: `Room ${room}`,
+          accessKey,
+          roomCode: room,
         });
 
         await ch.watch();
@@ -1769,7 +1683,7 @@ useEffect(() => {
     return () => {
       cancelled = true;
     };
-  }, [client, room]);
+  }, [client, room, accessKey, privateRoomId]);
 
   function updateSupportForm(nextValues) {
     setSupportForm((current) => ({
@@ -2614,7 +2528,8 @@ async function joinRoom() {
     }
 
     setJoining(true);
-    const userId = name.trim().toLowerCase().replace(/\s+/g, "_");
+    const streamUserId = createStreamUserId(accessKey, name);
+    const privateRoomIdForLogin = createPrivateRoomId(accessKey, room);
 
     try {
       const loginRes = await apiFetch(`${API_BASE}/api/login`, {
@@ -2644,10 +2559,10 @@ async function joinRoom() {
     "Content-Type": "application/json",
   },
   body: JSON.stringify({
-    userId: loginData.userId || loginData.user?.id || accessKey,
-    name: name || username || "Guest",
-    username: name || username || "Guest",
-    room,
+    userId: streamUserId,
+    name: name || "Guest",
+    username: name || "Guest",
+    room: privateRoomIdForLogin,
     roomCode: room,
     accessKey,
   }),
@@ -2663,8 +2578,8 @@ if (!tokenRes.ok) {
       const chatClient = StreamChat.getInstance(apiKey);
       await chatClient.connectUser(
   {
-    id: tokenData.userId,
-    name: tokenData.name || name || username || "Guest",
+    id: tokenData.userId || streamUserId,
+    name: tokenData.name || name || "Guest",
   },
   tokenData.token
 );
@@ -2762,123 +2677,207 @@ alert(err.message || "Join failed - see console");
     return <Attachment {...props} Image={CustomImage} />;
   };
 
- const MyMessage = (props) => {
-  const { message } = useMessageContext();
+  const MyMessage = (props) => {
+    const { message, groupStyles = [] } = useMessageContext();
 
-  if (!message || message.type === "system") {
-    return <MessageSimple {...props} />;
-  }
+    if (!message) return null;
 
-  const isMine = message.user?.id === client?.userID;
+    if (message.type === "system") {
+      return (
+        <div
+          style={{
+            margin: "10px auto",
+            width: "fit-content",
+            maxWidth: "90%",
+            padding: "6px 12px",
+            borderRadius: 999,
+            background: "rgba(255,255,255,0.86)",
+            color: "#64748b",
+            fontSize: 12,
+            textAlign: "center",
+          }}
+        >
+          {message.text || "System message"}
+        </div>
+      );
+    }
 
-  const senderName =
-    message.user?.name ||
-    message.user?.id ||
-    (isMine ? name || "You" : "User");
+    const isMine = message.user?.id === client?.userID;
+    const senderName =
+      message.user?.name ||
+      message.user?.id ||
+      (isMine ? name || "You" : "User");
+    const senderInitial = String(senderName).trim().slice(0, 1).toUpperCase() || "U";
+    const senderImage = message.user?.image;
+    const sentAt = message.created_at || message.updated_at;
+    const readCount = message.read_by?.length || 0;
+    const groupStyle = Array.isArray(groupStyles) ? groupStyles[0] : "single";
+    const beginsGroup = groupStyle === "top" || groupStyle === "single";
+    const endsGroup = groupStyle === "bottom" || groupStyle === "single";
+    const hasAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
 
-  const sentAt = message.created_at || message.updated_at;
-  const readCount = message.read_by?.length || 0;
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: isMine ? "flex-end" : "flex-start",
-        padding: "5px 14px",
-        width: "100%",
-        boxSizing: "border-box",
-      }}
-    >
+    return (
       <div
         style={{
           display: "flex",
-          flexDirection: isMine ? "row-reverse" : "row",
-          alignItems: "flex-end",
-          gap: 8,
-          maxWidth: isMobile ? "88%" : "70%",
+          justifyContent: isMine ? "flex-end" : "flex-start",
+          width: "100%",
+          padding: beginsGroup ? "7px 12px 2px" : "2px 12px",
+          boxSizing: "border-box",
         }}
       >
         <div
           style={{
-            width: 34,
-            height: 34,
-            borderRadius: "50%",
-            flexShrink: 0,
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: isMine ? "#059669" : "#2563eb",
-            color: "#ffffff",
-            fontSize: 14,
-            fontWeight: 900,
+            flexDirection: isMine ? "row-reverse" : "row",
+            alignItems: "flex-end",
+            gap: 8,
+            width: "fit-content",
+            maxWidth: isMobile ? "92%" : "72%",
           }}
-          title={senderName}
         >
-          {String(senderName).slice(0, 1).toUpperCase()}
-        </div>
-
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              marginBottom: 4,
-              paddingLeft: isMine ? 0 : 6,
-              paddingRight: isMine ? 6 : 0,
-              textAlign: isMine ? "right" : "left",
-              fontSize: 12,
-              lineHeight: 1.2,
-              fontWeight: 900,
-              color: isMine ? "#047857" : "#1d4ed8",
-            }}
-          >
-            {isMine ? `You (${senderName})` : senderName}
+          <div style={{ width: 34, flexShrink: 0 }}>
+            {!isMine && endsGroup && (
+              senderImage ? (
+                <img
+                  src={senderImage}
+                  alt={senderName}
+                  title={senderName}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    display: "block",
+                    boxShadow: "0 4px 12px rgba(37,99,235,0.20)",
+                  }}
+                />
+              ) : (
+                <div
+                  title={senderName}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%)",
+                    color: "#fff",
+                    fontSize: 14,
+                    fontWeight: 900,
+                    boxShadow: "0 4px 12px rgba(37,99,235,0.25)",
+                  }}
+                >
+                  {senderInitial}
+                </div>
+              )
+            )}
           </div>
 
-          <div
-            style={{
-              minWidth: 70,
-              position: "relative",
-              padding: "8px 12px 20px",
-              borderRadius: isMine
-                ? "18px 18px 5px 18px"
-                : "18px 18px 18px 5px",
-              background: isMine ? "#dcfce7" : "#ffffff",
-              border: "1px solid rgba(15,23,42,0.07)",
-              boxShadow: "0 3px 12px rgba(15,23,42,0.10)",
-            }}
-          >
-            <MessageSimple {...props} />
+          <div style={{ minWidth: 0, maxWidth: "100%" }}>
+            {!isMine && beginsGroup && (
+              <div
+                style={{
+                  margin: "0 0 4px 9px",
+                  color: "#d81b60",
+                  fontSize: 12,
+                  lineHeight: 1.2,
+                  fontWeight: 900,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {senderName}
+              </div>
+            )}
 
             <div
               style={{
-                position: "absolute",
-                right: 9,
-                bottom: 4,
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                color: "#64748b",
-                fontSize: 10,
+                minWidth: 70,
+                maxWidth: "100%",
+                position: "relative",
+                padding: hasAttachments ? "7px 7px 20px" : "9px 12px 20px",
+                borderRadius: isMine
+                  ? beginsGroup
+                    ? "17px 17px 5px 17px"
+                    : "17px 5px 5px 17px"
+                  : beginsGroup
+                    ? "17px 17px 17px 5px"
+                    : "5px 17px 17px 5px",
+                background: isMine ? "#d9fdd3" : "#ffffff",
+                border: "1px solid rgba(15,23,42,0.07)",
+                boxShadow: "0 2px 9px rgba(15,23,42,0.10)",
+                color: "#111827",
+                overflowWrap: "anywhere",
               }}
             >
-              <span>{sentAt ? formatTime(sentAt) : ""}</span>
-
-              {isMine && (
-                <span
+              {message.quoted_message && (
+                <div
                   style={{
-                    color: readCount > 1 ? "#0ea5e9" : "#64748b",
-                    fontWeight: 900,
+                    marginBottom: 7,
+                    padding: "7px 9px",
+                    borderLeft: "3px solid #10b981",
+                    borderRadius: 8,
+                    background: isMine ? "rgba(255,255,255,0.45)" : "#f1f5f9",
+                    color: "#475569",
+                    fontSize: 12,
                   }}
                 >
-                  {readCount > 1 ? "✓✓" : "✓"}
-                </span>
+                  <div style={{ fontWeight: 900, marginBottom: 2 }}>
+                    {message.quoted_message.user?.name || "Message"}
+                  </div>
+                  <div>
+                    {message.quoted_message.text ||
+                      (message.quoted_message.attachments?.length ? "Attachment" : "Message")}
+                  </div>
+                </div>
               )}
+
+              {message.text && (
+                <div style={{ fontSize: 15, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
+                  {message.text}
+                </div>
+              )}
+
+              {hasAttachments && (
+                <div style={{ marginTop: message.text ? 7 : 0 }}>
+                  <Attachment attachments={message.attachments} />
+                </div>
+              )}
+
+              <div
+                style={{
+                  position: "absolute",
+                  right: 8,
+                  bottom: 3,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 10,
+                  color: "#667781",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span>{sentAt ? formatTime(sentAt) : ""}</span>
+                {isMine && (
+                  <span
+                    style={{
+                      color: readCount > 1 ? "#0ea5e9" : "#667781",
+                      fontWeight: 900,
+                    }}
+                  >
+                    {readCount > 1 ? "✓✓" : "✓"}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
 
   const isAdminPage = window.location.pathname === "/admin";
@@ -4398,344 +4397,208 @@ item.status !== "archived" ? (
   }
 
   if (!channel) {
-    return (
-      <div
-        style={{
-          minHeight: "100dvh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#f1f5f4",
-          color: "#0f766e",
-          fontWeight: 900,
-        }}
-      >
-        Loading chat...
-      </div>
-    );
+    return <div style={{ padding: 20 }}>Loading chat...</div>;
   }
 
   return (
-    <>
-      <style>{`
-        html,
-        body,
-        #root {
-          width: 100%;
-          min-height: 100%;
-          margin: 0;
-        }
-
-        body {
-          overflow: hidden;
-          background: #edf3f1;
-        }
-
-        .private-room-chat-page {
-          height: 100dvh;
-          padding: 18px;
-          box-sizing: border-box;
-        }
-
-        .private-room-chat-shell {
-          width: min(100%, 780px);
-          height: calc(100dvh - 36px);
-          border-radius: 22px;
-          box-shadow: 0 22px 70px rgba(15, 23, 42, 0.16);
-          border: 1px solid rgba(15, 23, 42, 0.08);
-        }
-
-        .private-room-message-area {
-          padding: 16px 12px 92px;
-        }
-
-        .private-room-support-button {
-          right: 24px;
-          bottom: 86px;
-        }
-
-        .private-room-message-composer {
-          padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
-        }
-
-        .private-room-chat-shell .str-chat,
-        .private-room-chat-shell .str-chat__channel,
-        .private-room-chat-shell .str-chat__container,
-        .private-room-chat-shell .str-chat__main-panel,
-        .private-room-chat-shell .str-chat__main-panel-inner,
-        .private-room-chat-shell .str-chat__window {
-          height: 100%;
-          min-height: 0;
-          width: 100%;
-        }
-
-        .private-room-chat-shell .str-chat__list {
-          background: transparent;
-          padding: 0;
-        }
-
-        .private-room-chat-shell .str-chat__message-list-scroll {
-          padding-bottom: 12px;
-        }
-
-        .private-room-chat-shell .str-chat__message-input {
-          padding: 0;
-          background: transparent;
-          border: none;
-        }
-
-        .private-room-chat-shell .str-chat__message-input-inner {
-          background: #fff;
-          border: 1px solid #e2e8f0;
-          border-radius: 999px;
-          min-height: 50px;
-          box-shadow: 0 7px 24px rgba(15, 23, 42, 0.09);
-        }
-
-        .private-room-chat-shell .str-chat__textarea textarea {
-          min-height: 24px;
-          max-height: 100px;
-          padding-top: 12px;
-          padding-bottom: 10px;
-          font-size: 14px;
-        }
-
-        .private-room-chat-shell .str-chat__send-button {
-          width: 42px;
-          height: 42px;
-          border-radius: 50%;
-          background: linear-gradient(180deg, #16a36d 0%, #059669 100%);
-          color: #fff;
-          margin-right: 4px;
-        }
-
-        .private-room-chat-shell .str-chat__message-simple {
-          border: none;
-          background: transparent;
-        }
-
-        .private-room-chat-shell .str-chat__message-simple-text-inner {
-          background: transparent;
-          border: none;
-          padding: 0;
-        }
-
-        @media (max-width: 767px) {
-          .private-room-chat-page {
-            padding: 0;
-          }
-
-          .private-room-chat-shell {
-            width: 100%;
-            height: 100dvh;
-            border-radius: 0;
-            border: none;
-            box-shadow: none;
-          }
-
-          .private-room-message-area {
-            padding: 10px 4px 88px;
-          }
-
-          .private-room-support-button {
-            right: 14px;
-            bottom: 82px;
-          }
-
-          .private-room-message-composer {
-            padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
-          }
-        }
-      `}</style>
-
+    <div
+      style={{
+        minHeight: "100dvh",
+        background: "#dfe5e1",
+        display: "flex",
+        justifyContent: "center",
+        padding: 0,
+      }}
+    >
       <div
-        className="private-room-chat-page"
         style={{
           width: "100%",
-          background:
-            "radial-gradient(circle at 15% 10%, rgba(45,212,191,0.10), transparent 28%), linear-gradient(180deg, #eef4f2 0%, #e7eeeb 100%)",
+          maxWidth: 1100,
+          height: "100dvh",
+          background: "#efeae2",
           display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
+          flexDirection: "column",
           overflow: "hidden",
+          position: "relative",
         }}
       >
-        <div
-          className="private-room-chat-shell"
-          style={{
-            background: "#f8faf9",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-            position: "relative",
-          }}
-        >
-          <Chat client={client} theme="messaging light">
-            <Channel
-  channel={channel}
-  Attachment={CustomAttachment}
-  Message={MyMessage}
->
-              <Window>
-                <div
-                  style={{
-                    height: "100%",
-                    minHeight: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    overflow: "hidden",
-                    background: "#f8faf9",
-                  }}
-                >
-                  <WebRTCCall
-                    roomId={room}
-                    myName={name}
-                    onExitRoom={exitRoom}
-                  />
-
-                  <div
-                    className="private-room-message-area"
-                    style={{
-                      flex: 1,
-                      minHeight: 0,
-                      overflowY: "auto",
-                      WebkitOverflowScrolling: "touch",
-                      backgroundColor: "#f8faf9",
-                      backgroundImage: `
-                        radial-gradient(circle at 20% 18%, rgba(16,185,129,0.035) 0 2px, transparent 2px),
-                        radial-gradient(circle at 72% 65%, rgba(14,165,233,0.035) 0 2px, transparent 2px)
-                      `,
-                      backgroundSize: "48px 48px, 58px 58px",
-                    }}
-                  >
-                    <MessageList />
-                  </div>
-
-                  <div
-                    style={{
-                      flexShrink: 0,
-                      background: "transparent",
-                      padding: "0 14px 2px",
-                    }}
-                  >
-                    <TypingIndicator />
-                  </div>
-
-                  <div
-                    className="private-room-message-composer"
-                    style={{
-                      flexShrink: 0,
-                      background: "rgba(248,250,249,0.97)",
-                      backdropFilter: "blur(12px)",
-                      borderTop: "1px solid rgba(15,23,42,0.06)",
-                      position: "absolute",
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      zIndex: 90,
-                    }}
-                  >
-                    <MessageInput
-                      focus
-                      grow
-                      audioRecordingEnabled
-                      asyncMessagesMultiSendEnabled
-                      audioRecordingConfig={audioRecordingConfig}
-                      additionalTextareaProps={{
-                        placeholder: "Type a message",
-                      }}
-                    />
-                  </div>
-                </div>
-              </Window>
-
-              <Thread />
-            </Channel>
-          </Chat>
-
-          <button
-            className="private-room-support-button"
-            type="button"
-            onClick={openRoomSupport}
-            style={{
-              position: "absolute",
-              zIndex: 120,
-              border: "none",
-              borderRadius: 999,
-              padding: "11px 18px",
-              background: "linear-gradient(180deg, #16a36d 0%, #059669 100%)",
-              color: "#fff",
-              fontWeight: 900,
-              cursor: "pointer",
-              boxShadow: "0 10px 28px rgba(5,150,105,0.28)",
-            }}
-          >
-            Support
-          </button>
-
-          <SupportModal
-            open={supportOpen}
-            mode={supportMode}
-            form={supportForm}
-            onChange={updateSupportForm}
-            onClose={() => setSupportOpen(false)}
-            onSubmit={submitSupport}
-            sending={supportSending}
-            tickets={supportTickets}
-            loading={supportLoading}
-            replyText={supportReplyText}
-            setReplyText={setSupportReplyText}
-            onReply={replyToSupportTicket}
-          />
-
-          {previewImage && (
-            <div
-              style={{
-                position: "fixed",
-                inset: 0,
-                background: "rgba(0,0,0,0.92)",
-                zIndex: 2000,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 20,
-                boxSizing: "border-box",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setPreviewImage(null)}
+        <Chat client={client} theme="messaging light">
+          <Channel channel={channel} Attachment={CustomAttachment} Message={MyMessage}>
+            <Window>
+              <div
                 style={{
-                  position: "absolute",
-                  top: 18,
-                  left: 18,
-                  border: "none",
-                  borderRadius: 999,
-                  padding: "10px 16px",
-                  background: "rgba(255,255,255,0.16)",
-                  color: "#fff",
-                  fontWeight: 700,
-                  cursor: "pointer",
+                  height: "100dvh",
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                  background: "#efeae2",
                 }}
               >
-                ← Back to chat
-              </button>
+                <WebRTCCall
+                  roomId={privateRoomId}
+                  displayRoomId={room}
+                  myName={name}
+                  onExitRoom={exitRoom}
+                />
 
-              <img
-                src={previewImage}
-                alt="preview"
-                style={{
-                  maxWidth: "100%",
-                  maxHeight: "100%",
-                  objectFit: "contain",
-                  borderRadius: 12,
-                }}
-              />
-            </div>
-          )}
-        </div>
+                <div style={{ height: 62, flexShrink: 0 }} />
+
+                <div
+                  style={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: "auto",
+                    WebkitOverflowScrolling: "touch",
+                    padding: "10px 0 8px",
+                    backgroundColor: "#ece5dd",
+                    backgroundImage: `
+                      radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px),
+                      radial-gradient(rgba(0,0,0,0.02) 1px, transparent 1px)
+                    `,
+                    backgroundSize: "18px 18px, 32px 32px",
+                    backgroundPosition: "0 0, 8px 8px",
+                  }}
+                >
+                  <MessageList />
+                </div>
+
+                <div
+                  style={{
+                    flexShrink: 0,
+                    background: "transparent",
+                    padding: "0 14px 4px",
+                  }}
+                >
+                  <TypingIndicator />
+                </div>
+
+                <div
+                  style={{
+                    flexShrink: 0,
+                    padding: "6px 10px calc(6px + env(safe-area-inset-bottom))",
+                    background: "rgba(240,242,245,0.94)",
+                    backdropFilter: "blur(10px)",
+                    borderTop: "1px solid rgba(0,0,0,0.05)",
+                    position: "sticky",
+                    bottom: 0,
+                    zIndex: 90,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      background: "#fff",
+                      borderRadius: 999,
+                      padding: "10px 12px",
+                      boxShadow: "0 6px 20px rgba(0,0,0,0.08)",
+                    }}
+                  >
+                    <Paperclip size={18} color="#667781" />
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <MessageInput
+                        focus
+                        grow
+                        audioRecordingEnabled
+                        asyncMessagesMultiSendEnabled
+                        audioRecordingConfig={audioRecordingConfig}
+                        additionalTextareaProps={{
+                          placeholder: "Type a message",
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Window>
+
+            <Thread />
+          </Channel>
+        </Chat>
+
+        <button
+          onClick={openRoomSupport}
+          style={{
+            position: "absolute",
+            right: 18,
+            bottom: 86,
+            zIndex: 120,
+            border: "none",
+            borderRadius: 999,
+            padding: "12px 16px",
+            background: "linear-gradient(180deg, #34d399 0%, #059669 100%)",
+            color: "#fff",
+            fontWeight: 900,
+            cursor: "pointer",
+            boxShadow: "0 10px 28px rgba(0,0,0,0.20)",
+          }}
+        >
+          Support
+        </button>
+
+        <SupportModal
+  open={supportOpen}
+  mode={supportMode}
+  form={supportForm}
+  onChange={updateSupportForm}
+  onClose={() => setSupportOpen(false)}
+  onSubmit={submitSupport}
+  sending={supportSending}
+  tickets={supportTickets}
+  loading={supportLoading}
+  replyText={supportReplyText}
+  setReplyText={setSupportReplyText}
+  onReply={replyToSupportTicket}
+/>
+
+        {previewImage && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.92)",
+              zIndex: 2000,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 20,
+              boxSizing: "border-box",
+            }}
+          >
+            <button
+              onClick={() => setPreviewImage(null)}
+              style={{
+                position: "absolute",
+                top: 18,
+                left: 18,
+                border: "none",
+                borderRadius: 999,
+                padding: "10px 16px",
+                background: "rgba(255,255,255,0.16)",
+                color: "#fff",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              ← Back to chat
+            </button>
+
+            <img
+              src={previewImage}
+              alt="preview"
+              style={{
+                maxWidth: "100%",
+                maxHeight: "100%",
+                objectFit: "contain",
+                borderRadius: 12,
+              }}
+            />
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }
