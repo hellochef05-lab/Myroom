@@ -157,39 +157,56 @@ function CallHeader({
   onExitRoom,
 }) {
   const compact = typeof window !== "undefined" && window.innerWidth <= 768;
+  const veryCompact = typeof window !== "undefined" && window.innerWidth <= 430;
   const roomInitial = String(room || "R").trim().slice(0, 1).toUpperCase();
 
-  const actionStyle = (background) => ({
-    width: compact ? 42 : 52,
-    height: compact ? 42 : 52,
-    borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.22)",
-    background,
-    cursor: joinedRoom ? "pointer" : "not-allowed",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: "0 8px 22px rgba(0,0,0,0.16)",
-  });
+  const actions = [
+    {
+      label: "Call",
+      title: "Start audio call",
+      onClick: onStartAudio,
+      disabled: !joinedRoom || inCall,
+      background: "rgba(255,255,255,0.18)",
+      icon: <Phone size={compact ? 17 : 21} color="#fff" />,
+    },
+    {
+      label: "Video",
+      title: "Start video call",
+      onClick: onStartVideo,
+      disabled: !joinedRoom || inCall,
+      background: "rgba(255,255,255,0.22)",
+      icon: <Video size={compact ? 17 : 21} color="#fff" />,
+    },
+    {
+      label: "Exit",
+      title: "Exit room",
+      onClick: onExitRoom,
+      disabled: false,
+      background: "linear-gradient(180deg, #ff5a5f 0%, #e9272f 100%)",
+      icon: <PhoneOff size={compact ? 17 : 21} color="#fff" />,
+    },
+  ];
 
   return (
     <header
       style={{
-        minHeight: compact ? 72 : 92,
+        minHeight: compact ? 76 : 92,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        gap: compact ? 8 : 16,
-        padding: compact ? "10px 12px" : "12px 20px",
+        gap: compact ? 6 : 16,
+        padding: compact ? "8px 8px" : "12px 20px",
         background:
-          "linear-gradient(110deg, #0b8b72 0%, #0aa286 56%, #079bb7 100%)",
+          "linear-gradient(110deg, #075e54 0%, #087f70 56%, #0797a8 100%)",
         color: "#fff",
         borderBottom: "1px solid rgba(255,255,255,0.20)",
         width: "100%",
         flexShrink: 0,
-        zIndex: 110,
+        zIndex: 220,
+        position: "relative",
         boxSizing: "border-box",
         boxShadow: "0 8px 24px rgba(15,118,110,0.18)",
+        overflow: "visible",
       }}
     >
       <div
@@ -197,65 +214,75 @@ function CallHeader({
           display: "flex",
           alignItems: "center",
           minWidth: 0,
-          gap: compact ? 9 : 13,
+          flex: "1 1 auto",
+          gap: compact ? 7 : 13,
+          overflow: "hidden",
         }}
       >
         <button
           type="button"
           onClick={onExitRoom}
           aria-label="Back to login"
-          title="Back"
+          title="Back to login"
           style={{
+            width: compact ? 34 : 42,
+            height: compact ? 40 : 46,
             border: "none",
-            background: "transparent",
+            borderRadius: 999,
+            background: "rgba(255,255,255,0.10)",
             color: "#fff",
             fontSize: compact ? 27 : 32,
             lineHeight: 1,
             cursor: "pointer",
             padding: 0,
             flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
           ‹
         </button>
 
-        <div
-          style={{
-            position: "relative",
-            width: compact ? 46 : 58,
-            height: compact ? 46 : 58,
-            borderRadius: "50%",
-            background: "rgba(255,255,255,0.96)",
-            color: "#0f766e",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: compact ? 20 : 25,
-            fontWeight: 950,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
-            flexShrink: 0,
-          }}
-        >
-          {roomInitial}
-          <span
+        {!veryCompact && (
+          <div
             style={{
-              position: "absolute",
-              right: -1,
-              bottom: 1,
-              width: compact ? 10 : 12,
-              height: compact ? 10 : 12,
+              position: "relative",
+              width: compact ? 42 : 58,
+              height: compact ? 42 : 58,
               borderRadius: "50%",
-              background: joinedRoom ? "#4ade80" : "#fbbf24",
-              border: "2px solid #fff",
+              background: "rgba(255,255,255,0.96)",
+              color: "#0f766e",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: compact ? 18 : 25,
+              fontWeight: 950,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
+              flexShrink: 0,
             }}
-          />
-        </div>
+          >
+            {roomInitial}
+            <span
+              style={{
+                position: "absolute",
+                right: -1,
+                bottom: 1,
+                width: compact ? 9 : 12,
+                height: compact ? 9 : 12,
+                borderRadius: "50%",
+                background: joinedRoom ? "#4ade80" : "#fbbf24",
+                border: "2px solid #fff",
+              }}
+            />
+          </div>
+        )}
 
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, overflow: "hidden" }}>
           <div
             style={{
               fontWeight: 950,
-              fontSize: compact ? 17 : 22,
+              fontSize: compact ? 15 : 22,
               lineHeight: 1.1,
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -268,27 +295,36 @@ function CallHeader({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 6,
-              fontSize: compact ? 11 : 13,
-              opacity: 0.95,
-              marginTop: 5,
+              gap: 5,
+              fontSize: compact ? 10 : 13,
+              opacity: 0.96,
+              marginTop: 4,
+              whiteSpace: "nowrap",
             }}
           >
             <span
               style={{
-                width: 8,
-                height: 8,
+                width: 7,
+                height: 7,
                 borderRadius: "50%",
                 background: joinedRoom ? "#4ade80" : "#fbbf24",
+                flexShrink: 0,
               }}
             />
-            {inCall
-              ? callType === "video"
-                ? "Video call in progress"
-                : "Audio call in progress"
-              : joinedRoom
-                ? "Online"
-                : "Connecting..."}
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {inCall
+                ? callType === "video"
+                  ? "Video call active"
+                  : "Audio call active"
+                : joinedRoom
+                  ? "Online"
+                  : "Connecting..."}
+            </span>
           </div>
         </div>
       </div>
@@ -296,75 +332,65 @@ function CallHeader({
       <div
         style={{
           display: "flex",
-          alignItems: "flex-start",
-          gap: compact ? 7 : 12,
-          flexShrink: 0,
+          alignItems: "center",
+          justifyContent: "flex-end",
+          gap: compact ? 4 : 12,
+          flex: "0 0 auto",
+          minWidth: 0,
         }}
       >
-        {[
-          {
-            label: "Call",
-            title: "Audio call",
-            onClick: onStartAudio,
-            background: "rgba(255,255,255,0.16)",
-            icon: <Phone size={compact ? 18 : 21} color="#fff" />,
-          },
-          {
-            label: "Video",
-            title: "Video call",
-            onClick: onStartVideo,
-            background: "rgba(255,255,255,0.20)",
-            icon: <Video size={compact ? 18 : 21} color="#fff" />,
-          },
-          {
-            label: "Exit",
-            title: "Exit room",
-            onClick: onExitRoom,
-            background: "linear-gradient(180deg, #ff5a5f 0%, #ef3138 100%)",
-            icon: <PhoneOff size={compact ? 18 : 21} color="#fff" />,
-          },
-        ].map((action) => (
+        {actions.map((action) => (
           <div
             key={action.label}
             style={{
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: 4,
+              justifyContent: "center",
+              gap: 2,
+              flexShrink: 0,
             }}
           >
             <button
               type="button"
               onClick={action.onClick}
               title={action.title}
-              disabled={action.label !== "Exit" && !joinedRoom}
+              aria-label={action.title}
+              disabled={action.disabled}
               style={{
-                ...actionStyle(action.background),
-                opacity: action.label === "Exit" || joinedRoom ? 1 : 0.55,
+                width: compact ? 38 : 52,
+                height: compact ? 38 : 52,
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.28)",
+                background: action.background,
+                cursor: action.disabled ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow:
+                  action.label === "Exit"
+                    ? "0 7px 18px rgba(185,28,28,0.34)"
+                    : "0 7px 18px rgba(0,0,0,0.15)",
+                opacity: action.disabled ? 0.48 : 1,
+                padding: 0,
               }}
             >
               {action.icon}
             </button>
-            {!compact && (
-              <span style={{ fontSize: 12, color: "#fff", fontWeight: 900 }}>
-                {action.label}
-              </span>
-            )}
+            <span
+              style={{
+                display: "block",
+                fontSize: compact ? 9 : 12,
+                lineHeight: 1,
+                color: "#fff",
+                fontWeight: 900,
+                textShadow: "0 1px 2px rgba(0,0,0,0.20)",
+              }}
+            >
+              {action.label}
+            </span>
           </div>
         ))}
-
-        <div
-          aria-hidden="true"
-          style={{
-            color: "#fff",
-            fontSize: compact ? 23 : 28,
-            lineHeight: 1,
-            padding: compact ? "8px 0 0 1px" : "11px 0 0 2px",
-            opacity: 0.95,
-          }}
-        >
-          ⋮
-        </div>
       </div>
     </header>
   );
@@ -2833,7 +2859,7 @@ alert(err.message || "Join failed - see console");
           display: "flex",
           justifyContent: isMine ? "flex-end" : "flex-start",
           width: "100%",
-          padding: beginsGroup ? "10px 14px 1px" : "1px 14px",
+          padding: beginsGroup ? "10px 10px 1px" : "1px 10px",
           boxSizing: "border-box",
         }}
       >
@@ -2845,7 +2871,7 @@ alert(err.message || "Join failed - see console");
             justifyContent: isMine ? "flex-end" : "flex-start",
             gap: 8,
             width: "fit-content",
-            maxWidth: isMobile ? "88%" : "72%",
+            maxWidth: isMobile ? "92%" : "76%",
           }}
         >
           {!isMine && (
