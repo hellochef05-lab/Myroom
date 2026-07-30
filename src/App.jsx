@@ -2753,7 +2753,7 @@ alert(err.message || "Join failed - see console");
     return <Attachment {...props} Image={CustomImage} />;
   };
 
-  const MyMessage = (props) => {
+  const MyMessage = () => {
     const { message, groupStyles = [] } = useMessageContext();
 
     if (!message) return null;
@@ -2767,10 +2767,11 @@ alert(err.message || "Join failed - see console");
             maxWidth: "90%",
             padding: "6px 12px",
             borderRadius: 999,
-            background: "rgba(255,255,255,0.86)",
-            color: "#64748b",
+            background: "rgba(255,255,255,0.88)",
+            color: "#667781",
             fontSize: 12,
             textAlign: "center",
+            boxShadow: "0 1px 2px rgba(15,23,42,0.08)",
           }}
         >
           {message.text || "System message"}
@@ -2783,22 +2784,47 @@ alert(err.message || "Join failed - see console");
       message.user?.name ||
       message.user?.id ||
       (isMine ? name || "You" : "User");
-    const senderInitial = String(senderName).trim().slice(0, 1).toUpperCase() || "U";
+    const senderInitial =
+      String(senderName).trim().slice(0, 1).toUpperCase() || "U";
     const senderImage = message.user?.image;
     const sentAt = message.created_at || message.updated_at;
-    const readCount = message.read_by?.length || 0;
-    const groupStyle = Array.isArray(groupStyles) ? groupStyles[0] : "single";
+    const readCount = Array.isArray(message.read_by)
+      ? message.read_by.filter((reader) => reader?.id !== client?.userID).length
+      : 0;
+    const groupStyle = Array.isArray(groupStyles)
+      ? groupStyles[0] || "single"
+      : "single";
     const beginsGroup = groupStyle === "top" || groupStyle === "single";
     const endsGroup = groupStyle === "bottom" || groupStyle === "single";
-    const hasAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
+    const hasAttachments =
+      Array.isArray(message.attachments) && message.attachments.length > 0;
+
+    const bubbleRadius = isMine
+      ? beginsGroup && endsGroup
+        ? "18px 18px 5px 18px"
+        : beginsGroup
+          ? "18px 18px 5px 18px"
+          : endsGroup
+            ? "18px 5px 18px 18px"
+            : "18px 5px 5px 18px"
+      : beginsGroup && endsGroup
+        ? "18px 18px 18px 5px"
+        : beginsGroup
+          ? "18px 18px 18px 5px"
+          : endsGroup
+            ? "5px 18px 18px 18px"
+            : "5px 18px 18px 5px";
 
     return (
       <div
+        className={`private-message-row ${isMine ? "mine" : "theirs"} ${
+          beginsGroup ? "group-start" : "group-middle"
+        } ${endsGroup ? "group-end" : ""}`}
         style={{
           display: "flex",
           justifyContent: isMine ? "flex-end" : "flex-start",
           width: "100%",
-          padding: beginsGroup ? "7px 12px 2px" : "2px 12px",
+          padding: beginsGroup ? "9px 12px 1px" : "1px 12px",
           boxSizing: "border-box",
         }}
       >
@@ -2807,56 +2833,68 @@ alert(err.message || "Join failed - see console");
             display: "flex",
             flexDirection: isMine ? "row-reverse" : "row",
             alignItems: "flex-end",
-            gap: 8,
+            gap: isMine ? 0 : 8,
             width: "fit-content",
-            maxWidth: isMobile ? "90%" : "68%",
+            maxWidth: isMobile ? "92%" : "74%",
           }}
         >
-          <div style={{ width: 34, flexShrink: 0 }}>
-            {!isMine && endsGroup && (
-              senderImage ? (
-                <img
-                  src={senderImage}
-                  alt={senderName}
-                  title={senderName}
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: "50%",
-                    objectFit: "cover",
-                    display: "block",
-                    boxShadow: "0 4px 12px rgba(37,99,235,0.20)",
-                  }}
-                />
-              ) : (
-                <div
-                  title={senderName}
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: "50%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: "linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%)",
-                    color: "#fff",
-                    fontSize: 14,
-                    fontWeight: 900,
-                    boxShadow: "0 4px 12px rgba(37,99,235,0.25)",
-                  }}
-                >
-                  {senderInitial}
-                </div>
-              )
-            )}
-          </div>
+          {!isMine && (
+            <div
+              style={{
+                width: 36,
+                minWidth: 36,
+                height: 36,
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {endsGroup &&
+                (senderImage ? (
+                  <img
+                    src={senderImage}
+                    alt={senderName}
+                    title={senderName}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                      display: "block",
+                      boxShadow: "0 3px 10px rgba(15,118,110,0.22)",
+                    }}
+                  />
+                ) : (
+                  <div
+                    title={senderName}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background:
+                        "linear-gradient(180deg, #16a085 0%, #087f6a 100%)",
+                      color: "#fff",
+                      fontSize: 15,
+                      fontWeight: 900,
+                      boxShadow: "0 3px 10px rgba(15,118,110,0.25)",
+                    }}
+                  >
+                    {senderInitial}
+                  </div>
+                ))}
+            </div>
+          )}
 
           <div style={{ minWidth: 0, maxWidth: "100%" }}>
             {!isMine && beginsGroup && (
               <div
                 style={{
-                  margin: "0 0 4px 9px",
-                  color: "#d81b60",
+                  margin: "0 0 5px 10px",
+                  color: "#0b806d",
                   fontSize: 13,
                   lineHeight: 1.2,
                   fontWeight: 900,
@@ -2871,22 +2909,26 @@ alert(err.message || "Join failed - see console");
 
             <div
               style={{
-                minWidth: 70,
+                display: "inline-flex",
+                flexDirection: "column",
+                width: "fit-content",
+                minWidth: endsGroup ? 82 : 38,
                 maxWidth: "100%",
                 position: "relative",
-                padding: hasAttachments ? "7px 7px 20px" : "9px 12px 20px",
-                borderRadius: isMine
-                  ? beginsGroup
-                    ? "17px 17px 5px 17px"
-                    : "17px 5px 5px 17px"
-                  : beginsGroup
-                    ? "17px 17px 17px 5px"
-                    : "5px 17px 17px 5px",
+                padding: hasAttachments
+                  ? endsGroup
+                    ? "7px 7px 21px"
+                    : "7px"
+                  : endsGroup
+                    ? "9px 12px 21px"
+                    : "9px 12px",
+                borderRadius: bubbleRadius,
                 background: isMine ? "#d9fdd3" : "#ffffff",
-                border: "1px solid rgba(15,23,42,0.07)",
-                boxShadow: "0 2px 9px rgba(15,23,42,0.10)",
+                border: "1px solid rgba(15,23,42,0.055)",
+                boxShadow: "0 1px 3px rgba(15,23,42,0.13)",
                 color: "#111827",
                 overflowWrap: "anywhere",
+                boxSizing: "border-box",
               }}
             >
               {message.quoted_message && (
@@ -2896,7 +2938,9 @@ alert(err.message || "Join failed - see console");
                     padding: "7px 9px",
                     borderLeft: "3px solid #10b981",
                     borderRadius: 8,
-                    background: isMine ? "rgba(255,255,255,0.45)" : "#f1f5f9",
+                    background: isMine
+                      ? "rgba(255,255,255,0.48)"
+                      : "#f1f5f9",
                     color: "#475569",
                     fontSize: 12,
                   }}
@@ -2906,13 +2950,21 @@ alert(err.message || "Join failed - see console");
                   </div>
                   <div>
                     {message.quoted_message.text ||
-                      (message.quoted_message.attachments?.length ? "Attachment" : "Message")}
+                      (message.quoted_message.attachments?.length
+                        ? "Attachment"
+                        : "Message")}
                   </div>
                 </div>
               )}
 
               {message.text && (
-                <div style={{ fontSize: 15, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
+                <div
+                  style={{
+                    fontSize: 15,
+                    lineHeight: 1.4,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
                   {message.text}
                 </div>
               )}
@@ -2923,38 +2975,44 @@ alert(err.message || "Join failed - see console");
                 </div>
               )}
 
-              <div
-                style={{
-                  position: "absolute",
-                  right: 8,
-                  bottom: 3,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  fontSize: 10,
-                  color: "#667781",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <span>{sentAt ? formatTime(sentAt) : ""}</span>
-                {isMine && (
-                  <span
-                    style={{
-                      color: readCount > 1 ? "#0ea5e9" : "#667781",
-                      fontWeight: 900,
-                    }}
-                  >
-                    {readCount > 1 ? "✓✓" : "✓"}
-                  </span>
-                )}
-              </div>
+              {endsGroup && (
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    bottom: 3,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 10.5,
+                    lineHeight: 1,
+                    color: "#667781",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <span>{sentAt ? formatTime(sentAt) : ""}</span>
+                  {isMine && (
+                    <span
+                      aria-label={readCount > 0 ? "Read" : "Sent"}
+                      title={readCount > 0 ? "Read" : "Sent"}
+                      style={{
+                        color: readCount > 0 ? "#0ea5e9" : "#667781",
+                        fontWeight: 950,
+                        letterSpacing: -2,
+                        paddingRight: 1,
+                      }}
+                    >
+                      {readCount > 0 ? "✓✓" : "✓"}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
     );
   };
-
 
   const isAdminPage = window.location.pathname === "/admin";
 
