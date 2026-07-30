@@ -2761,59 +2761,119 @@ alert(err.message || "Join failed - see console");
     return <Attachment {...props} Image={CustomImage} />;
   };
 
-  const MyMessage = (props) => {
-    const message = props?.message;
+ const MyMessage = (props) => {
+  const message = props?.message;
 
-    if (!message || !message.type || message.type === "system") {
-      return <MessageSimple {...props} />;
-    }
+  if (!message || !message.type || message.type === "system") {
+    return <MessageSimple {...props} />;
+  }
 
-    const isMine = message?.user?.id === client?.userID;
-    const readCount = message?.read_by?.length || 0;
-    const sentAt = message?.created_at || message?.updated_at;
+  const isMine = message?.user?.id === client?.userID;
+  const senderName =
+    message?.user?.name ||
+    message?.user?.id ||
+    (isMine ? "You" : "User");
 
-    return (
+  const readCount = message?.read_by?.length || 0;
+  const sentAt = message?.created_at || message?.updated_at;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: isMine ? "flex-end" : "flex-start",
+        padding: "4px 14px",
+      }}
+    >
       <div
         style={{
           display: "flex",
-          justifyContent: isMine ? "flex-end" : "flex-start",
-          padding: "3px 12px",
+          alignItems: "flex-end",
+          gap: 8,
+          maxWidth: isMobile ? "88%" : "72%",
+          flexDirection: isMine ? "row-reverse" : "row",
         }}
       >
         <div
           style={{
-            maxWidth: "78%",
-            background: isMine
-              ? "linear-gradient(180deg, #dcfce7 0%, #d1fae5 100%)"
-              : "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
-            borderRadius: isMine ? "18px 18px 6px 18px" : "18px 18px 18px 6px",
-            padding: "8px 10px 18px 10px",
-            boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
-            position: "relative",
-            border: "1px solid rgba(0,0,0,0.04)",
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: isMine ? "#0f766e" : "#2563eb",
+            color: "#fff",
+            fontSize: 14,
+            fontWeight: 900,
           }}
+          title={senderName}
         >
-          <MessageSimple {...props} />
+          {senderName.slice(0, 1).toUpperCase()}
+        </div>
+
+        <div>
+          <div
+            style={{
+              marginBottom: 4,
+              paddingLeft: isMine ? 0 : 6,
+              paddingRight: isMine ? 6 : 0,
+              textAlign: isMine ? "right" : "left",
+              fontSize: 12,
+              fontWeight: 800,
+              color: isMine ? "#0f766e" : "#2563eb",
+            }}
+          >
+            {isMine ? "You" : senderName}
+          </div>
 
           <div
             style={{
-              position: "absolute",
-              right: 10,
-              bottom: 4,
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              fontSize: 11,
-              color: "#667781",
+              background: isMine ? "#dcfce7" : "#ffffff",
+              borderRadius: isMine
+                ? "18px 18px 5px 18px"
+                : "18px 18px 18px 5px",
+              padding: "9px 12px 20px",
+              boxShadow: "0 3px 12px rgba(15,23,42,0.10)",
+              position: "relative",
+              border: "1px solid rgba(15,23,42,0.06)",
+              minWidth: 80,
             }}
           >
-            <span>{sentAt ? formatTime(sentAt) : ""}</span>
-            {isMine && <span>{readCount > 1 ? "✓✓" : "✓"}</span>}
+            <MessageSimple {...props} />
+
+            <div
+              style={{
+                position: "absolute",
+                right: 9,
+                bottom: 4,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 10,
+                color: "#64748b",
+              }}
+            >
+              <span>{sentAt ? formatTime(sentAt) : ""}</span>
+
+              {isMine && (
+                <span
+                  style={{
+                    color: readCount > 1 ? "#0ea5e9" : "#64748b",
+                    fontWeight: 900,
+                  }}
+                >
+                  {readCount > 1 ? "✓✓" : "✓"}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
 
   const isAdminPage = window.location.pathname === "/admin";
