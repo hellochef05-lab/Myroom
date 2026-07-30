@@ -176,7 +176,7 @@ function CallHeader({
           style={{
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
+            alignItems: isMobile ? "flex-start" : "center",
             gap: 6,
           }}
         >
@@ -1479,6 +1479,20 @@ function WebRTCCall({ roomId, myName, onExitRoom }) {
 }
 
 export default function App() {
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 1280
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
+    updateViewportWidth();
+    window.addEventListener("resize", updateViewportWidth);
+
+    return () => window.removeEventListener("resize", updateViewportWidth);
+  }, []);
+
   const [client, setClient] = useState(null);
   const [channel, setChannel] = useState(null);
   const [name, setName] = useState("");
@@ -3495,7 +3509,8 @@ item.status !== "archived" ? (
   }
 
   if (!client) {
-    const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+    const isMobile = viewportWidth < 768;
+    const isCompact = viewportWidth < 1100;
 
     return (
       <div
@@ -3503,41 +3518,43 @@ item.status !== "archived" ? (
           position: "fixed",
           inset: 0,
           width: "100%",
-          height: "100dvh",
+          minHeight: "100dvh",
+          height: "auto",
           background: `
             radial-gradient(circle at 12% 10%, rgba(125,211,252,0.30), transparent 28%),
             radial-gradient(circle at 88% 12%, rgba(219,234,254,0.75), transparent 28%),
             radial-gradient(circle at 92% 92%, rgba(255,107,74,0.16), transparent 28%),
             linear-gradient(135deg, #f7fdff 0%, #eef8ff 43%, #fffaf7 100%)
           `,
-          overflow: "hidden",
+          overflowX: "hidden",
+          overflowY: "auto",
         }}
       >
         <div
           style={{
-            position: "absolute",
-            inset: 0,
+            position: "relative",
+            minHeight: "100dvh",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: isMobile ? "18px" : "44px",
+            padding: isMobile ? "14px" : isCompact ? "24px" : "32px",
             boxSizing: "border-box",
           }}
         >
           <div
             style={{
               width: "100%",
-              maxWidth: 1180,
+              maxWidth: 1320,
               display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "1.05fr 0.95fr",
-              gap: isMobile ? 22 : 54,
+              gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : isCompact ? "0.9fr 1.1fr" : "1.05fr 0.95fr",
+              gap: isMobile ? 16 : isCompact ? 26 : 44,
               alignItems: "center",
             }}
           >
             <div
               style={{
                 color: "#071f2a",
-                padding: isMobile ? "6px 4px" : "20px 10px",
+                padding: isMobile ? "8px 2px 0" : isCompact ? "10px 4px" : "16px 8px",
               }}
             >
               <div
@@ -3545,7 +3562,7 @@ item.status !== "archived" ? (
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 10,
-                  marginBottom: isMobile ? 18 : 44,
+                  marginBottom: isMobile ? 12 : isCompact ? 22 : 30,
                   fontWeight: 900,
                   color: "#061821",
                   fontSize: 18,
@@ -3585,9 +3602,9 @@ item.status !== "archived" ? (
               <h1
                 style={{
                   margin: 0,
-                  fontSize: isMobile ? 44 : 82,
-                  lineHeight: 0.92,
-                  letterSpacing: -3,
+                  fontSize: isMobile ? "clamp(38px, 11vw, 54px)" : isCompact ? "clamp(52px, 6vw, 70px)" : "clamp(66px, 5.5vw, 82px)",
+                  lineHeight: 0.96,
+                  letterSpacing: isMobile ? -2 : -3,
                   fontWeight: 950,
                   color: "#061821",
                 }}
@@ -3599,10 +3616,10 @@ item.status !== "archived" ? (
 
               <p
                 style={{
-                  maxWidth: 560,
-                  margin: isMobile ? "18px 0 20px" : "32px 0 36px",
+                  maxWidth: isMobile ? "100%" : 560,
+                  margin: isMobile ? "14px 0 16px" : isCompact ? "20px 0 24px" : "24px 0 28px",
                   color: "#475569",
-                  fontSize: isMobile ? 15 : 20,
+                  fontSize: isMobile ? 14 : isCompact ? 16 : 18,
                   lineHeight: 1.55,
                   fontWeight: 600,
                 }}
@@ -3688,11 +3705,12 @@ item.status !== "archived" ? (
                 </div>
               )}
 
+              {!isMobile && (
               <div
                 style={{
                   display: "flex",
-                  gap: isMobile ? 24 : 46,
-                  marginTop: isMobile ? 18 : 30,
+                  gap: isMobile ? 22 : 38,
+                  marginTop: isMobile ? 12 : 22,
                   color: "#061821",
                 }}
               >
@@ -3705,22 +3723,23 @@ item.status !== "archived" ? (
                   <div style={{ color: "#64748b", fontWeight: 700, fontSize: 13 }}>support access</div>
                 </div>
               </div>
+              )}
             </div>
 
             <div
               style={{
                 width: "100%",
-                maxWidth: 460,
+                maxWidth: isMobile ? "100%" : 500,
                 justifySelf: isMobile ? "center" : "end",
                 background: "rgba(255,255,255,0.92)",
                 border: "1px solid rgba(15,23,42,0.08)",
-                borderRadius: isMobile ? 28 : 34,
-                padding: isMobile ? 20 : 34,
+                borderRadius: isMobile ? 22 : 30,
+                padding: isMobile ? 16 : isCompact ? 24 : 28,
                 boxShadow: "0 30px 90px rgba(15,23,42,0.16)",
                 boxSizing: "border-box",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 26 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: isMobile ? 16 : 22 }}>
                 <div
                   style={{
                     width: 54,
@@ -3771,7 +3790,7 @@ item.status !== "archived" ? (
                 style={{
                   margin: 0,
                   color: "#061821",
-                  fontSize: isMobile ? 34 : 46,
+                  fontSize: isMobile ? 32 : isCompact ? 38 : 44,
                   lineHeight: 1,
                   letterSpacing: -2,
                   fontWeight: 950,
@@ -3779,7 +3798,7 @@ item.status !== "archived" ? (
               >
                 Welcome back.
               </h2>
-              <p style={{ margin: "14px 0 22px", color: "#64748b", lineHeight: 1.55, fontWeight: 600 }}>
+              <p style={{ margin: isMobile ? "10px 0 16px" : "12px 0 18px", color: "#64748b", lineHeight: 1.5, fontWeight: 600, fontSize: isMobile ? 14 : 15 }}>
                 Login with your Access Key or subscribe to get a new one.
               </p>
 
@@ -3791,7 +3810,7 @@ item.status !== "archived" ? (
                   padding: 5,
                   borderRadius: 14,
                   background: "#eaf1f6",
-                  marginBottom: 22,
+                  marginBottom: isMobile ? 16 : 20,
                 }}
               >
                 <button
@@ -3865,7 +3884,7 @@ item.status !== "archived" ? (
                     disabled={joining}
                     style={{
                       width: "100%",
-                      height: 54,
+                      height: isMobile ? 48 : 52,
                       border: "none",
                       borderRadius: 14,
                       cursor: joining ? "not-allowed" : "pointer",
