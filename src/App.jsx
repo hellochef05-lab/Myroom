@@ -2538,6 +2538,9 @@ async function joinRoom() {
         body: JSON.stringify({
           username: name,
           accessKey,
+          participantId: streamUserId,
+          roomCode: room,
+          privateRoomId: privateRoomIdForLogin,
           deviceId: getDeviceId(),
           deviceName: getDeviceName(),
         }),
@@ -2733,7 +2736,7 @@ alert(err.message || "Join failed - see console");
             alignItems: "flex-end",
             gap: 8,
             width: "fit-content",
-            maxWidth: isMobile ? "92%" : "72%",
+            maxWidth: isMobile ? "90%" : "68%",
           }}
         >
           <div style={{ width: 34, flexShrink: 0 }}>
@@ -2781,7 +2784,7 @@ alert(err.message || "Join failed - see console");
                 style={{
                   margin: "0 0 4px 9px",
                   color: "#d81b60",
-                  fontSize: 12,
+                  fontSize: 13,
                   lineHeight: 1.2,
                   fontWeight: 900,
                   overflow: "hidden",
@@ -4404,30 +4407,112 @@ item.status !== "archived" ? (
     <div
       style={{
         minHeight: "100dvh",
-        background: "#dfe5e1",
+        background: "linear-gradient(135deg, #dcebe7 0%, #f4f0ea 100%)",
         display: "flex",
         justifyContent: "center",
-        padding: 0,
+        alignItems: "stretch",
+        padding: isMobile ? 0 : 16,
+        boxSizing: "border-box",
       }}
     >
       <div
         style={{
           width: "100%",
-          maxWidth: 1100,
-          height: "100dvh",
+          maxWidth: 1180,
+          height: isMobile ? "100dvh" : "calc(100dvh - 32px)",
+          margin: "0 auto",
+          borderRadius: isMobile ? 0 : 24,
           background: "#efeae2",
+          boxShadow: isMobile ? "none" : "0 22px 70px rgba(15, 76, 70, 0.18)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
           position: "relative",
         }}
       >
+        <style>{`
+          .str-chat,
+          .str-chat__channel,
+          .str-chat__container,
+          .str-chat__main-panel,
+          .str-chat__main-panel-inner,
+          .str-chat__message-list,
+          .str-chat__list,
+          .str-chat__list-scroll,
+          .str-chat__window {
+            width: 100% !important;
+            max-width: none !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+          }
+
+          .str-chat__channel {
+            display: flex !important;
+            position: relative !important;
+          }
+
+          .str-chat__main-panel {
+            flex: 1 1 auto !important;
+          }
+
+          .str-chat__thread {
+            position: absolute !important;
+            top: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: min(430px, 100%) !important;
+            max-width: 100% !important;
+            z-index: 500 !important;
+            background: #ffffff !important;
+            box-shadow: -12px 0 35px rgba(15, 23, 42, 0.18) !important;
+          }
+
+          .str-chat__message-list-scroll {
+            padding-inline: 0 !important;
+          }
+
+          .str-chat__message-simple,
+          .str-chat__message-simple-inner,
+          .str-chat__message-text,
+          .str-chat__message-text-inner {
+            background: transparent !important;
+            border: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+          }
+
+          .str-chat__message-simple__actions,
+          .str-chat__message-options {
+            opacity: 0;
+            transition: opacity 0.15s ease;
+          }
+
+          [data-message-id]:hover .str-chat__message-simple__actions,
+          [data-message-id]:hover .str-chat__message-options {
+            opacity: 1;
+          }
+
+          .str-chat__message-input {
+            width: 100% !important;
+            background: transparent !important;
+          }
+
+          @media (max-width: 768px) {
+            .str-chat__thread {
+              width: 100% !important;
+            }
+          }
+        `}</style>
+
         <Chat client={client} theme="messaging light">
           <Channel channel={channel} Attachment={CustomAttachment} Message={MyMessage}>
             <Window>
               <div
                 style={{
-                  height: "100dvh",
+                  height: "100%",
+                  minHeight: 0,
                   display: "flex",
                   flexDirection: "column",
                   overflow: "hidden",
