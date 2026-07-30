@@ -24,6 +24,8 @@ import {
   Video,
 } from "lucide-react";
 import { io } from "socket.io-client";
+const isMobile =
+  typeof window !== "undefined" && window.innerWidth <= 768;
 
 const apiKey = import.meta.env.VITE_STREAM_API_KEY;
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
