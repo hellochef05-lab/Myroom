@@ -156,142 +156,217 @@ function CallHeader({
   joinedRoom,
   onExitRoom,
 }) {
+  const compact = typeof window !== "undefined" && window.innerWidth <= 768;
+  const roomInitial = String(room || "R").trim().slice(0, 1).toUpperCase();
+
+  const actionStyle = (background) => ({
+    width: compact ? 42 : 52,
+    height: compact ? 42 : 52,
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.22)",
+    background,
+    cursor: joinedRoom ? "pointer" : "not-allowed",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "0 8px 22px rgba(0,0,0,0.16)",
+  });
+
   return (
-    <div
+    <header
       style={{
+        minHeight: compact ? 72 : 92,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "14px 16px",
+        gap: compact ? 8 : 16,
+        padding: compact ? "10px 12px" : "12px 20px",
         background:
-          "linear-gradient(135deg, #0b6158 0%, #0f766e 50%, #115e59 100%)",
+          "linear-gradient(110deg, #0b8b72 0%, #0aa286 56%, #079bb7 100%)",
         color: "#fff",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
-        position: "fixed",
-        top: 0,
-        left: "50%",
-        transform: "translateX(-50%)",
+        borderBottom: "1px solid rgba(255,255,255,0.20)",
         width: "100%",
-        maxWidth: 1100,
-        zIndex: 100,
+        flexShrink: 0,
+        zIndex: 110,
         boxSizing: "border-box",
-        boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+        boxShadow: "0 8px 24px rgba(15,118,110,0.18)",
       }}
     >
-      <div>
-        <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: 0.2 }}>
-          Room {room}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          minWidth: 0,
+          gap: compact ? 9 : 13,
+        }}
+      >
+        <button
+          type="button"
+          onClick={onExitRoom}
+          aria-label="Back to login"
+          title="Back"
+          style={{
+            border: "none",
+            background: "transparent",
+            color: "#fff",
+            fontSize: compact ? 27 : 32,
+            lineHeight: 1,
+            cursor: "pointer",
+            padding: 0,
+            flexShrink: 0,
+          }}
+        >
+          ‹
+        </button>
+
+        <div
+          style={{
+            position: "relative",
+            width: compact ? 46 : 58,
+            height: compact ? 46 : 58,
+            borderRadius: "50%",
+            background: "rgba(255,255,255,0.96)",
+            color: "#0f766e",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: compact ? 20 : 25,
+            fontWeight: 950,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
+            flexShrink: 0,
+          }}
+        >
+          {roomInitial}
+          <span
+            style={{
+              position: "absolute",
+              right: -1,
+              bottom: 1,
+              width: compact ? 10 : 12,
+              height: compact ? 10 : 12,
+              borderRadius: "50%",
+              background: joinedRoom ? "#4ade80" : "#fbbf24",
+              border: "2px solid #fff",
+            }}
+          />
         </div>
-        <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
-          {inCall
-            ? callType === "video"
-              ? "Video call in progress"
-              : "Audio call in progress"
-            : joinedRoom
-              ? "Online"
-              : "Connecting..."}
+
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 950,
+              fontSize: compact ? 17 : 22,
+              lineHeight: 1.1,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Room {room}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: compact ? 11 : 13,
+              opacity: 0.95,
+              marginTop: 5,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: joinedRoom ? "#4ade80" : "#fbbf24",
+              }}
+            />
+            {inCall
+              ? callType === "video"
+                ? "Video call in progress"
+                : "Audio call in progress"
+              : joinedRoom
+                ? "Online"
+                : "Connecting..."}
+          </div>
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12 }}>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: isMobile ? "flex-start" : "center",
-            gap: 6,
-          }}
-        >
-          <button
-            onClick={onStartAudio}
-            title="Audio call"
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: compact ? 7 : 12,
+          flexShrink: 0,
+        }}
+      >
+        {[
+          {
+            label: "Call",
+            title: "Audio call",
+            onClick: onStartAudio,
+            background: "rgba(255,255,255,0.16)",
+            icon: <Phone size={compact ? 18 : 21} color="#fff" />,
+          },
+          {
+            label: "Video",
+            title: "Video call",
+            onClick: onStartVideo,
+            background: "rgba(255,255,255,0.20)",
+            icon: <Video size={compact ? 18 : 21} color="#fff" />,
+          },
+          {
+            label: "Exit",
+            title: "Exit room",
+            onClick: onExitRoom,
+            background: "linear-gradient(180deg, #ff5a5f 0%, #ef3138 100%)",
+            icon: <PhoneOff size={compact ? 18 : 21} color="#fff" />,
+          },
+        ].map((action) => (
+          <div
+            key={action.label}
             style={{
-              width: 52,
-              height: 52,
-              borderRadius: 999,
-              border: "none",
-              background: "linear-gradient(180deg, #34d399 0%, #16a34a 100%)",
-              cursor: joinedRoom ? "pointer" : "not-allowed",
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 8px 20px rgba(0,0,0,0.20)",
-              opacity: joinedRoom ? 1 : 0.5,
+              gap: 4,
             }}
-            disabled={!joinedRoom}
           >
-            <Phone size={20} color="#fff" />
-          </button>
-          <span style={{ fontSize: 12, color: "#fff", fontWeight: 700 }}>
-            Call
-          </span>
-        </div>
+            <button
+              type="button"
+              onClick={action.onClick}
+              title={action.title}
+              disabled={action.label !== "Exit" && !joinedRoom}
+              style={{
+                ...actionStyle(action.background),
+                opacity: action.label === "Exit" || joinedRoom ? 1 : 0.55,
+              }}
+            >
+              {action.icon}
+            </button>
+            {!compact && (
+              <span style={{ fontSize: 12, color: "#fff", fontWeight: 900 }}>
+                {action.label}
+              </span>
+            )}
+          </div>
+        ))}
 
         <div
+          aria-hidden="true"
           style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 6,
+            color: "#fff",
+            fontSize: compact ? 23 : 28,
+            lineHeight: 1,
+            padding: compact ? "8px 0 0 1px" : "11px 0 0 2px",
+            opacity: 0.95,
           }}
         >
-          <button
-            onClick={onStartVideo}
-            title="Video call"
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 999,
-              border: "none",
-              background: "linear-gradient(180deg, #38bdf8 0%, #2563eb 100%)",
-              cursor: joinedRoom ? "pointer" : "not-allowed",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 8px 20px rgba(0,0,0,0.20)",
-              opacity: joinedRoom ? 1 : 0.5,
-            }}
-            disabled={!joinedRoom}
-          >
-            <Video size={20} color="#fff" />
-          </button>
-          <span style={{ fontSize: 12, color: "#fff", fontWeight: 700 }}>
-            Video
-          </span>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          <button
-            onClick={onExitRoom}
-            title="Exit room"
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 999,
-              border: "none",
-              background: "linear-gradient(180deg, #f87171 0%, #dc2626 100%)",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 8px 20px rgba(0,0,0,0.20)",
-            }}
-          >
-            <PhoneOff size={20} color="#fff" />
-          </button>
-          <span style={{ fontSize: 12, color: "#fff", fontWeight: 700 }}>
-            Exit
-          </span>
+          ⋮
         </div>
       </div>
-    </div>
+    </header>
   );
 }
 
@@ -1473,8 +1548,6 @@ function WebRTCCall({ roomId, displayRoomId, myName, onExitRoom }) {
         joinedRoom={joinedRoom}
         onExitRoom={onExitRoom}
       />
-
-      <div style={{ height: 62, flexShrink: 0 }} />
 
       <FullScreenCallOverlay
         visible={overlayVisible}
@@ -4526,19 +4599,17 @@ item.status !== "archived" ? (
                   onExitRoom={exitRoom}
                 />
 
-                <div style={{ height: 62, flexShrink: 0 }} />
-
                 <div
                   style={{
                     flex: 1,
                     minHeight: 0,
                     overflowY: "auto",
                     WebkitOverflowScrolling: "touch",
-                    padding: "10px 0 8px",
-                    backgroundColor: "#ece5dd",
+                    padding: isMobile ? "12px 0 8px" : "18px 18px 12px",
+                    backgroundColor: "#f7faf9",
                     backgroundImage: `
-                      radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px),
-                      radial-gradient(rgba(0,0,0,0.02) 1px, transparent 1px)
+                      radial-gradient(rgba(16,185,129,0.045) 1px, transparent 1px),
+                      radial-gradient(rgba(15,23,42,0.018) 1px, transparent 1px)
                     `,
                     backgroundSize: "18px 18px, 32px 32px",
                     backgroundPosition: "0 0, 8px 8px",
@@ -4561,7 +4632,7 @@ item.status !== "archived" ? (
                   style={{
                     flexShrink: 0,
                     padding: "6px 10px calc(6px + env(safe-area-inset-bottom))",
-                    background: "rgba(240,242,245,0.94)",
+                    background: "rgba(248,250,252,0.96)",
                     backdropFilter: "blur(10px)",
                     borderTop: "1px solid rgba(0,0,0,0.05)",
                     position: "sticky",
@@ -4608,7 +4679,7 @@ item.status !== "archived" ? (
           style={{
             position: "absolute",
             right: 18,
-            bottom: 86,
+            bottom: isMobile ? 82 : 92,
             zIndex: 120,
             border: "none",
             borderRadius: 999,
