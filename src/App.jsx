@@ -28,6 +28,52 @@ import { io } from "socket.io-client";
 const apiKey = import.meta.env.VITE_STREAM_API_KEY;
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 
+const DEFAULT_API_TIMEOUT_MS = 25000;
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function apiFetch(url, options = {}, config = {}) {
+  const { retries = 2, timeoutMs = DEFAULT_API_TIMEOUT_MS } = config;
+  let lastError;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok && response.status >= 500 && attempt < retries) {
+        await wait(700 * (attempt + 1));
+        continue;
+      }
+
+      return response;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      lastError = err;
+
+      if (attempt < retries) {
+        await wait(700 * (attempt + 1));
+        continue;
+      }
+    }
+  }
+
+  if (lastError?.name === "AbortError") {
+    throw new Error("Network is slow. Please wait and try again.");
+  }
+
+  throw lastError || new Error("Network request failed. Please check your internet connection.");
+}
+
 function getDeviceId() {
   let deviceId = localStorage.getItem("device_id");
 
@@ -1440,6 +1486,7 @@ export default function App() {
   const [joining, setJoining] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
   const [accessKey, setAccessKey] = useState("");
+  const [authMode, setAuthMode] = useState("login");
   const [loggedUser, setLoggedUser] = useState(null);
   const [plans, setPlans] = useState([]);
   const [supportOpen, setSupportOpen] = useState(false);
@@ -1465,7 +1512,6 @@ const [supportReplyText, setSupportReplyText] = useState("");
   const [adminAccessKeySearch, setAdminAccessKeySearch] = useState("");
   const [adminSupportResults, setAdminSupportResults] = useState([]);
   const [adminReplyDrafts, setAdminReplyDrafts] = useState({});
-  const [adminReplyText, setAdminReplyText] = useState({});
   const [adminUsers, setAdminUsers] = useState([]);
   const [adminRooms, setAdminRooms] = useState([]);
   const [adminPayments, setAdminPayments] = useState([]);
@@ -1503,7 +1549,7 @@ const [supportReplyText, setSupportReplyText] = useState("");
 useEffect(() => {
   let cancelled = false;
 
-  fetch(`${API_BASE}/api/payment-settings`)
+  apiFetch(`${API_BASE}/api/payment-settings`)
     .then((res) => res.json())
     .then((data) => {
       if (!cancelled) {
@@ -1530,7 +1576,7 @@ useEffect(() => {
 useEffect(() => {
   let cancelled = false;
 
-  fetch(`${API_BASE}/api/plans`)
+  apiFetch(`${API_BASE}/api/plans`)
       .then((res) => res.json())
       .then((data) => {
         if (!cancelled) {
@@ -1675,7 +1721,7 @@ async function sendSupportMessage() {
   try {
     setSupportSending(true);
 
-    const res = await fetch(`${API_BASE}/api/support`, {
+    const res = await apiFetch(`${API_BASE}/api/support`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1767,7 +1813,7 @@ async function replyToSupportTicket(ticketId) {
     try {
       setSupportSending(true);
 
-      const res = await fetch(`${API_BASE}/api/support`, {
+      const res = await apiFetch(`${API_BASE}/api/support`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1814,7 +1860,7 @@ async function subscribeAndGenerateAccessKey(e) {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/subscribe/request`, {
+    const res = await apiFetch(`${API_BASE}/api/subscribe/request`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1869,7 +1915,7 @@ async function adminCreateUser() {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/users`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/users`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1913,7 +1959,7 @@ async function adminLoadUsers() {
   setAdminLoading(true);
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/users`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/users`, {
       headers: {
         "x-admin-pin": adminPin,
       },
@@ -1964,7 +2010,7 @@ async function adminSaveUser(userId) {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/users/${userId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -1998,7 +2044,7 @@ async function adminExtendUser(userId, days = 30) {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/users/${userId}/extend`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/users/${userId}/extend`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2033,7 +2079,7 @@ async function adminLoadRooms() {
       ? `?accessKey=${encodeURIComponent(adminRoomsAccessKey)}`
       : "";
 
-    const res = await fetch(`${API_BASE}/api/admin/rooms${query}`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/rooms${query}`, {
       headers: {
         "x-admin-pin": adminPin,
       },
@@ -2063,7 +2109,7 @@ async function adminDeleteRoom(roomId) {
   if (!ok) return;
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/rooms/${encodeURIComponent(roomId)}`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/rooms/${encodeURIComponent(roomId)}`, {
       method: "DELETE",
       headers: {
         "x-admin-pin": adminPin,
@@ -2095,7 +2141,7 @@ async function adminDeleteRoomsByAccessKey() {
   if (!ok) return;
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/rooms/delete-by-access-key`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/rooms/delete-by-access-key`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2131,7 +2177,7 @@ async function adminDeleteAllRooms() {
   if (!ok) return;
 
   try {
-    const res = await fetch(`${API_BASE}/api/delete-all-rooms`, {
+    const res = await apiFetch(`${API_BASE}/api/delete-all-rooms`, {
       method: "POST",
       headers: {
         "x-admin-key": adminDeleteKey,
@@ -2167,7 +2213,7 @@ async function adminSavePlan(planId) {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/plans/${planId}`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/plans/${planId}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -2189,7 +2235,7 @@ async function adminSavePlan(planId) {
 
     alert("Subscription plan updated");
 
-    const refreshed = await fetch(`${API_BASE}/api/plans`).then((r) => r.json());
+    const refreshed = await apiFetch(`${API_BASE}/api/plans`).then((r) => r.json());
     setPlans(Array.isArray(refreshed) ? refreshed : []);
   } catch (err) {
     console.error("Save plan error:", err);
@@ -2208,7 +2254,7 @@ async function adminSearchSupport() {
       ? `?accessKey=${encodeURIComponent(adminAccessKeySearch)}`
       : "";
 
-    const res = await fetch(`${API_BASE}/api/admin/support${query}`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/support${query}`, {
       headers: {
         "x-admin-pin": adminPin,
       },
@@ -2235,7 +2281,7 @@ async function adminLoadPayments() {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/payments`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/payments`, {
       headers: {
         "x-admin-pin": adminPin,
       },
@@ -2265,7 +2311,7 @@ async function adminApprovePayment(paymentId) {
   if (!ok) return;
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/payments/${paymentId}/approve`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/payments/${paymentId}/approve`, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -2307,7 +2353,7 @@ async function adminRejectPayment(paymentId) {
   if (reason === null) return;
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/payments/${paymentId}/reject`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/payments/${paymentId}/reject`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2315,6 +2361,7 @@ async function adminRejectPayment(paymentId) {
       },
       body: JSON.stringify({
         reason,
+        comment: adminPaymentComments[paymentId] || reason,
       }),
     });
 
@@ -2351,7 +2398,7 @@ async function adminReplyToSupport(requestId) {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/support/${requestId}/reply`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/support/${requestId}/reply`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -2387,7 +2434,7 @@ async function adminUpdateTicketStatus(requestId, status) {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/api/admin/support/${requestId}/status`, {
+    const res = await apiFetch(`${API_BASE}/api/admin/support/${requestId}/status`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -2431,7 +2478,7 @@ async function joinRoom() {
     const userId = name.trim().toLowerCase().replace(/\s+/g, "_");
 
     try {
-      const loginRes = await fetch(`${API_BASE}/api/login`, {
+      const loginRes = await apiFetch(`${API_BASE}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2452,7 +2499,7 @@ async function joinRoom() {
       setLoggedUser(loginData.user);
       localStorage.setItem("logged_user", JSON.stringify(loginData.user));
 
-      const tokenRes = await fetch(`${API_BASE}/api/token`, {
+      const tokenRes = await apiFetch(`${API_BASE}/api/token`, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -2510,31 +2557,40 @@ alert(err.message || "Join failed - see console");
     }
   };
 
-  async function deleteAllRooms() {
-    const ok = window.confirm("Delete all rooms?");
-    if (!ok) return;
+  async function manageRoomsByAccessKey() {
+    const key = String(accessKey || "").trim();
 
-    const adminKey = window.prompt("Enter admin key");
-    if (!adminKey) return;
-
-    const res = await fetch(
-      `${API_BASE}/api/delete-all-rooms`,
-      {
-        method: "POST",
-        headers: {
-          "x-admin-key": adminKey,
-        },
-      }
-    );
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      alert(data.error || "Failed");
+    if (!key) {
+      alert("Enter your Access Key first");
       return;
     }
 
-    alert(`Deleted ${data.deleted} rooms`);
+    const ok = window.confirm(
+      "Manage Room will delete rooms linked to this Access Key only. Continue?"
+    );
+    if (!ok) return;
+
+    try {
+      const res = await apiFetch(`${API_BASE}/api/rooms/delete-by-access-key`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ accessKey: key }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || "Failed to manage rooms");
+        return;
+      }
+
+      alert(`Deleted ${data.deleted || 0} room(s) for this Access Key`);
+    } catch (err) {
+      console.error("Manage room error:", err);
+      alert(err.message || "Failed to manage rooms");
+    }
   }
 
   const CustomImage = (props) => {
@@ -2817,27 +2873,15 @@ alert(err.message || "Join failed - see console");
         >
           <p><strong>User:</strong> {payment.username}</p>
           <p><strong>Contact:</strong> {payment.contact}</p>
-          <p><strong>Plan:</strong> {payment.planName}</p>
           <p>
-  <strong>Package Used:</strong> {payment.planName || payment.planId || "N/A"}
-</p>
-
-<p>
-  <strong>Package Duration:</strong> {payment.days || "N/A"} days
-</p>
-<p>
-  <strong>Package Used:</strong>{" "}
-  {payment.planName || payment.planId || "N/A"}
-</p>
-
-<p>
-  <strong>Package Duration:</strong> {payment.days || "N/A"} days
-</p>
-
-<p>
-  <strong>Package Amount:</strong> AED {payment.amount || payment.price || "N/A"}
-</p>
-          <p><strong>Amount:</strong> AED {payment.amount}</p>
+            <strong>Package Used:</strong> {payment.planName || payment.planId || "N/A"}
+          </p>
+          <p>
+            <strong>Package Duration:</strong> {payment.days || "N/A"} days
+          </p>
+          <p>
+            <strong>Package Amount:</strong> AED {payment.amount || payment.price || "N/A"}
+          </p>
           <p><strong>UPI ID:</strong> {payment.upiId}</p>
           <p><strong>UPI Ref:</strong> {payment.upiReference}</p>
           <p><strong>Status:</strong> {payment.status}</p>
@@ -3327,7 +3371,11 @@ alert(err.message || "Join failed - see console");
       return true;
     }
 
-    return item.status !== "closed" && item.status !== "solved";
+    return (
+      item.status !== "closed" &&
+      item.status !== "solved" &&
+      item.status !== "archived"
+    );
   })
   .map((item) => (
                 <div
@@ -3457,10 +3505,10 @@ item.status !== "archived" ? (
           width: "100%",
           height: "100dvh",
           background: `
-            radial-gradient(circle at 20% 20%, rgba(120,255,220,0.18), transparent 22%),
-            radial-gradient(circle at 80% 30%, rgba(120,255,220,0.12), transparent 20%),
-            radial-gradient(circle at 50% 85%, rgba(120,255,220,0.10), transparent 24%),
-            linear-gradient(135deg, #062c2a 0%, #0b5d57 38%, #117a72 65%, #0b4c47 100%)
+            radial-gradient(circle at 12% 10%, rgba(125,211,252,0.30), transparent 28%),
+            radial-gradient(circle at 88% 12%, rgba(219,234,254,0.75), transparent 28%),
+            radial-gradient(circle at 92% 92%, rgba(255,107,74,0.16), transparent 28%),
+            linear-gradient(135deg, #f7fdff 0%, #eef8ff 43%, #fffaf7 100%)
           `,
           overflow: "hidden",
         }}
@@ -3472,368 +3520,492 @@ item.status !== "archived" ? (
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: isMobile ? "18px" : "24px",
+            padding: isMobile ? "18px" : "44px",
             boxSizing: "border-box",
           }}
         >
           <div
             style={{
               width: "100%",
-              maxWidth: isMobile ? 340 : 430,
-              position: "relative",
+              maxWidth: 1180,
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "1.05fr 0.95fr",
+              gap: isMobile ? 22 : 54,
+              alignItems: "center",
             }}
           >
             <div
               style={{
-                textAlign: "center",
-                marginBottom: isMobile ? 10 : 16,
-              }}
-            >
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: isMobile ? "7px 14px" : "8px 18px",
-                  borderRadius: 999,
-                  color: "#e7fffb",
-                  fontSize: isMobile ? 12 : 14,
-                  fontWeight: 700,
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  boxShadow: "0 8px 20px rgba(0,0,0,0.15)",
-                  backdropFilter: "blur(10px)",
-                }}
-              >
-                🔒 Secure Access
-              </span>
-            </div>
-
-            <div
-              style={{
-                position: "relative",
-                borderRadius: isMobile ? 26 : 34,
-                padding: isMobile ? "50px 14px 14px" : "70px 20px 20px",
-                background: "rgba(255,255,255,0.14)",
-                border: "1px solid rgba(255,255,255,0.22)",
-                backdropFilter: "blur(14px)",
-                WebkitBackdropFilter: "blur(14px)",
-                boxShadow:
-                  "0 22px 60px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.25)",
+                color: "#071f2a",
+                padding: isMobile ? "6px 4px" : "20px 10px",
               }}
             >
               <div
                 style={{
-                  position: "absolute",
-                  top: isMobile ? -30 : -42,
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  width: isMobile ? 74 : 96,
-                  height: isMobile ? 74 : 96,
-                  borderRadius: "50%",
-                  background: `
-                    radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.2) 38%, rgba(0,0,0,0.08) 100%),
-                    linear-gradient(180deg, rgba(130,255,225,0.50), rgba(20,120,110,0.30))
-                  `,
-                  border: "1px solid rgba(255,255,255,0.35)",
-                  boxShadow:
-                    "0 10px 34px rgba(0,0,0,0.24), inset 0 2px 12px rgba(255,255,255,0.35)",
-                  display: "flex",
+                  display: "inline-flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: isMobile ? 26 : 34,
+                  gap: 10,
+                  marginBottom: isMobile ? 18 : 44,
+                  fontWeight: 900,
+                  color: "#061821",
+                  fontSize: 18,
                 }}
               >
-                💬
+                <span
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 12,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "#061821",
+                    color: "#67e8f9",
+                    boxShadow: "0 12px 30px rgba(15,23,42,0.16)",
+                  }}
+                >
+                  💬
+                </span>
+                Private Room
               </div>
 
               <div
                 style={{
-                  background: "rgba(255,255,255,0.82)",
-                  borderRadius: isMobile ? 20 : 28,
-                  padding: isMobile ? "18px 14px 14px" : "28px 22px 20px",
-                  border: "1px solid rgba(255,255,255,0.58)",
-                  boxShadow:
-                    "inset 0 1px 0 rgba(255,255,255,0.85), 0 10px 24px rgba(0,0,0,0.14)",
+                  textTransform: "uppercase",
+                  letterSpacing: 4,
+                  color: "#64748b",
+                  fontSize: isMobile ? 10 : 13,
+                  fontWeight: 900,
+                  marginBottom: 18,
                 }}
               >
-                <h1
+                Private communication, refined
+              </div>
+
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: isMobile ? 44 : 82,
+                  lineHeight: 0.92,
+                  letterSpacing: -3,
+                  fontWeight: 950,
+                  color: "#061821",
+                }}
+              >
+                Less noise.
+                <br />
+                <span style={{ color: "#ff6b4a" }}>More together.</span>
+              </h1>
+
+              <p
+                style={{
+                  maxWidth: 560,
+                  margin: isMobile ? "18px 0 20px" : "32px 0 36px",
+                  color: "#475569",
+                  fontSize: isMobile ? 15 : 20,
+                  lineHeight: 1.55,
+                  fontWeight: 600,
+                }}
+              >
+                Private chat, calls, media sharing, support, and access-key login in one simple room.
+              </p>
+
+              {!isMobile && (
+                <div
                   style={{
-                    margin: 0,
-                    textAlign: "center",
-                    fontSize: isMobile ? 22 : 28,
-                    fontWeight: 800,
-                    color: "#17343a",
-                    lineHeight: 1.1,
+                    width: "min(520px, 100%)",
+                    background: "rgba(255,255,255,0.80)",
+                    border: "1px solid rgba(15,23,42,0.08)",
+                    borderRadius: 24,
+                    padding: 20,
+                    boxShadow: "0 22px 60px rgba(15,23,42,0.08)",
                   }}
                 >
-                  Private Room
-                </h1>
-
-                <p
-                  style={{
-                    margin: isMobile ? "10px 0 16px" : "12px 0 22px",
-                    textAlign: "center",
-                    fontSize: isMobile ? 12.5 : 14,
-                    lineHeight: 1.45,
-                    color: "#56666b",
-                  }}
-                >
-                  Join with your Access Key to chat,
-                  <br />
-                  share media and connect instantly.
-                </p>
-
-
-                {plans.length > 0 && (
                   <div
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr",
-                      gap: 8,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
                       marginBottom: 14,
+                      color: "#64748b",
+                      fontWeight: 800,
                     }}
                   >
-                    {plans.map((plan) => (
-                      <div
-                        key={plan.id}
-                        style={{
-                          background: "rgba(255,255,255,0.78)",
-                          border: "1px solid rgba(16,72,68,0.10)",
-                          borderRadius: 16,
-                          padding: "10px 12px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 10,
-                        }}
-                      >
-                        <div>
-                          <div
-                            style={{
-                              color: "#17343a",
-                              fontWeight: 800,
-                              fontSize: isMobile ? 13 : 14,
-                            }}
-                          >
-                            {plan.name}
-                          </div>
-                          <div style={{ color: "#64748b", fontSize: 12 }}>
-                            {plan.days} days · Default 2 devices · Support
-                          </div>
-                        </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "flex-end",
-                            gap: 6,
-                          }}
-                        >
-                          <div
-                            style={{
-                              color: "#0f766e",
-                              fontWeight: 900,
-                              fontSize: isMobile ? 14 : 16,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            AED {plan.price}
-                          </div>
-
-                          <button
-                            onClick={() => {
-                              setSubscribePlan(plan);
-                              setPaymentRequestStatus(null);
-                              setSubscribeName(name || "");
-                              setSubscribeContact("");
-                              setGeneratedAccessKey("");
-                              setSubscribeOpen(true);
-                            }}
-                            style={{
-                              border: "none",
-                              borderRadius: 999,
-                              padding: "7px 11px",
-                              background: "#0f766e",
-                              color: "#fff",
-                              fontWeight: 800,
-                              fontSize: 12,
-                              cursor: "pointer",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            Subscribe
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 10 }}
-                >
-                  <div style={{ position: "relative" }}>
-                    <span
-                      style={{
-                        position: "absolute",
-                        left: 14,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        fontSize: isMobile ? 15 : 18,
-                        opacity: 0.8,
-                      }}
-                    >
-                      👤
+                    <span>
+                      <span style={{ color: "#10b981" }}>●</span> Quietly connected
                     </span>
-                    <input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Enter your name"
-                      style={{
-                        width: "100%",
-                        height: isMobile ? 44 : 50,
-                        borderRadius: 999,
-                        border: "1px solid rgba(16,72,68,0.10)",
-                        background: "#f8fbfb",
-                        padding: "0 18px 0 42px",
-                        fontSize: isMobile ? 14 : 15,
-                        outline: "none",
-                        boxSizing: "border-box",
-                        color: "#1f2937",
-                        boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
-                      }}
-                    />
+                    <span>now</span>
                   </div>
-
-                  <div style={{ position: "relative" }}>
-                    <span
-                      style={{
-                        position: "absolute",
-                        left: 14,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        fontSize: isMobile ? 15 : 18,
-                        opacity: 0.8,
-                      }}
-                    >
-                      🛡️
-                    </span>
-                    <input
-                      value={accessKey}
-                      onChange={(e) => setAccessKey(e.target.value)}
-                      placeholder="Enter Access Key"
-                      style={{
-                        width: "100%",
-                        height: isMobile ? 44 : 50,
-                        borderRadius: 999,
-                        border: "1px solid rgba(16,72,68,0.10)",
-                        background: "#f8fbfb",
-                        padding: "0 18px 0 42px",
-                        fontSize: isMobile ? 14 : 15,
-                        outline: "none",
-                        boxSizing: "border-box",
-                        color: "#1f2937",
-                        boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
-                      }}
-                    />
-                  </div>
-
-                  <div style={{ position: "relative" }}>
-                    <span
-                      style={{
-                        position: "absolute",
-                        left: 14,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        fontSize: isMobile ? 15 : 18,
-                        opacity: 0.8,
-                      }}
-                    >
-                      🔑
-                    </span>
-                    <input
-                      value={room}
-                      onChange={(e) => setRoom(e.target.value)}
-                      placeholder="Enter room code"
-                      style={{
-                        width: "100%",
-                        height: isMobile ? 44 : 50,
-                        borderRadius: 999,
-                        border: "1px solid rgba(16,72,68,0.10)",
-                        background: "#f8fbfb",
-                        padding: "0 18px 0 42px",
-                        fontSize: isMobile ? 14 : 15,
-                        outline: "none",
-                        boxSizing: "border-box",
-                        color: "#1f2937",
-                        boxShadow: "0 3px 10px rgba(0,0,0,0.08)",
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <button
-                  onClick={joinRoom}
-                  disabled={joining}
-                  style={{
-                    width: "100%",
-                    marginTop: 14,
-                    height: isMobile ? 46 : 52,
-                    border: "none",
-                    borderRadius: 999,
-                    cursor: joining ? "not-allowed" : "pointer",
-                    color: "#fff",
-                    fontSize: isMobile ? 14.5 : 16,
-                    fontWeight: 800,
-                    letterSpacing: 0.2,
-                    background:
-                      "linear-gradient(180deg, #7dffb1 0%, #27c16e 40%, #0a7e43 100%)",
-                    boxShadow:
-                      "0 8px 20px rgba(18,102,58,0.35), inset 0 2px 8px rgba(255,255,255,0.35), inset 0 -2px 6px rgba(0,0,0,0.18)",
-                  }}
-                >
-                  {joining ? "Entering..." : "Enter Room ›"}
-                </button>
-
-              <button
-  type="button"
-  onClick={() => openPublicSupport("I want to buy a subscription")}
-  style={{
-    width: "100%",
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 999,
-    border: "none",
-    background: "#f8fafc",
-    color: "#0f766e",
-    fontWeight: 800,
-    cursor: "pointer",
-  }}
->
-  Need Help? Contact Support
-</button>
-
-
-                <div
-                  style={{
-                    marginTop: 12,
-                    textAlign: "center",
-                    position: "relative",
-                  }}
-                >
                   <div
                     style={{
-                      height: 1,
-                      background: "rgba(24,52,59,0.14)",
-                      position: "absolute",
-                      left: 0,
-                      right: 0,
-                      top: "50%",
+                      height: 9,
+                      width: "72%",
+                      borderRadius: 99,
+                      background: "#dbeafe",
+                      marginBottom: 8,
                     }}
                   />
-                  
+                  <div
+                    style={{
+                      height: 9,
+                      width: "58%",
+                      borderRadius: 99,
+                      background: "#99f6e4",
+                      marginBottom: 8,
+                    }}
+                  />
+                  <div
+                    style={{
+                      height: 9,
+                      width: "68%",
+                      borderRadius: 99,
+                      background: "#fecaca",
+                      marginBottom: 18,
+                    }}
+                  />
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 12,
+                        background: "#061821",
+                        color: "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 900,
+                      }}
+                    >
+                      M
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 900, color: "#061821" }}>Morning, team</div>
+                      <div style={{ color: "#64748b", fontWeight: 600 }}>Everything is ready for today.</div>
+                    </div>
+                    <div style={{ marginLeft: "auto", color: "#94a3b8", fontWeight: 800 }}>09:41</div>
+                  </div>
                 </div>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: isMobile ? 24 : 46,
+                  marginTop: isMobile ? 18 : 30,
+                  color: "#061821",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 950, fontSize: 22 }}>01</div>
+                  <div style={{ color: "#64748b", fontWeight: 700, fontSize: 13 }}>private by default</div>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 950, fontSize: 22 }}>24/7</div>
+                  <div style={{ color: "#64748b", fontWeight: 700, fontSize: 13 }}>support access</div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                width: "100%",
+                maxWidth: 460,
+                justifySelf: isMobile ? "center" : "end",
+                background: "rgba(255,255,255,0.92)",
+                border: "1px solid rgba(15,23,42,0.08)",
+                borderRadius: isMobile ? 28 : 34,
+                padding: isMobile ? 20 : 34,
+                boxShadow: "0 30px 90px rgba(15,23,42,0.16)",
+                boxSizing: "border-box",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 26 }}>
+                <div
+                  style={{
+                    width: 54,
+                    height: 54,
+                    borderRadius: 16,
+                    background: "#061821",
+                    color: "#67e8f9",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 26,
+                    boxShadow: "0 12px 30px rgba(15,23,42,0.16)",
+                  }}
+                >
+                  💬
+                </div>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 13px",
+                    borderRadius: 999,
+                    border: "1px solid #e2e8f0",
+                    color: "#334155",
+                    fontWeight: 900,
+                    fontSize: 13,
+                  }}
+                >
+                  <span style={{ color: "#10b981" }}>●</span> Private workspace
+                </div>
+              </div>
+
+              <div
+                style={{
+                  textTransform: "uppercase",
+                  letterSpacing: 3,
+                  color: "#64748b",
+                  fontSize: 12,
+                  fontWeight: 900,
+                  marginBottom: 12,
+                }}
+              >
+                Your people, in one place
+              </div>
+
+              <h2
+                style={{
+                  margin: 0,
+                  color: "#061821",
+                  fontSize: isMobile ? 34 : 46,
+                  lineHeight: 1,
+                  letterSpacing: -2,
+                  fontWeight: 950,
+                }}
+              >
+                Welcome back.
+              </h2>
+              <p style={{ margin: "14px 0 22px", color: "#64748b", lineHeight: 1.55, fontWeight: 600 }}>
+                Login with your Access Key or subscribe to get a new one.
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 4,
+                  padding: 5,
+                  borderRadius: 14,
+                  background: "#eaf1f6",
+                  marginBottom: 22,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setAuthMode("login")}
+                  style={{
+                    border: "none",
+                    borderRadius: 11,
+                    padding: "12px 10px",
+                    background: authMode === "login" ? "#ffffff" : "transparent",
+                    color: authMode === "login" ? "#061821" : "#64748b",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    boxShadow: authMode === "login" ? "0 8px 18px rgba(15,23,42,0.08)" : "none",
+                  }}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode("signup")}
+                  style={{
+                    border: "none",
+                    borderRadius: 11,
+                    padding: "12px 10px",
+                    background: authMode === "signup" ? "#ffffff" : "transparent",
+                    color: authMode === "signup" ? "#061821" : "#64748b",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    boxShadow: authMode === "signup" ? "0 8px 18px rgba(15,23,42,0.08)" : "none",
+                  }}
+                >
+                  Sign Up
+                </button>
+              </div>
+
+              {authMode === "login" ? (
+                <>
+                  <label style={{ display: "block", color: "#334155", fontWeight: 900, fontSize: 13, marginBottom: 8 }}>
+                    Display name
+                  </label>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Any name"
+                    style={{ ...supportInputStyle, marginBottom: 14 }}
+                  />
+
+                  <label style={{ display: "block", color: "#334155", fontWeight: 900, fontSize: 13, marginBottom: 8 }}>
+                    Access Key
+                  </label>
+                  <input
+                    value={accessKey}
+                    onChange={(e) => setAccessKey(e.target.value)}
+                    placeholder="Enter Access Key"
+                    style={{ ...supportInputStyle, marginBottom: 14 }}
+                  />
+
+                  <label style={{ display: "block", color: "#334155", fontWeight: 900, fontSize: 13, marginBottom: 8 }}>
+                    Room code
+                  </label>
+                  <input
+                    value={room}
+                    onChange={(e) => setRoom(e.target.value)}
+                    placeholder="Enter room code"
+                    style={{ ...supportInputStyle, marginBottom: 18 }}
+                  />
+
+                  <button
+                    onClick={joinRoom}
+                    disabled={joining}
+                    style={{
+                      width: "100%",
+                      height: 54,
+                      border: "none",
+                      borderRadius: 14,
+                      cursor: joining ? "not-allowed" : "pointer",
+                      color: "#fff",
+                      fontSize: 16,
+                      fontWeight: 950,
+                      background: "#061821",
+                      boxShadow: "0 16px 34px rgba(15,23,42,0.20)",
+                    }}
+                  >
+                    {joining ? "Entering..." : "Continue to Private Room →"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openPublicSupport("I want to buy a subscription")}
+                    style={{
+                      width: "100%",
+                      marginTop: 12,
+                      padding: 12,
+                      borderRadius: 14,
+                      border: "1px solid #e2e8f0",
+                      background: "#fff",
+                      color: "#0f766e",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Need Help? Contact Support
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={manageRoomsByAccessKey}
+                    style={{
+                      width: "100%",
+                      marginTop: 10,
+                      padding: 12,
+                      borderRadius: 14,
+                      border: "1px solid #fee2e2",
+                      background: "#fff5f5",
+                      color: "#991b1b",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Manage Room
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ color: "#334155", fontWeight: 900, marginBottom: 12 }}>
+                    Choose your package
+                  </div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {plans.length > 0 ? (
+                      plans.map((plan) => (
+                        <div
+                          key={plan.id}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr auto",
+                            alignItems: "center",
+                            gap: 12,
+                            padding: 14,
+                            borderRadius: 18,
+                            background: "#f8fafc",
+                            border: "1px solid #e2e8f0",
+                          }}
+                        >
+                          <div>
+                            <div style={{ color: "#061821", fontWeight: 950 }}>{plan.name}</div>
+                            <div style={{ color: "#64748b", fontSize: 12, fontWeight: 700 }}>
+                              {plan.days} days · 2 devices · Support
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ color: "#0f766e", fontWeight: 950, marginBottom: 7 }}>AED {plan.price}</div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSubscribePlan(plan);
+                                setPaymentRequestStatus(null);
+                                setSubscribeName(name || "");
+                                setSubscribeContact("");
+                                setGeneratedAccessKey("");
+                                setSubscribeOpen(true);
+                              }}
+                              style={{
+                                border: "none",
+                                borderRadius: 999,
+                                padding: "8px 12px",
+                                background: "#0f766e",
+                                color: "#fff",
+                                fontWeight: 900,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Subscribe
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div
+                        style={{
+                          padding: 16,
+                          borderRadius: 16,
+                          background: "#fff7ed",
+                          color: "#9a3412",
+                          fontWeight: 800,
+                        }}
+                      >
+                        Packages are loading. If they do not appear, check backend /api/plans.
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => openPublicSupport("I want to buy a subscription")}
+                    style={{
+                      width: "100%",
+                      marginTop: 14,
+                      padding: 12,
+                      borderRadius: 14,
+                      border: "1px solid #e2e8f0",
+                      background: "#fff",
+                      color: "#0f766e",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Ask support before buying
+                  </button>
+                </>
+              )}
+
+              <div style={{ marginTop: 18, color: "#10b981", fontSize: 13, fontWeight: 800 }}>
+                ● No tracking. No noisy notifications. Just your private conversations.
               </div>
             </div>
           </div>

@@ -1525,6 +1525,31 @@ app.post("/api/support/:requestId/reply", (req, res) => {
     message: supportMessage,
   });
 });
+app.post("/api/rooms/delete-by-access-key", (req, res) => {
+  const { accessKey } = req.body || {};
+  const key = String(accessKey || "").trim();
+
+  if (!key) {
+    return res.status(400).json({ error: "Access Key is required" });
+  }
+
+  const db = readDB();
+  if (!Array.isArray(db.rooms)) db.rooms = [];
+
+  const beforeCount = db.rooms.length;
+  db.rooms = db.rooms.filter(
+    (room) => String(room.accessKey || "").trim() !== key
+  );
+
+  const deleted = beforeCount - db.rooms.length;
+  writeDB(db);
+
+  res.json({
+    success: true,
+    deleted,
+    message: `Deleted ${deleted} room(s) for this Access Key`,
+  });
+});
 
 const PORT = process.env.PORT || 4000;
 
