@@ -4566,7 +4566,11 @@ item.status !== "archived" ? (
           }}
         >
           <Chat client={client} theme="messaging light">
-            <Channel channel={channel} Attachment={CustomAttachment}>
+            <Channel
+  channel={channel}
+  Attachment={CustomAttachment}
+  Message={MyMessage}
+>
               <Window>
                 <div
                   style={{
@@ -4599,7 +4603,7 @@ item.status !== "archived" ? (
                       backgroundSize: "48px 48px, 58px 58px",
                     }}
                   >
-                    <MessageList Message={MyMessage} />
+                    <MessageList />
                   </div>
 
                   <div
