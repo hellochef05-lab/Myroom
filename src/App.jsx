@@ -46,8 +46,9 @@ function createPrivateRoomId(accessKey, roomCode) {
   return `key_${normaliseIdentifier(accessKey, "unknown")}_room_${normaliseIdentifier(roomCode, "room")}`;
 }
 
-function createStreamUserId(accessKey, displayName) {
-  return `key_${normaliseIdentifier(accessKey, "unknown")}_user_${normaliseIdentifier(displayName, "guest")}`;
+function createStreamUserId(accessKey, displayName, deviceId) {
+  const deviceSuffix = normaliseIdentifier(deviceId, "device").slice(-18);
+  return `key_${normaliseIdentifier(accessKey, "unknown")}_user_${normaliseIdentifier(displayName, "guest")}_${deviceSuffix}`;
 }
 
 const DEFAULT_API_TIMEOUT_MS = 25000;
@@ -2627,7 +2628,8 @@ async function joinRoom() {
     }
 
     setJoining(true);
-    const streamUserId = createStreamUserId(accessKey, name);
+    const currentDeviceId = getDeviceId();
+    const streamUserId = createStreamUserId(accessKey, name, currentDeviceId);
     const privateRoomIdForLogin = createPrivateRoomId(accessKey, room);
 
     try {
@@ -2640,7 +2642,7 @@ async function joinRoom() {
           participantId: streamUserId,
           roomCode: room,
           privateRoomId: privateRoomIdForLogin,
-          deviceId: getDeviceId(),
+          deviceId: currentDeviceId,
           deviceName: getDeviceName(),
         }),
       });
