@@ -164,9 +164,30 @@ app.post("/api/token", async (req, res) => {
 
     const finalAccessKey = user.accessKey;
 
-    const streamUserId = `user_${String(finalAccessKey)
-      .replace(/[^a-zA-Z0-9_-]/g, "")
-      .slice(0, 40)}`;
+    const safeProvidedUserId = String(userId || "")
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9_-]/g, "_")
+  .slice(0, 120);
+
+if (!safeProvidedUserId) {
+  return res.status(400).json({
+    error: "Unique user ID is required",
+  });
+}
+
+const expectedPrefix = `key_${String(finalAccessKey)
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9_-]/g, "_")}_user_`;
+
+if (!safeProvidedUserId.startsWith(expectedPrefix)) {
+  return res.status(403).json({
+    error: "Invalid user identity for this Access Key",
+  });
+}
+
+const streamUserId = safeProvidedUserId;
 
     await serverClient.upsertUser({
       id: streamUserId,
@@ -174,10 +195,22 @@ app.post("/api/token", async (req, res) => {
       role: "user",
     });
 
-    const channel = serverClient.channel("messaging", finalRoom, {
-      name: `Room ${finalRoom}`,
-      created_by_id: streamUserId,
-    });
+    const privateRoomId = `key_${finalAccessKey}_room_${String(finalRoom)
+  .trim()
+  .replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+
+const channel = serverClient.channel("messaging", privateRoomId, {
+  name: `Room ${finalRoom}`,
+  created_by_id: streamUserId,
+});
+
+await channel.create();
+
+try {
+  await channel.addMembers([streamUserId]);
+} catch (error) {
+  // Ignore if the user is already a member
+}
 
     await channel.watch();
     await channel.addMembers([streamUserId]);
@@ -188,7 +221,7 @@ app.post("/api/token", async (req, res) => {
       token,
       userId: streamUserId,
       name: displayName,
-      room: finalRoom,
+      room: privateRoomId,
       accessKey: finalAccessKey,
     });
   } catch (err) {
