@@ -10,6 +10,7 @@ import {
   Window,
   MessageSimple,
   TypingIndicator,
+  useMessageContext,
 } from "stream-chat-react";
 import "stream-chat-react/dist/css/v2/index.css";
 
@@ -2762,36 +2763,39 @@ alert(err.message || "Join failed - see console");
   };
 
  const MyMessage = (props) => {
-  const message = props?.message;
+  const { message } = useMessageContext();
 
-  if (!message || !message.type || message.type === "system") {
+  if (!message || message.type === "system") {
     return <MessageSimple {...props} />;
   }
 
-  const isMine = message?.user?.id === client?.userID;
-  const senderName =
-    message?.user?.name ||
-    message?.user?.id ||
-    (isMine ? "You" : "User");
+  const isMine = message.user?.id === client?.userID;
 
-  const readCount = message?.read_by?.length || 0;
-  const sentAt = message?.created_at || message?.updated_at;
+  const senderName =
+    message.user?.name ||
+    message.user?.id ||
+    (isMine ? name || "You" : "User");
+
+  const sentAt = message.created_at || message.updated_at;
+  const readCount = message.read_by?.length || 0;
 
   return (
     <div
       style={{
         display: "flex",
         justifyContent: isMine ? "flex-end" : "flex-start",
-        padding: "4px 14px",
+        padding: "5px 14px",
+        width: "100%",
+        boxSizing: "border-box",
       }}
     >
       <div
         style={{
           display: "flex",
+          flexDirection: isMine ? "row-reverse" : "row",
           alignItems: "flex-end",
           gap: 8,
-          maxWidth: isMobile ? "88%" : "72%",
-          flexDirection: isMine ? "row-reverse" : "row",
+          maxWidth: isMobile ? "88%" : "70%",
         }}
       >
         <div
@@ -2803,17 +2807,17 @@ alert(err.message || "Join failed - see console");
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: isMine ? "#0f766e" : "#2563eb",
-            color: "#fff",
+            background: isMine ? "#059669" : "#2563eb",
+            color: "#ffffff",
             fontSize: 14,
             fontWeight: 900,
           }}
           title={senderName}
         >
-          {senderName.slice(0, 1).toUpperCase()}
+          {String(senderName).slice(0, 1).toUpperCase()}
         </div>
 
-        <div>
+        <div style={{ minWidth: 0 }}>
           <div
             style={{
               marginBottom: 4,
@@ -2821,24 +2825,25 @@ alert(err.message || "Join failed - see console");
               paddingRight: isMine ? 6 : 0,
               textAlign: isMine ? "right" : "left",
               fontSize: 12,
-              fontWeight: 800,
-              color: isMine ? "#0f766e" : "#2563eb",
+              lineHeight: 1.2,
+              fontWeight: 900,
+              color: isMine ? "#047857" : "#1d4ed8",
             }}
           >
-            {isMine ? "You" : senderName}
+            {isMine ? `You (${senderName})` : senderName}
           </div>
 
           <div
             style={{
-              background: isMine ? "#dcfce7" : "#ffffff",
+              minWidth: 70,
+              position: "relative",
+              padding: "8px 12px 20px",
               borderRadius: isMine
                 ? "18px 18px 5px 18px"
                 : "18px 18px 18px 5px",
-              padding: "9px 12px 20px",
+              background: isMine ? "#dcfce7" : "#ffffff",
+              border: "1px solid rgba(15,23,42,0.07)",
               boxShadow: "0 3px 12px rgba(15,23,42,0.10)",
-              position: "relative",
-              border: "1px solid rgba(15,23,42,0.06)",
-              minWidth: 80,
             }}
           >
             <MessageSimple {...props} />
@@ -2851,8 +2856,8 @@ alert(err.message || "Join failed - see console");
                 display: "flex",
                 alignItems: "center",
                 gap: 4,
-                fontSize: 10,
                 color: "#64748b",
+                fontSize: 10,
               }}
             >
               <span>{sentAt ? formatTime(sentAt) : ""}</span>
