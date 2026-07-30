@@ -327,35 +327,39 @@ app.get("/api/delete-all-rooms-shortcut", async (req, res) => {
 });
 app.get("/api/plans", (req, res) => {
   const db = readDB();
-  res.json(db.plans.filter((plan) => plan.active));
-});
 
-app.post("/api/admin/plans/:planId", (req, res) => {
-  if (!isAdmin(req)) {
-    return res.status(403).json({ error: "Admin access required" });
+  if (!Array.isArray(db.plans) || db.plans.length === 0) {
+    db.plans = [
+      {
+        id: "monthly",
+        name: "Monthly Plan",
+        price: 29,
+        days: 30,
+        active: true,
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: "three_month",
+        name: "3 Month Plan",
+        price: 75,
+        days: 90,
+        active: true,
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: "yearly",
+        name: "Yearly Plan",
+        price: 299,
+        days: 365,
+        active: true,
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+
+    writeDB(db);
   }
 
-  const { planId } = req.params;
-  const { name, price, days, active } = req.body;
-
-  const db = readDB();
-  const plan = db.plans.find((p) => p.id === planId);
-
-  if (!plan) {
-    return res.status(404).json({ error: "Plan not found" });
-  }
-
-  if (name !== undefined) plan.name = name;
-  if (price !== undefined) plan.price = Number(price);
-  if (days !== undefined) plan.days = Number(days);
-  if (active !== undefined) plan.active = Boolean(active);
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    plan
-  });
+  res.json(db.plans.filter((plan) => plan.active !== false));
 });
 app.post("/api/admin/users", (req, res) => {
   if (!isAdmin(req)) {
