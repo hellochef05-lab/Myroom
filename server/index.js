@@ -209,13 +209,32 @@ await channel.create();
 try {
   await channel.addMembers([streamUserId]);
 } catch (error) {
-  // Ignore if the user is already a member
+  // Ignore if already a member
 }
 
-    await channel.watch();
-    await channel.addMembers([streamUserId]);
+await channel.watch();
 
-    const token = serverClient.createToken(streamUserId);
+if (!Array.isArray(db.rooms)) {
+  db.rooms = [];
+}
+
+const roomExists = db.rooms.find(
+  (r) => r.id === privateRoomId
+);
+
+if (!roomExists) {
+  db.rooms.push({
+    id: privateRoomId,
+    roomName: String(finalRoom),
+    accessKey: finalAccessKey,
+    ownerName: displayName,
+    createdAt: new Date().toISOString(),
+  });
+
+  writeDB(db);
+}
+
+const token = serverClient.createToken(streamUserId);
 
     res.json({
       token,
@@ -1558,30 +1577,65 @@ app.post("/api/support/:requestId/reply", (req, res) => {
     message: supportMessage,
   });
 });
-app.post("/api/rooms/delete-by-access-key", (req, res) => {
-  const { accessKey } = req.body || {};
-  const key = String(accessKey || "").trim();
+app.post("/api/rooms/delete-by-access-key", async (req, res) => {
+  try {
+    const { accessKey } = req.body || {};
+    const key = String(accessKey || "").trim();
 
-  if (!key) {
-    return res.status(400).json({ error: "Access Key is required" });
+    if (!key) {
+      return res.status(400).json({
+        error: "Access Key is required",
+      });
+    }
+
+    const db = readDB();
+
+    if (!Array.isArray(db.rooms)) {
+      db.rooms = [];
+    }
+
+    const roomsToDelete = db.rooms.filter(
+      (room) =>
+        String(room.accessKey || "").trim().toLowerCase() ===
+        key.toLowerCase()
+    );
+
+    const channelIds = roomsToDelete
+      .map((room) => String(room.id || "").trim())
+      .filter(Boolean);
+
+    if (channelIds.length > 0) {
+      const cids = channelIds.map((channelId) => `messaging:${channelId}`);
+
+      const response = await serverClient.deleteChannels(cids);
+
+      if (response?.task_id) {
+        await serverClient.getTask(response.task_id);
+      }
+    }
+
+    db.rooms = db.rooms.filter(
+      (room) =>
+        String(room.accessKey || "").trim().toLowerCase() !==
+        key.toLowerCase()
+    );
+
+    writeDB(db);
+
+    return res.json({
+      success: true,
+      deleted: channelIds.length,
+      deletedRooms: channelIds,
+      message: `Deleted ${channelIds.length} room(s) for this Access Key`,
+    });
+  } catch (err) {
+    console.error("Delete rooms by Access Key error:", err);
+
+    return res.status(500).json({
+      error: "Failed to delete rooms",
+      details: err.message,
+    });
   }
-
-  const db = readDB();
-  if (!Array.isArray(db.rooms)) db.rooms = [];
-
-  const beforeCount = db.rooms.length;
-  db.rooms = db.rooms.filter(
-    (room) => String(room.accessKey || "").trim() !== key
-  );
-
-  const deleted = beforeCount - db.rooms.length;
-  writeDB(db);
-
-  res.json({
-    success: true,
-    deleted,
-    message: `Deleted ${deleted} room(s) for this Access Key`,
-  });
 });
 
 const PORT = process.env.PORT || 4000;
