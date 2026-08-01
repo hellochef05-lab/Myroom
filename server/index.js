@@ -5,9 +5,6 @@ import dotenv from "dotenv";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import fs from "fs";
-import path from "path";
-
-dotenv.config();
 
 dotenv.config();
 
@@ -16,21 +13,35 @@ app.use(express.json());
 
 const DB_FILE = new URL("./db.json", import.meta.url).pathname;
 
+function createEmptyDB() {
+  return {
+    plans: [],
+    users: [],
+    devices: [],
+    rooms: [],
+    payments: [],
+    supportRequests: [],
+    supportMessages: [],
+  };
+}
+
 function readDB() {
   if (!fs.existsSync(DB_FILE)) {
-    console.error("DB file not found:", DB_FILE);
-
-    return {
-      plans: [],
-      users: [],
-      devices: [],
-      rooms: [],
-      supportRequests: [],
-      supportMessages: []
-    };
+    const db = createEmptyDB();
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+    return db;
   }
 
-  return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  const db = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  const defaults = createEmptyDB();
+
+  for (const key of Object.keys(defaults)) {
+    if (!Array.isArray(db[key])) {
+      db[key] = [];
+    }
+  }
+
+  return db;
 }
 
 function writeDB(db) {
@@ -38,76 +49,251 @@ function writeDB(db) {
 }
 
 function makeId(prefix) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}_${Date.now()}_${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+function normalize(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function safeId(value) {
+  return normalize(value)
+    .replace(/[^a-z0-9_-]/g, "_")
+    .slice(0, 120);
+}
+
+function sameValue(a, b) {
+  return normalize(a) === normalize(b);
 }
 
 function isAdmin(req) {
-  return req.headers["x-admin-pin"] === process.env.ADMIN_PIN;
+  return (
+    req.headers["x-admin-pin"] ===
+    (process.env.ADMIN_PIN || "123456")
+  );
 }
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
+function checkAdminPin(req, res) {
+  if (!isAdmin(req)) {
+    res.status(403).json({
+      error: "Invalid admin PIN",
+    });
+
+    return false;
+  }
+
+  return true;
+}
+
+function getActiveUserByAccessKey(db, accessKey) {
+  const user = db.users.find((item) =>
+    sameValue(item.accessKey, accessKey)
+  );
+
+  if (!user) {
+    return {
+      error: "Invalid Access Key",
+      status: 401,
+    };
+  }
+
+  if (user.status !== "active") {
+    return {
+      error: "User account is blocked",
+      status: 403,
+    };
+  }
+
+  if (user.subscriptionStatus === "blocked") {
+    return {
+      error: "Subscription is blocked",
+      status: 403,
+    };
+  }
+
+  if (
+    user.subscriptionEnd &&
+    new Date(user.subscriptionEnd) < new Date()
+  ) {
+    return {
+      error: "Subscription expired",
+      status: 403,
+    };
+  }
+
+  return {
+    user,
+  };
+}
+
+function generateFiveDigitAccessKey(db) {
+  let accessKey;
+
+  do {
+    accessKey = String(
+      Math.floor(10000 + Math.random() * 90000)
+    );
+  } while (
+    db.users.some((user) =>
+      sameValue(user.accessKey, accessKey)
+    )
+  );
+
+  return accessKey;
+}
+
+function addDaysToDate(days) {
+  const date = new Date();
+
+  date.setDate(
+    date.getDate() + Number(days || 30)
+  );
+
+  return date.toISOString().slice(0, 10);
+}
+
+function getTodayDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+const allowedOrigins = (
+  process.env.ALLOWED_ORIGINS || ""
+)
   .split(",")
-  .map((o) => o.trim())
+  .map((origin) => origin.trim())
   .filter(Boolean);
 
-[
+for (const origin of [
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:5175",
   "https://myroom-ms7g.onrender.com",
   "https://myroom-n1bl.vercel.app",
-].forEach((origin) => {
+]) {
   if (!allowedOrigins.includes(origin)) {
     allowedOrigins.push(origin);
   }
-});
-
-const isAllowedOrigin = (origin) => {
-  if (!origin) return true;
-  return allowedOrigins.includes(origin) || origin.endsWith(".vercel.app");
-};
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (isAllowedOrigin(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error(`CORS blocked for origin: ${origin}`));
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "x-admin-pin",
-      "x-admin-key",
-    ],
-  })
-);
-
-app.options(/.*/, cors());
-
-const streamApiKey = process.env.STREAM_API_KEY;
-const streamApiSecret = process.env.STREAM_API_SECRET;
-
-if (!streamApiKey || !streamApiSecret) {
-  console.error("Missing STREAM_API_KEY or STREAM_API_SECRET");
 }
 
-const serverClient = StreamChat.getInstance(streamApiKey, streamApiSecret);
+function isAllowedOrigin(origin) {
+  if (!origin) {
+    return true;
+  }
+
+  return (
+    allowedOrigins.includes(origin) ||
+    origin.endsWith(".vercel.app")
+  );
+}
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      callback(
+        new Error(
+          `CORS blocked for origin: ${origin}`
+        )
+      );
+    }
+  },
+
+  credentials: true,
+
+  methods: [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+  ],
+
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "x-admin-pin",
+    "x-admin-key",
+  ],
+};
+
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
+
+const streamApiKey = process.env.STREAM_API_KEY;
+const streamApiSecret =
+  process.env.STREAM_API_SECRET;
+
+if (!streamApiKey || !streamApiSecret) {
+  console.error(
+    "Missing STREAM_API_KEY or STREAM_API_SECRET"
+  );
+}
+
+const serverClient = StreamChat.getInstance(
+  streamApiKey,
+  streamApiSecret
+);
+
+async function deleteStreamChannels(roomIds) {
+  const uniqueIds = [
+    ...new Set(
+      roomIds
+        .map((id) => String(id || "").trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+
+  const cids = uniqueIds.map(
+    (id) => `messaging:${id}`
+  );
+
+  const response =
+    await serverClient.deleteChannels(cids);
+
+  if (response?.task_id) {
+    await serverClient.getTask(
+      response.task_id
+    );
+  }
+
+  return uniqueIds;
+}
 
 app.get("/", (_req, res) => {
   res.send("Backend is running");
 });
 
+/*
+|--------------------------------------------------------------------------
+| STREAM TOKEN AND PRIVATE ROOM CREATION
+|--------------------------------------------------------------------------
+*/
+
 app.post("/api/token", async (req, res) => {
   try {
-    const { userId, name, username, room, roomCode, accessKey } = req.body || {};
+    const {
+      userId,
+      name,
+      username,
+      room,
+      roomCode,
+      accessKey,
+    } = req.body || {};
 
-    const displayName = name || username || "Guest";
-    const finalRoom = room || roomCode;
+    const displayName =
+      name || username || "Guest";
+
+    const finalRoom = String(
+      roomCode || room || ""
+    ).trim();
 
     if (!finalRoom) {
       return res.status(400).json({
@@ -117,270 +303,620 @@ app.post("/api/token", async (req, res) => {
 
     const db = readDB();
 
-    if (!Array.isArray(db.users)) db.users = [];
+    const auth = getActiveUserByAccessKey(
+      db,
+      accessKey || userId
+    );
 
-    const accessKeyInput = String(accessKey || "").trim().toLowerCase();
-    const userIdInput = String(userId || "").trim().toLowerCase();
-
-    const user = db.users.find((item) => {
-      const savedAccessKey = String(item.accessKey || "").trim().toLowerCase();
-      const savedUserId = String(item.id || "").trim().toLowerCase();
-
-      return (
-        savedAccessKey === accessKeyInput ||
-        savedAccessKey === userIdInput ||
-        savedUserId === userIdInput
-      );
-    });
-
-    if (!user) {
-      return res.status(401).json({
-        error: "Invalid Access Key",
+    if (auth.error) {
+      return res.status(auth.status).json({
+        error: auth.error,
       });
     }
 
-    if (user.status === "blocked") {
+    const finalAccessKey = String(
+      auth.user.accessKey
+    );
+
+    const providedUserId = safeId(userId);
+
+    if (!providedUserId) {
+      return res.status(400).json({
+        error: "Unique user ID is required",
+      });
+    }
+
+    const expectedPrefix =
+      `key_${safeId(finalAccessKey)}_user_`;
+
+    if (
+      !providedUserId.startsWith(
+        expectedPrefix
+      )
+    ) {
       return res.status(403).json({
-        error: "User account is blocked",
+        error:
+          "Invalid user identity for this Access Key",
       });
     }
-
-    if (user.subscriptionStatus === "blocked") {
-      return res.status(403).json({
-        error: "Subscription is blocked",
-      });
-    }
-
-    if (user.subscriptionEnd) {
-      const today = new Date();
-      const expiryDate = new Date(user.subscriptionEnd);
-
-      if (expiryDate < today) {
-        return res.status(403).json({
-          error: "Subscription expired",
-        });
-      }
-    }
-
-    const finalAccessKey = user.accessKey;
-
-    const safeProvidedUserId = String(userId || "")
-  .trim()
-  .toLowerCase()
-  .replace(/[^a-z0-9_-]/g, "_")
-  .slice(0, 120);
-
-if (!safeProvidedUserId) {
-  return res.status(400).json({
-    error: "Unique user ID is required",
-  });
-}
-
-const expectedPrefix = `key_${String(finalAccessKey)
-  .trim()
-  .toLowerCase()
-  .replace(/[^a-z0-9_-]/g, "_")}_user_`;
-
-if (!safeProvidedUserId.startsWith(expectedPrefix)) {
-  return res.status(403).json({
-    error: "Invalid user identity for this Access Key",
-  });
-}
-
-const streamUserId = safeProvidedUserId;
 
     await serverClient.upsertUser({
-      id: streamUserId,
+      id: providedUserId,
       name: displayName,
       role: "user",
     });
 
-    const privateRoomId = `key_${finalAccessKey}_room_${String(finalRoom)
-  .trim()
-  .replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+    const safeRoomCode = safeId(finalRoom);
 
-const channel = serverClient.channel("messaging", privateRoomId, {
-  name: `Room ${finalRoom}`,
-  created_by_id: streamUserId,
-});
+    const privateRoomId =
+      `key_${safeId(finalAccessKey)}` +
+      `_room_${safeRoomCode}`;
 
-await channel.create();
+    const now = new Date().toISOString();
 
-try {
-  await channel.addMembers([streamUserId]);
-} catch (error) {
-  // Ignore if already a member
-}
+    const existingRoom = db.rooms.find(
+      (savedRoom) =>
+        savedRoom.id === privateRoomId &&
+        sameValue(
+          savedRoom.accessKey,
+          finalAccessKey
+        )
+    );
 
-await channel.watch();
+    if (!existingRoom) {
+      db.rooms.push({
+        id: privateRoomId,
+        roomId: safeRoomCode,
+        roomName: finalRoom,
+        accessKey: finalAccessKey,
+        ownerName: displayName,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      existingRoom.roomName = finalRoom;
+      existingRoom.ownerName = displayName;
+      existingRoom.status = "active";
+      existingRoom.updatedAt = now;
+    }
 
-if (!Array.isArray(db.rooms)) {
-  db.rooms = [];
-}
+    writeDB(db);
 
-const roomExists = db.rooms.find(
-  (r) => r.id === privateRoomId
-);
+    const channel = serverClient.channel(
+      "messaging",
+      privateRoomId,
+      {
+        name: `Room ${finalRoom}`,
+        accessKey: finalAccessKey,
+        created_by_id: providedUserId,
+        members: [providedUserId],
+      }
+    );
 
-if (!roomExists) {
-  db.rooms.push({
-    id: privateRoomId,
-    roomName: String(finalRoom),
-    accessKey: finalAccessKey,
-    ownerName: displayName,
-    createdAt: new Date().toISOString(),
-  });
+    try {
+      await channel.create();
+    } catch (error) {
+      if (
+        !normalize(
+          error?.message
+        ).includes("already exists")
+      ) {
+        throw error;
+      }
+    }
 
-  writeDB(db);
-}
+    try {
+      await channel.addMembers([
+        providedUserId,
+      ]);
+    } catch (error) {
+      console.warn(
+        "Add member warning:",
+        error.message
+      );
+    }
 
-const token = serverClient.createToken(streamUserId);
+    const token =
+      serverClient.createToken(
+        providedUserId
+      );
 
-    res.json({
+    return res.json({
       token,
-      userId: streamUserId,
+      userId: providedUserId,
       name: displayName,
       room: privateRoomId,
       accessKey: finalAccessKey,
     });
-  } catch (err) {
-    console.error("Token route error:", err);
-    res.status(500).json({
+  } catch (error) {
+    console.error(
+      "Token route error:",
+      error
+    );
+
+    return res.status(500).json({
       error: "Failed to create token",
-      details: err.message,
+      details: error.message,
     });
   }
 });
-app.post("/api/delete-all-rooms", async (req, res) => {
-  try {
-    const adminKey = req.headers["x-admin-key"];
 
-    if (adminKey !== process.env.ADMIN_DELETE_KEY) {
-      return res.status(403).json({
-        success: false,
-        error: "Unauthorized",
-      });
-    }
+/*
+|--------------------------------------------------------------------------
+| LOGIN AND DEVICE LIMIT
+|--------------------------------------------------------------------------
+*/
 
-    const filters = { type: "messaging" };
-    const sort = [{ last_message_at: -1 }];
+app.post("/api/login", (req, res) => {
+  const {
+    username = "",
+    name = "",
+    accessKey = "",
+    deviceId = "",
+    deviceName = "",
+  } = req.body || {};
 
-    const channels = await serverClient.queryChannels(filters, sort, {
-      limit: 100,
+  const displayName =
+    username || name || "Guest";
+
+  if (!accessKey || !deviceId) {
+    return res.status(400).json({
+      error:
+        "Access Key and device ID are required",
     });
+  }
 
-    if (!channels.length) {
-      return res.json({
-        success: true,
-        message: "No rooms found",
-        deleted: 0,
-      });
-    }
+  const db = readDB();
 
-    const cids = channels.map((channel) => channel.cid);
+  const auth = getActiveUserByAccessKey(
+    db,
+    accessKey
+  );
 
-    const response = await serverClient.deleteChannels(cids);
-    const result = await serverClient.getTask(response.task_id);
+  if (auth.error) {
+    return res.status(auth.status).json({
+      error: auth.error,
+    });
+  }
+
+  const user = auth.user;
+
+  const canonicalKey = String(
+    user.accessKey
+  );
+
+  const deviceLimit = Number(
+    user.deviceLimit || 2
+  );
+
+  const activeDevices = db.devices.filter(
+    (device) =>
+      sameValue(
+        device.accessKey,
+        canonicalKey
+      ) &&
+      device.status === "active"
+  );
+
+  const existingDevice =
+    activeDevices.find(
+      (device) =>
+        device.deviceId === deviceId
+    );
+
+  const streamUserId =
+    `key_${safeId(canonicalKey)}` +
+    `_user_${safeId(deviceId)}`;
+
+  if (existingDevice) {
+    existingDevice.lastLoginAt =
+      new Date().toISOString();
+
+    existingDevice.deviceName =
+      deviceName ||
+      existingDevice.deviceName ||
+      "Unknown Device";
+
+    existingDevice.streamUserId =
+      streamUserId;
+
+    writeDB(db);
 
     return res.json({
       success: true,
-      message: "All rooms deleted",
-      deleted: cids.length,
-      task_status: result.status,
-      room_ids: cids,
-    });
-  } catch (err) {
-    console.error("delete all rooms error:", err);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to delete all rooms",
-      details: err.message,
+      user,
+      displayName,
+      streamUserId,
+      devicesUsed: activeDevices.length,
+      deviceLimit,
     });
   }
+
+  if (
+    activeDevices.length >= deviceLimit
+  ) {
+    return res.status(403).json({
+      error:
+        `Device limit reached. This Access Key ` +
+        `is allowed on ${deviceLimit} devices only.`,
+    });
+  }
+
+  db.devices.push({
+    id: makeId("device"),
+    userId: user.id,
+    accessKey: canonicalKey,
+    deviceId,
+    deviceName:
+      deviceName || "Unknown Device",
+    streamUserId,
+    status: "active",
+    firstLoginAt:
+      new Date().toISOString(),
+    lastLoginAt:
+      new Date().toISOString(),
+  });
+
+  writeDB(db);
+
+  return res.json({
+    success: true,
+    user,
+    displayName,
+    streamUserId,
+    devicesUsed:
+      activeDevices.length + 1,
+    deviceLimit,
+  });
 });
 
-const httpServer = createServer(app);
+/*
+|--------------------------------------------------------------------------
+| USER ROOM LIST
+|--------------------------------------------------------------------------
+*/
 
-const io = new Server(httpServer, {
-  cors: {
-    origin: (origin, callback) => {
-      if (isAllowedOrigin(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error(`Socket.IO CORS blocked for origin: ${origin}`));
+app.get(
+  "/api/rooms/:accessKey",
+  (req, res) => {
+    const db = readDB();
+
+    const auth =
+      getActiveUserByAccessKey(
+        db,
+        req.params.accessKey
+      );
+
+    if (auth.error) {
+      return res
+        .status(auth.status)
+        .json({
+          error: auth.error,
+        });
+    }
+
+    const rooms = db.rooms
+      .filter((room) =>
+        sameValue(
+          room.accessKey,
+          auth.user.accessKey
+        )
+      )
+      .sort(
+        (a, b) =>
+          new Date(
+            b.updatedAt || b.createdAt
+          ) -
+          new Date(
+            a.updatedAt || a.createdAt
+          )
+      );
+
+    return res.json(rooms);
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| DELETE ONE ROOM
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+  "/api/rooms/delete-one",
+  async (req, res) => {
+    try {
+      const {
+        accessKey,
+        roomId,
+      } = req.body || {};
+
+      if (!accessKey || !roomId) {
+        return res.status(400).json({
+          error:
+            "Access Key and room ID are required",
+        });
       }
-    },
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-});
 
-io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+      const db = readDB();
 
-  socket.on("join-room", ({ roomId }, ack) => {
-    if (!roomId) {
-      if (ack) ack({ ok: false });
-      return;
+      const auth =
+        getActiveUserByAccessKey(
+          db,
+          accessKey
+        );
+
+      if (auth.error) {
+        return res
+          .status(auth.status)
+          .json({
+            error: auth.error,
+          });
+      }
+
+      const room = db.rooms.find(
+        (item) =>
+          item.id === roomId &&
+          sameValue(
+            item.accessKey,
+            auth.user.accessKey
+          )
+      );
+
+      if (!room) {
+        return res.status(404).json({
+          error:
+            "Room not found for this Access Key",
+        });
+      }
+
+      await deleteStreamChannels([
+        room.id,
+      ]);
+
+      db.rooms = db.rooms.filter(
+        (item) =>
+          !(
+            item.id === room.id &&
+            sameValue(
+              item.accessKey,
+              auth.user.accessKey
+            )
+          )
+      );
+
+      writeDB(db);
+
+      return res.json({
+        success: true,
+        deleted: 1,
+        deletedRooms: [room.id],
+        message:
+          "Selected room deleted successfully",
+      });
+    } catch (error) {
+      console.error(
+        "Delete one room error:",
+        error
+      );
+
+      return res.status(500).json({
+        error: "Failed to delete room",
+        details: error.message,
+      });
     }
-
-    socket.join(roomId);
-    console.log(`Socket ${socket.id} joined room: ${roomId}`);
-
-    if (ack) ack({ ok: true, roomId });
-  });
-
-  socket.on("leave-room", ({ roomId }) => {
-    if (!roomId) return;
-    socket.leave(roomId);
-    console.log(`Socket ${socket.id} left room: ${roomId}`);
-  });
-
-  socket.on("signal", ({ roomId, data }) => {
-    if (!roomId || !data) return;
-    socket.to(roomId).emit("signal", data);
-  });
-
-  socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
-  });
-});
-app.get("/api/delete-all-rooms-shortcut", async (req, res) => {
-  try {
-    const key = req.query.key;
-
-    if (key !== process.env.DELETE_SHORTCUT_KEY) {
-      return res.status(403).send("Unauthorized");
-    }
-
-    const filters = { type: "messaging" };
-    const sort = [{ last_message_at: -1 }];
-
-    const channels = await serverClient.queryChannels(filters, sort, {
-      limit: 100,
-    });
-
-    if (!channels.length) {
-      return res.send("No rooms found");
-    }
-
-    const cids = channels.map((channel) => channel.cid);
-
-    const response = await serverClient.deleteChannels(cids);
-    const result = await serverClient.getTask(response.task_id);
-
-    return res.send(
-      `Success. Deleted ${cids.length} rooms. Task status: ${result.status}`
-    );
-  } catch (err) {
-    console.error("delete shortcut error:", err);
-    return res.status(500).send(`Failed: ${err.message}`);
   }
-});
-app.get("/api/plans", (req, res) => {
+);
+
+/*
+|--------------------------------------------------------------------------
+| DELETE MULTIPLE SELECTED ROOMS
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+  "/api/rooms/delete-multiple",
+  async (req, res) => {
+    try {
+      const {
+        accessKey,
+        roomIds,
+      } = req.body || {};
+
+      if (
+        !accessKey ||
+        !Array.isArray(roomIds) ||
+        roomIds.length === 0
+      ) {
+        return res.status(400).json({
+          error:
+            "Access Key and at least one room ID are required",
+        });
+      }
+
+      const db = readDB();
+
+      const auth =
+        getActiveUserByAccessKey(
+          db,
+          accessKey
+        );
+
+      if (auth.error) {
+        return res
+          .status(auth.status)
+          .json({
+            error: auth.error,
+          });
+      }
+
+      const requestedIds = new Set(
+        roomIds.map(String)
+      );
+
+      const ownedRooms = db.rooms.filter(
+        (room) =>
+          requestedIds.has(
+            String(room.id)
+          ) &&
+          sameValue(
+            room.accessKey,
+            auth.user.accessKey
+          )
+      );
+
+      if (ownedRooms.length === 0) {
+        return res.status(404).json({
+          error:
+            "No matching rooms found for this Access Key",
+        });
+      }
+
+      const ownedIds = ownedRooms.map(
+        (room) => room.id
+      );
+
+      await deleteStreamChannels(
+        ownedIds
+      );
+
+      const deletedSet = new Set(
+        ownedIds
+      );
+
+      db.rooms = db.rooms.filter(
+        (room) =>
+          !(
+            deletedSet.has(room.id) &&
+            sameValue(
+              room.accessKey,
+              auth.user.accessKey
+            )
+          )
+      );
+
+      writeDB(db);
+
+      return res.json({
+        success: true,
+        deleted: ownedIds.length,
+        deletedRooms: ownedIds,
+        message:
+          `${ownedIds.length} selected room(s) deleted successfully`,
+      });
+    } catch (error) {
+      console.error(
+        "Delete multiple rooms error:",
+        error
+      );
+
+      return res.status(500).json({
+        error: "Failed to delete rooms",
+        details: error.message,
+      });
+    }
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| DELETE ALL ROOMS FOR ONE ACCESS KEY
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+  "/api/rooms/delete-by-access-key",
+  async (req, res) => {
+    try {
+      const {
+        accessKey,
+      } = req.body || {};
+
+      if (!accessKey) {
+        return res.status(400).json({
+          error:
+            "Access Key is required",
+        });
+      }
+
+      const db = readDB();
+
+      const auth =
+        getActiveUserByAccessKey(
+          db,
+          accessKey
+        );
+
+      if (auth.error) {
+        return res
+          .status(auth.status)
+          .json({
+            error: auth.error,
+          });
+      }
+
+      const roomsToDelete =
+        db.rooms.filter((room) =>
+          sameValue(
+            room.accessKey,
+            auth.user.accessKey
+          )
+        );
+
+      const roomIds =
+        roomsToDelete.map(
+          (room) => room.id
+        );
+
+      await deleteStreamChannels(
+        roomIds
+      );
+
+      db.rooms = db.rooms.filter(
+        (room) =>
+          !sameValue(
+            room.accessKey,
+            auth.user.accessKey
+          )
+      );
+
+      writeDB(db);
+
+      return res.json({
+        success: true,
+        deleted: roomIds.length,
+        deletedRooms: roomIds,
+        message:
+          `Deleted ${roomIds.length} room(s) for this Access Key`,
+      });
+    } catch (error) {
+      console.error(
+        "Delete rooms by Access Key error:",
+        error
+      );
+
+      return res.status(500).json({
+        error: "Failed to delete rooms",
+        details: error.message,
+      });
+    }
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| SUBSCRIPTION PLANS
+|--------------------------------------------------------------------------
+*/
+
+app.get("/api/plans", (_req, res) => {
   const db = readDB();
 
-  if (!Array.isArray(db.plans) || db.plans.length === 0) {
+  if (db.plans.length === 0) {
+    const now =
+      new Date().toISOString();
+
     db.plans = [
       {
         id: "monthly",
@@ -388,7 +924,7 @@ app.get("/api/plans", (req, res) => {
         price: 29,
         days: 30,
         active: true,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
       },
       {
         id: "three_month",
@@ -396,7 +932,7 @@ app.get("/api/plans", (req, res) => {
         price: 75,
         days: 90,
         active: true,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
       },
       {
         id: "yearly",
@@ -404,299 +940,302 @@ app.get("/api/plans", (req, res) => {
         price: 299,
         days: 365,
         active: true,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
       },
     ];
 
     writeDB(db);
   }
 
-  res.json(db.plans.filter((plan) => plan.active !== false));
-});
-app.post("/api/admin/users", (req, res) => {
-  if (!isAdmin(req)) {
-    return res.status(403).json({ error: "Admin access required" });
-  }
-
-  const {
-    username,
-    accessKey,
-    subscriptionEnd,
-    deviceLimit = 2,
-    status = "active"
-  } = req.body;
-
-  if (!username || !accessKey || !subscriptionEnd) {
-    return res.status(400).json({
-      error: "username, accessKey and subscriptionEnd are required"
-    });
-  }
-
-  const db = readDB();
-
-  const exists = db.users.find(
-    (u) => u.username === username || u.accessKey === accessKey
+  return res.json(
+    db.plans.filter(
+      (plan) =>
+        plan.active !== false
+    )
   );
+});
 
-  if (exists) {
-    return res.status(409).json({
-      error: "Username or Access Key already exists"
+/*
+|--------------------------------------------------------------------------
+| PAYMENT SETTINGS
+|--------------------------------------------------------------------------
+*/
+
+app.get(
+  "/api/payment-settings",
+  (_req, res) => {
+    res.json({
+      upiId:
+        process.env.UPI_ID ||
+        "9781723138@sbi",
+
+      upiName:
+        process.env.UPI_NAME ||
+        "Private Room Subscription",
     });
   }
-
-  const user = {
-    id: makeId("user"),
-    username,
-    accessKey,
-    subscriptionStart: new Date().toISOString(),
-    subscriptionEnd,
-    deviceLimit: Number(deviceLimit),
-    status,
-    createdAt: new Date().toISOString()
-  };
-
-  db.users.push(user);
-  writeDB(db);
-
-  res.json({
-    success: true,
-    user
-  });
-});
-app.post("/api/login", (req, res) => {
-  const {
-  username = "",
-  name = "",
-  accessKey = "",
-  deviceId = "",
-  deviceName = "",
-} = req.body || {};
-
-const displayName = username || name || "Guest";
-  
-
-  const db = readDB();
-
-  const user = db.users.find(
-  (u) =>
-    String(u.accessKey || "").trim().toLowerCase() ===
-    String(accessKey || "").trim().toLowerCase()
 );
 
-  if (!user) {
-    return res.status(401).json({ error: "Invalid Access Key" });
+/*
+|--------------------------------------------------------------------------
+| SUBMIT PAYMENT REQUEST
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+  "/api/subscribe/request",
+  (req, res) => {
+    try {
+      const {
+        username,
+        contact,
+        planId,
+        upiReference,
+      } = req.body || {};
+
+      if (
+        !username ||
+        !contact ||
+        !planId ||
+        !upiReference
+      ) {
+        return res.status(400).json({
+          error:
+            "username, contact, planId, and UPI reference are required",
+        });
+      }
+
+      const db = readDB();
+
+      const existingPayment =
+        db.payments.find(
+          (payment) =>
+            sameValue(
+              payment.upiReference,
+              upiReference
+            )
+        );
+
+      if (existingPayment) {
+        return res.json({
+          success: true,
+          alreadySubmitted: true,
+          status:
+            existingPayment.status,
+          paymentId:
+            existingPayment.id,
+          accessKey:
+            existingPayment.accessKey ||
+            "",
+          payment: existingPayment,
+        });
+      }
+
+      const plan = db.plans.find(
+        (item) =>
+          item.id === planId
+      );
+
+      if (!plan) {
+        return res.status(404).json({
+          error: "Plan not found",
+        });
+      }
+
+      if (
+        db.users.some((user) =>
+          sameValue(
+            user.username,
+            username
+          )
+        )
+      ) {
+        return res.status(409).json({
+          error:
+            "Username already exists. Please choose another username.",
+        });
+      }
+
+      const payment = {
+        id: makeId("payment"),
+        username,
+        contact,
+        planId: plan.id,
+        planName: plan.name,
+        amount: plan.price,
+        days: plan.days,
+        upiReference,
+
+        upiId:
+          process.env.UPI_ID ||
+          "9781723138@sbi",
+
+        status: "pending",
+        accessKey: "",
+        userId: "",
+
+        createdAt:
+          new Date().toISOString(),
+
+        updatedAt:
+          new Date().toISOString(),
+
+        approvedAt: "",
+        rejectedAt: "",
+        rejectionReason: "",
+        adminComment: "",
+      };
+
+      db.payments.push(payment);
+      writeDB(db);
+
+      return res.json({
+        success: true,
+        payment,
+        message:
+          "Payment submitted. Please wait for admin approval.",
+      });
+    } catch (error) {
+      console.error(
+        "Subscription request error:",
+        error
+      );
+
+      return res.status(500).json({
+        error: error.message,
+      });
+    }
   }
+);
 
-  if (user.status !== "active") {
-    return res.status(403).json({ error: "User account is blocked" });
+/*
+|--------------------------------------------------------------------------
+| PAYMENT STATUS
+|--------------------------------------------------------------------------
+*/
+
+app.get(
+  "/api/subscribe/status/:paymentId",
+  (req, res) => {
+    const db = readDB();
+
+    const payment =
+      db.payments.find(
+        (item) =>
+          item.id ===
+          req.params.paymentId
+      );
+
+    if (!payment) {
+      return res.status(404).json({
+        error:
+          "Payment request not found",
+      });
+    }
+
+    return res.json({
+      ...payment,
+
+      accessKey:
+        payment.status === "approved"
+          ? payment.accessKey
+          : "",
+    });
   }
+);
 
-  const today = new Date();
-  const subscriptionEnd = new Date(user.subscriptionEnd);
+/*
+|--------------------------------------------------------------------------
+| PUBLIC SUPPORT
+|--------------------------------------------------------------------------
+*/
 
-  if (subscriptionEnd < today) {
-    return res.status(403).json({ error: "Subscription expired" });
-  }
+app.post(
+  "/api/support/public",
+  (req, res) => {
+    const {
+      name,
+      contact,
+      accessKey,
+      issueType,
+      message,
+    } = req.body || {};
 
-  const userDevices = db.devices.filter(
-    (d) => d.accessKey === accessKey && d.status === "active"
-  );
+    if (
+      !name ||
+      !contact ||
+      !issueType ||
+      !message
+    ) {
+      return res.status(400).json({
+        error:
+          "Name, contact, issue type and message are required",
+      });
+    }
 
-  const existingDevice = userDevices.find((d) => d.deviceId === deviceId);
+    const db = readDB();
 
-  if (existingDevice) {
-    existingDevice.lastLoginAt = new Date().toISOString();
+    const request = {
+      id: makeId("support"),
+      userId: null,
+      accessKey:
+        accessKey || null,
+      roomId: null,
+      roomName: null,
+      guestName: name,
+      guestContact: contact,
+      issueType,
+      status: "open",
+
+      createdAt:
+        new Date().toISOString(),
+
+      updatedAt:
+        new Date().toISOString(),
+    };
+
+    const supportMessage = {
+      id: makeId("msg"),
+      supportRequestId:
+        request.id,
+      senderType: "user",
+      senderId: null,
+      accessKey:
+        accessKey || null,
+      roomId: null,
+      message,
+      isRead: false,
+
+      createdAt:
+        new Date().toISOString(),
+    };
+
+    db.supportRequests.push(
+      request
+    );
+
+    db.supportMessages.push(
+      supportMessage
+    );
+
     writeDB(db);
 
     return res.json({
       success: true,
-      user,
-      devicesUsed: userDevices.length,
-      deviceLimit: user.deviceLimit
+      request,
     });
   }
+);
 
-  if (userDevices.length >= user.deviceLimit) {
-    return res.status(403).json({
-      error: `Device limit reached. This Access Key is allowed on ${user.deviceLimit} devices only.`
-    });
-  }
+/*
+|--------------------------------------------------------------------------
+| ROOM SUPPORT
+|--------------------------------------------------------------------------
+*/
 
-  db.devices.push({
-    id: makeId("device"),
-    userId: user.id,
-    accessKey,
-    deviceId,
-    deviceName: deviceName || "Unknown Device",
-    status: "active",
-    firstLoginAt: new Date().toISOString(),
-    lastLoginAt: new Date().toISOString()
-  });
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    user,
-    devicesUsed: userDevices.length + 1,
-    deviceLimit: user.deviceLimit
-  });
-});
-app.post("/api/admin/users/:userId/device-limit", (req, res) => {
-  if (!isAdmin(req)) {
-    return res.status(403).json({ error: "Admin access required" });
-  }
-
-  const { userId } = req.params;
-  const { deviceLimit } = req.body;
-
-  if (!deviceLimit) {
-    return res.status(400).json({ error: "Device limit is required" });
-  }
-
-  const db = readDB();
-  const user = db.users.find((u) => u.id === userId);
-
-  if (!user) {
-    return res.status(404).json({ error: "User not found" });
-  }
-
-  user.deviceLimit = Number(deviceLimit);
-  user.updatedAt = new Date().toISOString();
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    user
-  });
-});
-app.post("/api/support/public", (req, res) => {
-  const { name, contact, accessKey, issueType, message } = req.body;
-
-  if (!name || !contact || !issueType || !message) {
-    return res.status(400).json({
-      error: "Name, contact, issue type and message are required"
-    });
-  }
-
-  const db = readDB();
-
-  const request = {
-    id: makeId("support"),
-    userId: null,
-    accessKey: accessKey || null,
-    roomId: null,
-    roomName: null,
-    guestName: name,
-    guestContact: contact,
-    issueType,
-    status: "open",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  const supportMessage = {
-    id: makeId("msg"),
-    supportRequestId: request.id,
-    senderType: "user",
-    senderId: null,
-    accessKey: accessKey || null,
-    roomId: null,
-    message,
-    isRead: false,
-    createdAt: new Date().toISOString()
-  };
-
-  db.supportRequests.push(request);
-  db.supportMessages.push(supportMessage);
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    request
-  });
-});
-app.get("/api/admin/support", (req, res) => {
-  if (!isAdmin(req)) {
-    return res.status(403).json({ error: "Admin access required" });
-  }
-
-  const { accessKey } = req.query;
-
-  const db = readDB();
-
-  let requests = db.supportRequests;
-
-  if (accessKey) {
-    requests = requests.filter((request) => request.accessKey === accessKey);
-  }
-
-  const result = requests.map((request) => {
-    const messages = db.supportMessages.filter(
-      (message) => message.supportRequestId === request.id
-    );
-
-    const user = request.userId
-      ? db.users.find((u) => u.id === request.userId)
-      : null;
-
-    return {
-      ...request,
-      user,
-      messages
-    };
-  });
-
-  res.json(result);
-});
-app.post("/api/admin/support/:requestId/reply", (req, res) => {
-  if (!isAdmin(req)) {
-    return res.status(403).json({ error: "Admin access required" });
-  }
-
-  const { requestId } = req.params;
-  const { message } = req.body;
-
-  if (!message) {
-    return res.status(400).json({ error: "Message is required" });
-  }
-
-  const db = readDB();
-
-  const request = db.supportRequests.find((r) => r.id === requestId);
-
-  if (!request) {
-    return res.status(404).json({ error: "Support request not found" });
-  }
-
-  const reply = {
-    id: makeId("msg"),
-    supportRequestId: requestId,
-    senderType: "admin",
-    senderId: "admin",
-    accessKey: request.accessKey,
-    roomId: request.roomId,
-    message,
-    isRead: false,
-    createdAt: new Date().toISOString()
-  };
-
-  request.status = "waiting_for_user";
-  request.updatedAt = new Date().toISOString();
-
-  db.supportMessages.push(reply);
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    reply
-  });
-});
-app.post("/api/support/room", (req, res) => {
-  try {
+app.post(
+  "/api/support/room",
+  (req, res) => {
     const {
       userId,
       accessKey,
@@ -704,169 +1243,767 @@ app.post("/api/support/room", (req, res) => {
       roomName,
       deviceId,
       issueType,
-      message
-    } = req.body;
+      message,
+    } = req.body || {};
 
-    if (!userId || !accessKey || !roomId || !message) {
+    if (
+      !userId ||
+      !accessKey ||
+      !roomId ||
+      !message
+    ) {
       return res.status(400).json({
-        error: "Missing required fields",
-        received: req.body
+        error:
+          "userId, Access Key, room ID and message are required",
       });
     }
 
     const db = readDB();
 
-    if (!Array.isArray(db.supportRequests)) db.supportRequests = [];
-    if (!Array.isArray(db.supportMessages)) db.supportMessages = [];
-    if (!Array.isArray(db.users)) db.users = [];
+    const auth =
+      getActiveUserByAccessKey(
+        db,
+        accessKey
+      );
 
-    const user = db.users.find(
-      (u) => u.id === userId && u.accessKey === accessKey
-    );
+    if (auth.error) {
+      return res
+        .status(auth.status)
+        .json({
+          error: auth.error,
+        });
+    }
 
-    if (!user) {
-      return res.status(401).json({
-        error: "Invalid user or Access Key"
+    if (auth.user.id !== userId) {
+      return res.status(403).json({
+        error:
+          "This user does not belong to this Access Key",
+      });
+    }
+
+    const ownedRoom =
+      db.rooms.find(
+        (room) =>
+          room.id === roomId &&
+          sameValue(
+            room.accessKey,
+            auth.user.accessKey
+          )
+      );
+
+    if (!ownedRoom) {
+      return res.status(403).json({
+        error:
+          "This room does not belong to this Access Key",
       });
     }
 
     const request = {
       id: makeId("support"),
       userId,
-      accessKey,
+
+      accessKey: String(
+        auth.user.accessKey
+      ),
+
       roomId,
-      roomName: roomName || `Room ${roomId}`,
-      deviceId: deviceId || null,
-      issueType: issueType || "Room issue",
+
+      roomName:
+        roomName ||
+        ownedRoom.roomName ||
+        `Room ${roomId}`,
+
+      deviceId:
+        deviceId || null,
+
+      issueType:
+        issueType ||
+        "Room issue",
+
       status: "open",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+
+      createdAt:
+        new Date().toISOString(),
+
+      updatedAt:
+        new Date().toISOString(),
     };
 
     const supportMessage = {
       id: makeId("msg"),
-      supportRequestId: request.id,
+
+      supportRequestId:
+        request.id,
+
       senderType: "user",
       senderId: userId,
-      accessKey,
+
+      accessKey: String(
+        auth.user.accessKey
+      ),
+
       roomId,
       message,
       isRead: false,
-      createdAt: new Date().toISOString()
+
+      createdAt:
+        new Date().toISOString(),
     };
 
-    db.supportRequests.push(request);
-    db.supportMessages.push(supportMessage);
+    db.supportRequests.push(
+      request
+    );
+
+    db.supportMessages.push(
+      supportMessage
+    );
 
     writeDB(db);
 
     return res.json({
       success: true,
-      request
-    });
-  } catch (err) {
-    console.error("room support error:", err);
-
-    return res.status(500).json({
-      error: err.message
+      request,
     });
   }
-});
-function generateFiveDigitAccessKey(db) {
-  let accessKey = "";
+);
 
-  do {
-    accessKey = String(Math.floor(10000 + Math.random() * 90000));
-  } while (db.users?.some((user) => user.accessKey === accessKey));
+/*
+|--------------------------------------------------------------------------
+| GENERAL SUPPORT REQUEST
+|--------------------------------------------------------------------------
+*/
 
-  return accessKey;
-}
+app.post("/api/support", (req, res) => {
+  const {
+    accessKey,
+    username,
+    contact = "",
+    roomName = "",
+    roomId = "",
+    issueType = "Support",
+    message,
+    deviceId = "",
+  } = req.body || {};
 
-function addDaysToDate(days) {
-  const date = new Date();
-  date.setDate(date.getDate() + Number(days || 30));
-  return date.toISOString().slice(0, 10);
-}
-
-function getTodayDate() {
-  return new Date().toISOString().slice(0, 10);
-}
-function checkAdminPin(req, res) {
-  const adminPin = req.headers["x-admin-pin"];
-  const correctPin = process.env.ADMIN_PIN || "123456";
-
-  if (adminPin !== correctPin) {
-    res.status(403).json({ error: "Invalid admin PIN" });
-    return false;
+  if (!accessKey || !message) {
+    return res.status(400).json({
+      error:
+        "Access Key and message are required",
+    });
   }
 
-  return true;
-}
+  const db = readDB();
 
-app.get("/api/payment-settings", (req, res) => {
-  res.json({
-    upiId: process.env.UPI_ID || "9781723138@sbi",
-    upiName: process.env.UPI_NAME || "Private Room Subscription",
+  if (
+    normalize(accessKey) !== "public"
+  ) {
+    const auth =
+      getActiveUserByAccessKey(
+        db,
+        accessKey
+      );
+
+    if (auth.error) {
+      return res
+        .status(auth.status)
+        .json({
+          error: auth.error,
+        });
+    }
+  }
+
+  let ticket =
+    db.supportRequests.find(
+      (item) =>
+        sameValue(
+          item.accessKey,
+          accessKey
+        ) &&
+        ![
+          "closed",
+          "solved",
+          "archived",
+        ].includes(item.status)
+    );
+
+  if (!ticket) {
+    ticket = {
+      id: makeId("support"),
+      userId: "",
+      accessKey,
+      username:
+        username || "Guest",
+      contact,
+      roomId,
+      roomName,
+      deviceId,
+      issueType,
+      status: "open",
+
+      createdAt:
+        new Date().toISOString(),
+
+      updatedAt:
+        new Date().toISOString(),
+
+      closedAt: "",
+    };
+
+    db.supportRequests.push(
+      ticket
+    );
+  }
+
+  const supportMessage = {
+    id: makeId("msg"),
+
+    supportRequestId:
+      ticket.id,
+
+    userId: "",
+    accessKey,
+    roomId,
+
+    senderType: "user",
+    senderId: accessKey,
+
+    message,
+    attachmentUrl: "",
+    isRead: false,
+
+    createdAt:
+      new Date().toISOString(),
+  };
+
+  db.supportMessages.push(
+    supportMessage
+  );
+
+  ticket.status = "open";
+
+  ticket.updatedAt =
+    new Date().toISOString();
+
+  writeDB(db);
+
+  return res.json({
+    success: true,
+    ticket,
+    message: supportMessage,
   });
 });
 
-app.get("/api/payment-settings", (req, res) => {
-  res.json({
-    upiId: process.env.UPI_ID || "9781723138@sbi",
-    upiName: process.env.UPI_NAME || "Private Room Subscription",
-  });
-});
+/*
+|--------------------------------------------------------------------------
+| GET SUPPORT FOR ACCESS KEY
+|--------------------------------------------------------------------------
+*/
 
-app.post("/api/subscribe/request", (req, res) => {
-  try {
-    const { username, contact, planId, upiReference } = req.body;
+app.get(
+  "/api/support/:accessKey",
+  (req, res) => {
+    const db = readDB();
 
-    if (!username || !contact || !planId || !upiReference) {
+    const auth =
+      getActiveUserByAccessKey(
+        db,
+        req.params.accessKey
+      );
+
+    if (auth.error) {
+      return res
+        .status(auth.status)
+        .json({
+          error: auth.error,
+        });
+    }
+
+    const tickets =
+      db.supportRequests
+        .filter((ticket) =>
+          sameValue(
+            ticket.accessKey,
+            auth.user.accessKey
+          )
+        )
+        .map((ticket) => ({
+          ...ticket,
+
+          messages:
+            db.supportMessages.filter(
+              (message) =>
+                message.supportRequestId ===
+                ticket.id
+            ),
+        }))
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt) -
+            new Date(a.createdAt)
+        );
+
+    return res.json(tickets);
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| USER SUPPORT REPLY
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+  "/api/support/:requestId/reply",
+  (req, res) => {
+    const {
+      accessKey,
+      message,
+    } = req.body || {};
+
+    if (!accessKey || !message) {
       return res.status(400).json({
-        error: "username, contact, planId, and UPI reference are required",
+        error:
+          "Access Key and message are required",
       });
     }
 
     const db = readDB();
-    if (!Array.isArray(db.payments)) db.payments = [];
 
-const existingPayment = db.payments.find(
-  (payment) =>
-    String(payment.upiReference || "").trim().toLowerCase() ===
-    String(upiReference || "").trim().toLowerCase()
+    const ticket =
+      db.supportRequests.find(
+        (item) =>
+          item.id ===
+          req.params.requestId
+      );
+
+    if (!ticket) {
+      return res.status(404).json({
+        error:
+          "Support ticket not found",
+      });
+    }
+
+    if (
+      !sameValue(
+        ticket.accessKey,
+        accessKey
+      )
+    ) {
+      return res.status(403).json({
+        error:
+          "This ticket does not belong to this Access Key",
+      });
+    }
+
+    if (
+      [
+        "closed",
+        "solved",
+        "archived",
+      ].includes(ticket.status)
+    ) {
+      return res.status(403).json({
+        error:
+          "This support ticket is closed. Replies are disabled.",
+      });
+    }
+
+    const reply = {
+      id: makeId("msg"),
+
+      supportRequestId:
+        ticket.id,
+
+      userId: "",
+
+      accessKey:
+        ticket.accessKey,
+
+      roomId:
+        ticket.roomId || "",
+
+      senderType: "user",
+
+      senderId:
+        ticket.accessKey,
+
+      message,
+      attachmentUrl: "",
+      isRead: false,
+
+      createdAt:
+        new Date().toISOString(),
+    };
+
+    db.supportMessages.push(reply);
+
+    ticket.status = "open";
+
+    ticket.updatedAt =
+      new Date().toISOString();
+
+    writeDB(db);
+
+    return res.json({
+      success: true,
+      ticket,
+      message: reply,
+    });
+  }
 );
 
-if (existingPayment) {
-  return res.json({
-    success: true,
-    alreadySubmitted: true,
-    status: existingPayment.status,
-    paymentId: existingPayment.id,
-    accessKey: existingPayment.accessKey || "",
-    username: existingPayment.username,
-    contact: existingPayment.contact,
-    planName: existingPayment.planName,
-    amount: existingPayment.amount,
-    days: existingPayment.days,
-    adminComment: existingPayment.adminComment || "",
-    rejectionReason: existingPayment.rejectionReason || "",
-    createdAt: existingPayment.createdAt,
-    approvedAt: existingPayment.approvedAt || "",
-    rejectedAt: existingPayment.rejectedAt || "",
-    message:
-      existingPayment.status === "approved"
-        ? `Approved. Your Access Key is ${existingPayment.accessKey}`
-        : existingPayment.status === "rejected"
-        ? `Rejected. ${existingPayment.rejectionReason || existingPayment.adminComment || ""}`
-        : "Your payment request is already pending admin approval.",
-  });
-}
+/*
+|--------------------------------------------------------------------------
+| ADMIN CREATE USER
+|--------------------------------------------------------------------------
+*/
 
-    if (!Array.isArray(db.users)) db.users = [];
-    if (!Array.isArray(db.plans)) db.plans = [];
-    if (!Array.isArray(db.payments)) db.payments = [];
+app.post(
+  "/api/admin/users",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
 
-    const plan = db.plans.find((item) => item.id === planId);
+    const {
+      username,
+      accessKey,
+      subscriptionEnd,
+      deviceLimit = 2,
+      status = "active",
+    } = req.body || {};
+
+    if (
+      !username ||
+      !accessKey ||
+      !subscriptionEnd
+    ) {
+      return res.status(400).json({
+        error:
+          "username, accessKey and subscriptionEnd are required",
+      });
+    }
+
+    const db = readDB();
+
+    const exists =
+      db.users.some(
+        (user) =>
+          sameValue(
+            user.username,
+            username
+          ) ||
+          sameValue(
+            user.accessKey,
+            accessKey
+          )
+      );
+
+    if (exists) {
+      return res.status(409).json({
+        error:
+          "Username or Access Key already exists",
+      });
+    }
+
+    const user = {
+      id: makeId("user"),
+      username,
+      accessKey,
+
+      subscriptionStart:
+        getTodayDate(),
+
+      subscriptionEnd,
+      subscriptionStatus:
+        "active",
+
+      deviceLimit:
+        Number(deviceLimit) || 2,
+
+      status,
+
+      createdAt:
+        new Date().toISOString(),
+
+      updatedAt:
+        new Date().toISOString(),
+    };
+
+    db.users.push(user);
+    writeDB(db);
+
+    return res.json({
+      success: true,
+      user,
+    });
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN GET USERS
+|--------------------------------------------------------------------------
+*/
+
+app.get(
+  "/api/admin/users",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
+
+    const db = readDB();
+
+    const users = db.users.map(
+      (user) => ({
+        ...user,
+
+        devicesUsed:
+          db.devices.filter(
+            (device) =>
+              sameValue(
+                device.accessKey,
+                user.accessKey
+              ) &&
+              device.status ===
+                "active"
+          ).length,
+
+        roomsCount:
+          db.rooms.filter(
+            (room) =>
+              sameValue(
+                room.accessKey,
+                user.accessKey
+              )
+          ).length,
+
+        supportTicketsCount:
+          db.supportRequests.filter(
+            (ticket) =>
+              sameValue(
+                ticket.accessKey,
+                user.accessKey
+              )
+          ).length,
+      })
+    );
+
+    return res.json(users);
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN UPDATE USER
+|--------------------------------------------------------------------------
+*/
+
+app.patch(
+  "/api/admin/users/:userId",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
+
+    const db = readDB();
+
+    const user = db.users.find(
+      (item) =>
+        item.id ===
+        req.params.userId
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        error: "User not found",
+      });
+    }
+
+    const allowed = [
+      "username",
+      "contact",
+      "accessKey",
+      "subscriptionEnd",
+      "status",
+      "subscriptionStatus",
+    ];
+
+    for (const key of allowed) {
+      if (
+        req.body[key] !== undefined
+      ) {
+        user[key] = req.body[key];
+      }
+    }
+
+    if (
+      req.body.deviceLimit !==
+      undefined
+    ) {
+      user.deviceLimit = Number(
+        req.body.deviceLimit
+      );
+    }
+
+    user.updatedAt =
+      new Date().toISOString();
+
+    writeDB(db);
+
+    return res.json({
+      success: true,
+      user,
+    });
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN UPDATE DEVICE LIMIT
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+  "/api/admin/users/:userId/device-limit",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
+
+    const limit = Number(
+      req.body?.deviceLimit
+    );
+
+    if (
+      !Number.isInteger(limit) ||
+      limit < 1
+    ) {
+      return res.status(400).json({
+        error:
+          "Valid device limit is required",
+      });
+    }
+
+    const db = readDB();
+
+    const user = db.users.find(
+      (item) =>
+        item.id ===
+        req.params.userId
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        error: "User not found",
+      });
+    }
+
+    user.deviceLimit = limit;
+
+    user.updatedAt =
+      new Date().toISOString();
+
+    writeDB(db);
+
+    return res.json({
+      success: true,
+      user,
+    });
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN EXTEND SUBSCRIPTION
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+  "/api/admin/users/:userId/extend",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
+
+    const db = readDB();
+
+    const user = db.users.find(
+      (item) =>
+        item.id ===
+        req.params.userId
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        error: "User not found",
+      });
+    }
+
+    const today = new Date();
+
+    const currentEnd =
+      user.subscriptionEnd
+        ? new Date(
+            user.subscriptionEnd
+          )
+        : today;
+
+    const baseDate =
+      currentEnd > today
+        ? currentEnd
+        : today;
+
+    baseDate.setDate(
+      baseDate.getDate() +
+        Number(
+          req.body?.days || 30
+        )
+    );
+
+    user.subscriptionEnd =
+      baseDate
+        .toISOString()
+        .slice(0, 10);
+
+    user.subscriptionStatus =
+      "active";
+
+    user.status = "active";
+
+    user.updatedAt =
+      new Date().toISOString();
+
+    writeDB(db);
+
+    return res.json({
+      success: true,
+      user,
+    });
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN UPDATE PLAN
+|--------------------------------------------------------------------------
+*/
+
+app.patch(
+  "/api/admin/plans/:planId",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
+
+    const db = readDB();
+
+    const plan = db.plans.find(
+      (item) =>
+        item.id ===
+        req.params.planId
+    );
 
     if (!plan) {
       return res.status(404).json({
@@ -874,182 +2011,174 @@ if (existingPayment) {
       });
     }
 
-    const existingUser = db.users.find(
-      (user) =>
-        String(user.username).toLowerCase() === String(username).toLowerCase()
-    );
-
-    if (existingUser) {
-      return res.status(409).json({
-        error: "Username already exists. Please choose another username.",
-      });
+    if (
+      req.body.name !== undefined
+    ) {
+      plan.name = req.body.name;
     }
 
-    const existingReference = db.payments.find(
-      (payment) =>
-        String(payment.upiReference).toLowerCase() ===
-        String(upiReference).toLowerCase()
-    );
-
-    if (existingReference) {
-      return res.status(409).json({
-        error: "This UPI reference number was already submitted.",
-      });
+    if (
+      req.body.price !== undefined
+    ) {
+      plan.price = Number(
+        req.body.price
+      );
     }
 
-    const payment = {
-      id: makeId("payment"),
-      username,
-      contact,
-      planId: plan.id,
-      planName: plan.name,
-      amount: plan.price,
-      days: plan.days,
-      upiReference,
-      upiId: process.env.UPI_ID || "9781723138@sbi",
-      status: "pending",
-      accessKey: "",
-      userId: "",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      approvedAt: "",
-      rejectedAt: "",
-      rejectionReason: "",
-    };
+    if (
+      req.body.days !== undefined
+    ) {
+      plan.days = Number(
+        req.body.days
+      );
+    }
 
-    db.payments.push(payment);
+    if (
+      req.body.active !== undefined
+    ) {
+      plan.active = Boolean(
+        req.body.active
+      );
+    }
+
+    plan.updatedAt =
+      new Date().toISOString();
+
     writeDB(db);
 
     return res.json({
       success: true,
-      payment,
-      message: "Payment submitted. Please wait for admin approval.",
-    });
-  } catch (err) {
-    console.error("subscribe request error:", err);
-    return res.status(500).json({
-      error: err.message,
+      plan,
     });
   }
-});
+);
 
-app.get("/api/subscribe/status/:paymentId", (req, res) => {
-  try {
-    const { paymentId } = req.params;
+/*
+|--------------------------------------------------------------------------
+| ADMIN GET PAYMENTS
+|--------------------------------------------------------------------------
+*/
+
+app.get(
+  "/api/admin/payments",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
 
     const db = readDB();
 
-    if (!Array.isArray(db.payments)) db.payments = [];
-
-    const payment = db.payments.find((item) => item.id === paymentId);
-
-    if (!payment) {
-      return res.status(404).json({
-        error: "Payment request not found",
-      });
-    }
-
-    return res.json({
-      id: payment.id,
-      username: payment.username,
-      contact: payment.contact,
-      planName: payment.planName,
-      amount: payment.amount,
-      status: payment.status,
-      accessKey: payment.status === "approved" ? payment.accessKey : "",
-      rejectionReason: payment.rejectionReason || "",
-    });
-  } catch (err) {
-    console.error("payment status error:", err);
-    return res.status(500).json({
-      error: err.message,
-    });
-  }
-});
-
-app.get("/api/admin/payments", (req, res) => {
-  if (!checkAdminPin(req, res)) return;
-
-  const db = readDB();
-
-  if (!Array.isArray(db.payments)) db.payments = [];
-
-  const payments = [...db.payments].sort(
-    (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-  );
-
-  res.json(payments);
-});
-
-app.post("/api/admin/payments/:paymentId/approve", (req, res) => {
-  try {
-    if (!checkAdminPin(req, res)) return;
-
-    const { paymentId } = req.params;
-    const { comment } = req.body || {};
-
-    const db = readDB();
-
-    if (!Array.isArray(db.users)) db.users = [];
-    if (!Array.isArray(db.payments)) db.payments = [];
-
-    const payment = db.payments.find((item) => item.id === paymentId);
-
-    if (!payment) {
-      return res.status(404).json({
-        error: "Payment request not found",
-      });
-    }
-
-    if (payment.status === "approved") {
-      return res.status(400).json({
-        error: "Payment is already approved",
-      });
-    }
-
-    if (payment.status === "rejected") {
-      return res.status(400).json({
-        error: "Rejected payment cannot be approved",
-      });
-    }
-
-    const existingUser = db.users.find(
-      (user) =>
-        String(user.username).toLowerCase() ===
-        String(payment.username).toLowerCase()
+    const payments = [
+      ...db.payments,
+    ].sort(
+      (a, b) =>
+        new Date(b.createdAt) -
+        new Date(a.createdAt)
     );
 
-    if (existingUser) {
-      return res.status(409).json({
-        error: "Username already exists. Cannot approve payment.",
+    return res.json(payments);
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN APPROVE PAYMENT
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+  "/api/admin/payments/:paymentId/approve",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
+
+    const db = readDB();
+
+    const payment =
+      db.payments.find(
+        (item) =>
+          item.id ===
+          req.params.paymentId
+      );
+
+    if (!payment) {
+      return res.status(404).json({
+        error:
+          "Payment request not found",
       });
     }
 
-    const accessKey = generateFiveDigitAccessKey(db);
+    if (
+      payment.status !== "pending"
+    ) {
+      return res.status(400).json({
+        error:
+          `Payment is already ${payment.status}`,
+      });
+    }
+
+    if (
+      db.users.some((user) =>
+        sameValue(
+          user.username,
+          payment.username
+        )
+      )
+    ) {
+      return res.status(409).json({
+        error:
+          "Username already exists. Cannot approve payment.",
+      });
+    }
+
+    const accessKey =
+      generateFiveDigitAccessKey(db);
 
     const user = {
       id: makeId("user"),
-      username: payment.username,
-      contact: payment.contact,
+      username:
+        payment.username,
+      contact:
+        payment.contact,
       accessKey,
       deviceLimit: 2,
-      subscriptionStart: getTodayDate(),
-      subscriptionEnd: addDaysToDate(payment.days),
-      subscriptionStatus: "active",
+
+      subscriptionStart:
+        getTodayDate(),
+
+      subscriptionEnd:
+        addDaysToDate(
+          payment.days
+        ),
+
+      subscriptionStatus:
+        "active",
+
       status: "active",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+
+      createdAt:
+        new Date().toISOString(),
+
+      updatedAt:
+        new Date().toISOString(),
     };
 
     db.users.push(user);
 
     payment.status = "approved";
-payment.accessKey = accessKey;
-payment.userId = user.id;
-payment.approvedAt = new Date().toISOString();
-payment.updatedAt = new Date().toISOString();
-payment.adminComment = comment || payment.adminComment || "Payment approved by admin";
-payment.commentUpdatedAt = new Date().toISOString();
+    payment.accessKey = accessKey;
+    payment.userId = user.id;
+
+    payment.approvedAt =
+      new Date().toISOString();
+
+    payment.updatedAt =
+      new Date().toISOString();
+
+    payment.adminComment =
+      req.body?.comment ||
+      "Payment approved by admin";
 
     writeDB(db);
 
@@ -1058,47 +2187,66 @@ payment.commentUpdatedAt = new Date().toISOString();
       user,
       payment,
       accessKey,
-      message: "Payment approved. Access Key generated.",
-    });
-  } catch (err) {
-    console.error("approve payment error:", err);
-    return res.status(500).json({
-      error: err.message,
+
+      message:
+        "Payment approved. Access Key generated.",
     });
   }
-});
+);
 
-app.post("/api/admin/payments/:paymentId/reject", (req, res) => {
-  try {
-    if (!checkAdminPin(req, res)) return;
+/*
+|--------------------------------------------------------------------------
+| ADMIN REJECT PAYMENT
+|--------------------------------------------------------------------------
+*/
 
-    const { paymentId } = req.params;
-    const { reason, comment } = req.body || {};
+app.post(
+  "/api/admin/payments/:paymentId/reject",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
 
     const db = readDB();
 
-    if (!Array.isArray(db.payments)) db.payments = [];
-
-    const payment = db.payments.find((item) => item.id === paymentId);
+    const payment =
+      db.payments.find(
+        (item) =>
+          item.id ===
+          req.params.paymentId
+      );
 
     if (!payment) {
       return res.status(404).json({
-        error: "Payment request not found",
+        error:
+          "Payment request not found",
       });
     }
 
-    if (payment.status === "approved") {
+    if (
+      payment.status === "approved"
+    ) {
       return res.status(400).json({
-        error: "Approved payment cannot be rejected",
+        error:
+          "Approved payment cannot be rejected",
       });
     }
 
     payment.status = "rejected";
-payment.rejectionReason = reason || "Payment rejected by admin";
-payment.rejectedAt = new Date().toISOString();
-payment.updatedAt = new Date().toISOString();
-payment.adminComment = comment || reason || "Payment rejected by admin";
-payment.commentUpdatedAt = new Date().toISOString();
+
+    payment.rejectionReason =
+      req.body?.reason ||
+      "Payment rejected by admin";
+
+    payment.adminComment =
+      req.body?.comment ||
+      payment.rejectionReason;
+
+    payment.rejectedAt =
+      new Date().toISOString();
+
+    payment.updatedAt =
+      new Date().toISOString();
 
     writeDB(db);
 
@@ -1107,539 +2255,483 @@ payment.commentUpdatedAt = new Date().toISOString();
       payment,
       message: "Payment rejected.",
     });
-  } catch (err) {
-    console.error("reject payment error:", err);
-    return res.status(500).json({
-      error: err.message,
-    });
   }
-});
-app.get("/api/admin/users", (req, res) => {
-  if (!checkAdminPin(req, res)) return;
+);
 
-  const db = readDB();
+/*
+|--------------------------------------------------------------------------
+| ADMIN GET ROOMS
+|--------------------------------------------------------------------------
+*/
 
-  if (!Array.isArray(db.users)) db.users = [];
-  if (!Array.isArray(db.devices)) db.devices = [];
-  if (!Array.isArray(db.rooms)) db.rooms = [];
-  if (!Array.isArray(db.supportRequests)) db.supportRequests = [];
+app.get(
+  "/api/admin/rooms",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
 
-  const users = db.users.map((user) => {
-    const devices = db.devices.filter(
-      (device) => device.accessKey === user.accessKey
+    const db = readDB();
+
+    const rooms =
+      req.query.accessKey
+        ? db.rooms.filter(
+            (room) =>
+              sameValue(
+                room.accessKey,
+                req.query.accessKey
+              )
+          )
+        : db.rooms;
+
+    const result = rooms.map(
+      (room) => {
+        const user =
+          db.users.find(
+            (item) =>
+              sameValue(
+                item.accessKey,
+                room.accessKey
+              )
+          );
+
+        return {
+          ...room,
+
+          username:
+            user?.username ||
+            room.ownerName ||
+            "Unknown",
+
+          subscriptionEnd:
+            user?.subscriptionEnd ||
+            "",
+
+          userStatus:
+            user?.status ||
+            "unknown",
+        };
+      }
     );
 
-    const rooms = db.rooms.filter(
-      (room) => room.accessKey === user.accessKey
-    );
-
-    const supportTickets = db.supportRequests.filter(
-      (ticket) => ticket.accessKey === user.accessKey
-    );
-
-    return {
-      ...user,
-      devicesUsed: devices.length,
-      roomsCount: rooms.length,
-      supportTicketsCount: supportTickets.length,
-    };
-  });
-
-  res.json(users);
-});
-
-app.get("/api/admin/rooms", (req, res) => {
-  if (!checkAdminPin(req, res)) return;
-
-  const db = readDB();
-
-  if (!Array.isArray(db.rooms)) db.rooms = [];
-  if (!Array.isArray(db.users)) db.users = [];
-
-  const { accessKey } = req.query;
-
-  let rooms = db.rooms;
-
-  if (accessKey) {
-    rooms = rooms.filter((room) => room.accessKey === accessKey);
+    return res.json(result);
   }
+);
 
-  const result = rooms.map((room) => {
-    const user = db.users.find((u) => u.accessKey === room.accessKey);
+/*
+|--------------------------------------------------------------------------
+| ADMIN DELETE ALL ROOMS FOR ACCESS KEY
+|--------------------------------------------------------------------------
+*/
 
-    return {
-      ...room,
-      username: user?.username || room.ownerName || "Unknown",
-      subscriptionEnd: user?.subscriptionEnd || "",
-      userStatus: user?.status || "unknown",
-    };
-  });
+app.post(
+  "/api/admin/rooms/delete-by-access-key",
+  async (req, res) => {
+    try {
+      if (
+        !checkAdminPin(req, res)
+      ) {
+        return;
+      }
 
-  res.json(result);
-});
-app.patch("/api/admin/plans/:planId", (req, res) => {
-  if (!checkAdminPin(req, res)) return;
+      const {
+        accessKey,
+      } = req.body || {};
 
-  const { planId } = req.params;
-  const { name, price, days } = req.body;
+      if (!accessKey) {
+        return res.status(400).json({
+          error:
+            "Access Key is required",
+        });
+      }
 
-  const db = readDB();
+      const db = readDB();
 
-  if (!Array.isArray(db.plans)) db.plans = [];
+      const rooms =
+        db.rooms.filter(
+          (room) =>
+            sameValue(
+              room.accessKey,
+              accessKey
+            )
+        );
 
-  const plan = db.plans.find((item) => item.id === planId);
-
-  if (!plan) {
-    return res.status(404).json({ error: "Plan not found" });
-  }
-
-  if (name !== undefined) plan.name = name;
-  if (price !== undefined) plan.price = Number(price);
-  if (days !== undefined) plan.days = Number(days);
-
-  plan.updatedAt = new Date().toISOString();
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    plan,
-  });
-});
-app.patch("/api/admin/users/:userId", (req, res) => {
-  if (!checkAdminPin(req, res)) return;
-
-  const { userId } = req.params;
-  const {
-    username,
-    contact,
-    accessKey,
-    subscriptionEnd,
-    deviceLimit,
-    status,
-    subscriptionStatus,
-  } = req.body;
-
-  const db = readDB();
-
-  if (!Array.isArray(db.users)) db.users = [];
-
-  const user = db.users.find((item) => item.id === userId);
-
-  if (!user) {
-    return res.status(404).json({ error: "User not found" });
-  }
-
-  if (username !== undefined) user.username = username;
-  if (contact !== undefined) user.contact = contact;
-  if (accessKey !== undefined) user.accessKey = accessKey;
-  if (subscriptionEnd !== undefined) user.subscriptionEnd = subscriptionEnd;
-  if (deviceLimit !== undefined) user.deviceLimit = Number(deviceLimit);
-  if (status !== undefined) user.status = status;
-  if (subscriptionStatus !== undefined) user.subscriptionStatus = subscriptionStatus;
-
-  user.updatedAt = new Date().toISOString();
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    user,
-  });
-});
-app.post("/api/admin/users/:userId/extend", (req, res) => {
-  if (!checkAdminPin(req, res)) return;
-
-  const { userId } = req.params;
-  const { days } = req.body;
-
-  const db = readDB();
-
-  if (!Array.isArray(db.users)) db.users = [];
-
-  const user = db.users.find((item) => item.id === userId);
-
-  if (!user) {
-    return res.status(404).json({ error: "User not found" });
-  }
-
-  const today = new Date();
-  const currentEnd = user.subscriptionEnd
-    ? new Date(user.subscriptionEnd)
-    : today;
-
-  const baseDate = currentEnd > today ? currentEnd : today;
-  baseDate.setDate(baseDate.getDate() + Number(days || 30));
-
-  user.subscriptionEnd = baseDate.toISOString().slice(0, 10);
-  user.subscriptionStatus = "active";
-  user.status = "active";
-  user.updatedAt = new Date().toISOString();
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    user,
-  });
-});
-app.patch("/api/admin/support/:requestId/status", (req, res) => {
-  if (!checkAdminPin(req, res)) return;
-
-  const { requestId } = req.params;
-  const { status } = req.body;
-
-  const allowedStatuses = [
-    "open",
-    "in_progress",
-    "waiting_for_user",
-    "solved",
-    "closed",
-    "archived",
-    "rejected",
-  ];
-
-  if (!status || !allowedStatuses.includes(status)) {
-    return res.status(400).json({
-      error: "Invalid ticket status",
-    });
-  }
-
-  const db = readDB();
-
-  if (!Array.isArray(db.supportRequests)) db.supportRequests = [];
-
-  const ticket = db.supportRequests.find((item) => item.id === requestId);
-
-  if (!ticket) {
-    return res.status(404).json({
-      error: "Support ticket not found",
-    });
-  }
-
-  ticket.status = status;
-  ticket.updatedAt = new Date().toISOString();
-
-  if (status === "closed" || status === "solved") {
-    ticket.closedAt = new Date().toISOString();
-  }
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    ticket,
-  });
-});
-app.post("/api/admin/rooms/delete-by-access-key", (req, res) => {
-  if (!checkAdminPin(req, res)) return;
-
-  const { accessKey } = req.body;
-
-  if (!accessKey) {
-    return res.status(400).json({
-      error: "Access Key is required",
-    });
-    app.post("/api/admin/rooms/delete-by-access-key", (req, res) => {
-  if (!checkAdminPin(req, res)) return;
-
-  const { accessKey } = req.body;
-
-  if (!accessKey) {
-    return res.status(400).json({
-      error: "Access Key is required",
-    });
-  }
-
-  const db = readDB();
-
-  if (!Array.isArray(db.rooms)) db.rooms = [];
-
-  const beforeCount = db.rooms.length;
-
-  db.rooms = db.rooms.filter((room) => room.accessKey !== accessKey);
-
-  const deleted = beforeCount - db.rooms.length;
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    deleted,
-    message: `Deleted ${deleted} room(s) for Access Key ${accessKey}`,
-  });
-});
-  }
-
-  const db = readDB();
-
-  if (!Array.isArray(db.rooms)) db.rooms = [];
-
-  const beforeCount = db.rooms.length;
-
-  db.rooms = db.rooms.filter((room) => room.accessKey !== accessKey);
-
-  const deleted = beforeCount - db.rooms.length;
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    deleted,
-    message: `Deleted ${deleted} room(s) for Access Key ${accessKey}`,
-  });
-});
-app.get("/api/support/:accessKey", (req, res) => {
-  const { accessKey } = req.params;
-
-  const db = readDB();
-
-  if (!Array.isArray(db.supportRequests)) db.supportRequests = [];
-  if (!Array.isArray(db.supportMessages)) db.supportMessages = [];
-
-  const userTickets = db.supportRequests
-    .filter(
-      (ticket) =>
-        String(ticket.accessKey || "").trim().toLowerCase() ===
-        String(accessKey || "").trim().toLowerCase()
-    )
-    .map((ticket) => {
-      const messages = db.supportMessages.filter(
-        (msg) => msg.supportRequestId === ticket.id
+      const roomIds = rooms.map(
+        (room) => room.id
       );
 
-      return {
-        ...ticket,
-        messages,
-      };
-    })
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      await deleteStreamChannels(
+        roomIds
+      );
 
-  res.json(userTickets);
-});
+      db.rooms = db.rooms.filter(
+        (room) =>
+          !sameValue(
+            room.accessKey,
+            accessKey
+          )
+      );
 
-app.post("/api/support", (req, res) => {
-  const {
-  accessKey,
-  username,
-  contact = "",
-  roomName,
-  roomId,
-  issueType = "Support",
-  message,
-  deviceId = "",
-} = req.body || {};
+      writeDB(db);
 
-  if (!accessKey || !message) {
-    return res.status(400).json({
-      error: "Access Key and message are required",
-    });
+      return res.json({
+        success: true,
+        deleted:
+          roomIds.length,
+        deletedRooms:
+          roomIds,
+
+        message:
+          `Deleted ${roomIds.length} room(s) for Access Key ${accessKey}`,
+      });
+    } catch (error) {
+      console.error(
+        "Admin delete rooms error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Failed to delete rooms",
+        details:
+          error.message,
+      });
+    }
   }
+);
 
-  const db = readDB();
+/*
+|--------------------------------------------------------------------------
+| ADMIN GET SUPPORT
+|--------------------------------------------------------------------------
+*/
 
-  if (!Array.isArray(db.supportRequests)) db.supportRequests = [];
-  if (!Array.isArray(db.supportMessages)) db.supportMessages = [];
+app.get(
+  "/api/admin/support",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
 
-  const normalizedAccessKey = String(accessKey || "").trim().toLowerCase();
+    const db = readDB();
 
-const existingOpenTicket =
-  normalizedAccessKey !== "public"
-    ? db.supportRequests.find(
-        (ticket) =>
-          String(ticket.accessKey || "").trim().toLowerCase() ===
-            normalizedAccessKey &&
-          ticket.status !== "closed" &&
-          ticket.status !== "solved" &&
-          ticket.status !== "archived"
-      )
-    : null;
+    const requests =
+      req.query.accessKey
+        ? db.supportRequests.filter(
+            (request) =>
+              sameValue(
+                request.accessKey,
+                req.query.accessKey
+              )
+          )
+        : db.supportRequests;
 
-  let ticket = existingOpenTicket;
+    const result = requests.map(
+      (request) => ({
+        ...request,
 
-  if (!ticket) {
-    ticket = {
-  id: makeId("support"),
-  userId: "",
-  accessKey,
-  username: username || "Guest",
-  contact,
-  roomId: roomId || "",
-  roomName: roomName || "",
-  deviceId,
-  issueType,
-  status: "open",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      closedAt: "",
-    };
+        user:
+          request.userId
+            ? db.users.find(
+                (user) =>
+                  user.id ===
+                  request.userId
+              ) || null
+            : null,
 
-    db.supportRequests.push(ticket);
+        messages:
+          db.supportMessages.filter(
+            (message) =>
+              message.supportRequestId ===
+              request.id
+          ),
+      })
+    );
+
+    return res.json(result);
   }
+);
 
-  const supportMessage = {
-    id: makeId("msg"),
-    supportRequestId: ticket.id,
-    userId: "",
-    accessKey,
-    roomId: roomId || "",
-    senderType: "user",
-    senderId: accessKey,
-    message,
-    attachmentUrl: "",
-    isRead: false,
-    createdAt: new Date().toISOString(),
-  };
+/*
+|--------------------------------------------------------------------------
+| ADMIN SUPPORT REPLY
+|--------------------------------------------------------------------------
+*/
 
-  db.supportMessages.push(supportMessage);
+app.post(
+  "/api/admin/support/:requestId/reply",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
 
-  ticket.updatedAt = new Date().toISOString();
-
-  if (ticket.status === "waiting_for_user") {
-    ticket.status = "open";
-  }
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    ticket,
-    message: supportMessage,
-  });
-});
-
-app.post("/api/support/:requestId/reply", (req, res) => {
-  const { requestId } = req.params;
-  const { accessKey, message } = req.body || {};
-
-  if (!message) {
-    return res.status(400).json({
-      error: "Message is required",
-    });
-  }
-
-  const db = readDB();
-
-  if (!Array.isArray(db.supportRequests)) db.supportRequests = [];
-  if (!Array.isArray(db.supportMessages)) db.supportMessages = [];
-
-  const ticket = db.supportRequests.find((item) => item.id === requestId);
-
-  if (!ticket) {
-    return res.status(404).json({
-      error: "Support ticket not found",
-    });
-  }
-  if (
-  ticket.status === "closed" ||
-  ticket.status === "solved" ||
-  ticket.status === "archived"
-) {
-  return res.status(403).json({
-    error: "This support ticket is closed. Replies are disabled.",
-  });
-}
-
-  if (
-    accessKey &&
-    String(ticket.accessKey || "").trim().toLowerCase() !==
-      String(accessKey || "").trim().toLowerCase()
-  ) {
-    return res.status(403).json({
-      error: "This ticket does not belong to this Access Key",
-    });
-  }
-
-  const supportMessage = {
-    id: makeId("msg"),
-    supportRequestId: ticket.id,
-    userId: "",
-    accessKey: ticket.accessKey,
-    roomId: ticket.roomId || "",
-    senderType: "user",
-    senderId: ticket.accessKey,
-    message,
-    attachmentUrl: "",
-    isRead: false,
-    createdAt: new Date().toISOString(),
-  };
-
-  db.supportMessages.push(supportMessage);
-
-  ticket.status = "open";
-  ticket.updatedAt = new Date().toISOString();
-
-  writeDB(db);
-
-  res.json({
-    success: true,
-    ticket,
-    message: supportMessage,
-  });
-});
-app.post("/api/rooms/delete-by-access-key", async (req, res) => {
-  try {
-    const { accessKey } = req.body || {};
-    const key = String(accessKey || "").trim();
-
-    if (!key) {
+    if (!req.body?.message) {
       return res.status(400).json({
-        error: "Access Key is required",
+        error:
+          "Message is required",
       });
     }
 
     const db = readDB();
 
-    if (!Array.isArray(db.rooms)) {
-      db.rooms = [];
+    const request =
+      db.supportRequests.find(
+        (item) =>
+          item.id ===
+          req.params.requestId
+      );
+
+    if (!request) {
+      return res.status(404).json({
+        error:
+          "Support request not found",
+      });
     }
 
-    const roomsToDelete = db.rooms.filter(
-      (room) =>
-        String(room.accessKey || "").trim().toLowerCase() ===
-        key.toLowerCase()
-    );
+    const reply = {
+      id: makeId("msg"),
 
-    const channelIds = roomsToDelete
-      .map((room) => String(room.id || "").trim())
-      .filter(Boolean);
+      supportRequestId:
+        request.id,
 
-    if (channelIds.length > 0) {
-      const cids = channelIds.map((channelId) => `messaging:${channelId}`);
+      senderType: "admin",
+      senderId: "admin",
 
-      const response = await serverClient.deleteChannels(cids);
+      accessKey:
+        request.accessKey,
 
-      if (response?.task_id) {
-        await serverClient.getTask(response.task_id);
-      }
-    }
+      roomId:
+        request.roomId,
 
-    db.rooms = db.rooms.filter(
-      (room) =>
-        String(room.accessKey || "").trim().toLowerCase() !==
-        key.toLowerCase()
-    );
+      message:
+        req.body.message,
+
+      isRead: false,
+
+      createdAt:
+        new Date().toISOString(),
+    };
+
+    db.supportMessages.push(reply);
+
+    request.status =
+      "waiting_for_user";
+
+    request.updatedAt =
+      new Date().toISOString();
 
     writeDB(db);
 
     return res.json({
       success: true,
-      deleted: channelIds.length,
-      deletedRooms: channelIds,
-      message: `Deleted ${channelIds.length} room(s) for this Access Key`,
-    });
-  } catch (err) {
-    console.error("Delete rooms by Access Key error:", err);
-
-    return res.status(500).json({
-      error: "Failed to delete rooms",
-      details: err.message,
+      reply,
     });
   }
-});
+);
 
-const PORT = process.env.PORT || 4000;
+/*
+|--------------------------------------------------------------------------
+| ADMIN UPDATE SUPPORT STATUS
+|--------------------------------------------------------------------------
+*/
 
-httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log("Server running on port", PORT);
-});
+app.patch(
+  "/api/admin/support/:requestId/status",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) {
+      return;
+    }
+
+    const allowedStatuses = [
+      "open",
+      "in_progress",
+      "waiting_for_user",
+      "solved",
+      "closed",
+      "archived",
+      "rejected",
+    ];
+
+    if (
+      !allowedStatuses.includes(
+        req.body?.status
+      )
+    ) {
+      return res.status(400).json({
+        error:
+          "Invalid ticket status",
+      });
+    }
+
+    const db = readDB();
+
+    const ticket =
+      db.supportRequests.find(
+        (item) =>
+          item.id ===
+          req.params.requestId
+      );
+
+    if (!ticket) {
+      return res.status(404).json({
+        error:
+          "Support ticket not found",
+      });
+    }
+
+    ticket.status =
+      req.body.status;
+
+    ticket.updatedAt =
+      new Date().toISOString();
+
+    if (
+      [
+        "closed",
+        "solved",
+      ].includes(ticket.status)
+    ) {
+      ticket.closedAt =
+        new Date().toISOString();
+    }
+
+    writeDB(db);
+
+    return res.json({
+      success: true,
+      ticket,
+    });
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| SOCKET.IO CALLS AND SIGNALING
+|--------------------------------------------------------------------------
+*/
+
+const httpServer =
+  createServer(app);
+
+const io = new Server(
+  httpServer,
+  {
+    cors: {
+      origin: (
+        origin,
+        callback
+      ) => {
+        if (
+          isAllowedOrigin(origin)
+        ) {
+          callback(null, true);
+        } else {
+          callback(
+            new Error(
+              `Socket.IO CORS blocked for origin: ${origin}`
+            )
+          );
+        }
+      },
+
+      methods: [
+        "GET",
+        "POST",
+      ],
+
+      credentials: true,
+    },
+  }
+);
+
+io.on(
+  "connection",
+  (socket) => {
+    console.log(
+      "User connected:",
+      socket.id
+    );
+
+    socket.on(
+      "join-room",
+      (
+        { roomId },
+        ack
+      ) => {
+        if (!roomId) {
+          if (ack) {
+            ack({
+              ok: false,
+              error:
+                "Room ID is required",
+            });
+          }
+
+          return;
+        }
+
+        socket.join(roomId);
+
+        if (ack) {
+          ack({
+            ok: true,
+            roomId,
+          });
+        }
+      }
+    );
+
+    socket.on(
+      "leave-room",
+      ({ roomId }) => {
+        if (roomId) {
+          socket.leave(roomId);
+        }
+      }
+    );
+
+    socket.on(
+      "signal",
+      ({
+        roomId,
+        data,
+      }) => {
+        if (
+          roomId &&
+          data
+        ) {
+          socket
+            .to(roomId)
+            .emit(
+              "signal",
+              data
+            );
+        }
+      }
+    );
+
+    socket.on(
+      "disconnect",
+      () => {
+        console.log(
+          "User disconnected:",
+          socket.id
+        );
+      }
+    );
+  }
+);
+
+const PORT =
+  process.env.PORT || 4000;
+
+httpServer.listen(
+  PORT,
+  "0.0.0.0",
+  () => {
+    console.log(
+      "Server running on port",
+      PORT
+    );
+  }
+);
