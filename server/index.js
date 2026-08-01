@@ -96,13 +96,31 @@ function getActiveUserByAccessKey(db, accessKey) {
     return {
       error: "Invalid Access Key",
       status: 401,
+      subscriptionStatus: "invalid",
+    };
+  }
+
+  const changed = updateSubscriptionStatus(user);
+
+  if (changed) {
+    writeDB(db);
+  }
+
+  if (user.status === "blocked") {
+    return {
+      error: "User account is blocked",
+      status: 403,
+      subscriptionStatus: user.subscriptionStatus,
+      user,
     };
   }
 
   if (user.status !== "active") {
     return {
-      error: "User account is blocked",
+      error: "User account is inactive",
       status: 403,
+      subscriptionStatus: user.subscriptionStatus,
+      user,
     };
   }
 
@@ -110,21 +128,24 @@ function getActiveUserByAccessKey(db, accessKey) {
     return {
       error: "Subscription is blocked",
       status: 403,
+      subscriptionStatus: "blocked",
+      user,
     };
   }
 
-  if (
-    user.subscriptionEnd &&
-    new Date(user.subscriptionEnd) < new Date()
-  ) {
+  if (user.subscriptionStatus === "expired") {
     return {
       error: "Subscription expired",
       status: 403,
+      subscriptionStatus: "expired",
+      subscriptionEnd: user.subscriptionEnd,
+      user,
     };
   }
 
   return {
     user,
+    subscriptionStatus: "active",
   };
 }
 
@@ -144,18 +165,134 @@ function generateFiveDigitAccessKey(db) {
   return accessKey;
 }
 
-function addDaysToDate(days) {
-  const date = new Date();
+function getDubaiDateParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Dubai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
 
-  date.setDate(
-    date.getDate() + Number(days || 30)
+  return {
+    year: Number(
+      parts.find((part) => part.type === "year")?.value
+    ),
+    month: Number(
+      parts.find((part) => part.type === "month")?.value
+    ),
+    day: Number(
+      parts.find((part) => part.type === "day")?.value
+    ),
+  };
+}
+
+function formatDate(year, month, day) {
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(
+    2,
+    "0"
+  )}-${String(day).padStart(2, "0")}`;
+}
+
+function daysInMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function addCalendarMonthsToDate(months, purchaseDate = new Date()) {
+  const { year, month, day } = getDubaiDateParts(purchaseDate);
+
+  const totalMonths =
+    year * 12 + (month - 1) + Number(months || 1);
+
+  const targetYear = Math.floor(totalMonths / 12);
+  const targetMonthIndex = totalMonths % 12;
+  const targetMonth = targetMonthIndex + 1;
+
+  const targetDay = Math.min(
+    day,
+    daysInMonth(targetYear, targetMonth)
   );
 
-  return date.toISOString().slice(0, 10);
+  return formatDate(targetYear, targetMonth, targetDay);
+}
+
+function addSubscriptionDate(planName, purchaseDate = new Date()) {
+  const normalizedPlanName = normalize(planName);
+
+  if (normalizedPlanName === "monthly plan") {
+    return addCalendarMonthsToDate(1, purchaseDate);
+  }
+
+  if (normalizedPlanName === "3 month plan") {
+    return addCalendarMonthsToDate(3, purchaseDate);
+  }
+
+  if (normalizedPlanName === "yearly plan") {
+    return addCalendarMonthsToDate(12, purchaseDate);
+  }
+
+  return addCalendarMonthsToDate(1, purchaseDate);
 }
 
 function getTodayDate() {
-  return new Date().toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Dubai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
+}
+
+function updateSubscriptionStatus(user) {
+  if (!user) {
+    return false;
+  }
+
+  if (user.subscriptionStatus === "blocked") {
+    return false;
+  }
+
+  const today = getTodayDate();
+
+  const expiryDate = String(
+    user.subscriptionEnd || ""
+  ).slice(0, 10);
+
+  if (!expiryDate) {
+    if (!user.subscriptionStatus) {
+      user.subscriptionStatus = "active";
+      user.updatedAt = new Date().toISOString();
+      return true;
+    }
+
+    return false;
+  }
+
+  if (today >= expiryDate) {
+    if (user.subscriptionStatus !== "expired") {
+      user.subscriptionStatus = "expired";
+      user.updatedAt = new Date().toISOString();
+      return true;
+    }
+
+    return false;
+  }
+
+  if (
+    user.subscriptionStatus === "expired" ||
+    !user.subscriptionStatus
+  ) {
+    user.subscriptionStatus = "active";
+    user.updatedAt = new Date().toISOString();
+    return true;
+  }
+
+  return false;
 }
 
 const allowedOrigins = (
@@ -194,9 +331,7 @@ const corsOptions = {
       callback(null, true);
     } else {
       callback(
-        new Error(
-          `CORS blocked for origin: ${origin}`
-        )
+        new Error(`CORS blocked for origin: ${origin}`)
       );
     }
   },
@@ -224,8 +359,7 @@ app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
 const streamApiKey = process.env.STREAM_API_KEY;
-const streamApiSecret =
-  process.env.STREAM_API_SECRET;
+const streamApiSecret = process.env.STREAM_API_SECRET;
 
 if (!streamApiKey || !streamApiSecret) {
   console.error(
@@ -255,13 +389,10 @@ async function deleteStreamChannels(roomIds) {
     (id) => `messaging:${id}`
   );
 
-  const response =
-    await serverClient.deleteChannels(cids);
+  const response = await serverClient.deleteChannels(cids);
 
   if (response?.task_id) {
-    await serverClient.getTask(
-      response.task_id
-    );
+    await serverClient.getTask(response.task_id);
   }
 
   return uniqueIds;
@@ -270,12 +401,6 @@ async function deleteStreamChannels(roomIds) {
 app.get("/", (_req, res) => {
   res.send("Backend is running");
 });
-
-/*
-|--------------------------------------------------------------------------
-| STREAM TOKEN AND PRIVATE ROOM CREATION
-|--------------------------------------------------------------------------
-*/
 
 app.post("/api/token", async (req, res) => {
   try {
@@ -311,6 +436,12 @@ app.post("/api/token", async (req, res) => {
     if (auth.error) {
       return res.status(auth.status).json({
         error: auth.error,
+        subscriptionStatus:
+          auth.subscriptionStatus || "invalid",
+        subscriptionEnd:
+          auth.subscriptionEnd ||
+          auth.user?.subscriptionEnd ||
+          "",
       });
     }
 
@@ -329,11 +460,7 @@ app.post("/api/token", async (req, res) => {
     const expectedPrefix =
       `key_${safeId(finalAccessKey)}_user_`;
 
-    if (
-      !providedUserId.startsWith(
-        expectedPrefix
-      )
-    ) {
+    if (!providedUserId.startsWith(expectedPrefix)) {
       return res.status(403).json({
         error:
           "Invalid user identity for this Access Key",
@@ -398,18 +525,16 @@ app.post("/api/token", async (req, res) => {
       await channel.create();
     } catch (error) {
       if (
-        !normalize(
-          error?.message
-        ).includes("already exists")
+        !normalize(error?.message).includes(
+          "already exists"
+        )
       ) {
         throw error;
       }
     }
 
     try {
-      await channel.addMembers([
-        providedUserId,
-      ]);
+      await channel.addMembers([providedUserId]);
     } catch (error) {
       console.warn(
         "Add member warning:",
@@ -417,10 +542,9 @@ app.post("/api/token", async (req, res) => {
       );
     }
 
-    const token =
-      serverClient.createToken(
-        providedUserId
-      );
+    const token = serverClient.createToken(
+      providedUserId
+    );
 
     return res.json({
       token,
@@ -428,6 +552,10 @@ app.post("/api/token", async (req, res) => {
       name: displayName,
       room: privateRoomId,
       accessKey: finalAccessKey,
+      subscriptionStatus:
+        auth.user.subscriptionStatus || "active",
+      subscriptionEnd:
+        auth.user.subscriptionEnd || "",
     });
   } catch (error) {
     console.error(
@@ -441,12 +569,6 @@ app.post("/api/token", async (req, res) => {
     });
   }
 });
-
-/*
-|--------------------------------------------------------------------------
-| LOGIN AND DEVICE LIMIT
-|--------------------------------------------------------------------------
-*/
 
 app.post("/api/login", (req, res) => {
   const {
@@ -476,15 +598,21 @@ app.post("/api/login", (req, res) => {
 
   if (auth.error) {
     return res.status(auth.status).json({
+      success: false,
       error: auth.error,
+      subscriptionStatus:
+        auth.subscriptionStatus || "invalid",
+      subscriptionEnd:
+        auth.subscriptionEnd ||
+        auth.user?.subscriptionEnd ||
+        "",
+      accessKey:
+        auth.user?.accessKey || "",
     });
   }
 
   const user = auth.user;
-
-  const canonicalKey = String(
-    user.accessKey
-  );
+  const canonicalKey = String(user.accessKey);
 
   const deviceLimit = Number(
     user.deviceLimit || 2
@@ -499,11 +627,10 @@ app.post("/api/login", (req, res) => {
       device.status === "active"
   );
 
-  const existingDevice =
-    activeDevices.find(
-      (device) =>
-        device.deviceId === deviceId
-    );
+  const existingDevice = activeDevices.find(
+    (device) =>
+      device.deviceId === deviceId
+  );
 
   const streamUserId =
     `key_${safeId(canonicalKey)}` +
@@ -530,16 +657,23 @@ app.post("/api/login", (req, res) => {
       streamUserId,
       devicesUsed: activeDevices.length,
       deviceLimit,
+      subscriptionStatus:
+        user.subscriptionStatus || "active",
+      subscriptionEnd:
+        user.subscriptionEnd || "",
     });
   }
 
-  if (
-    activeDevices.length >= deviceLimit
-  ) {
+  if (activeDevices.length >= deviceLimit) {
     return res.status(403).json({
+      success: false,
       error:
         `Device limit reached. This Access Key ` +
         `is allowed on ${deviceLimit} devices only.`,
+      subscriptionStatus:
+        user.subscriptionStatus || "active",
+      subscriptionEnd:
+        user.subscriptionEnd || "",
     });
   }
 
@@ -568,32 +702,33 @@ app.post("/api/login", (req, res) => {
     devicesUsed:
       activeDevices.length + 1,
     deviceLimit,
+    subscriptionStatus:
+      user.subscriptionStatus || "active",
+    subscriptionEnd:
+      user.subscriptionEnd || "",
   });
 });
-
-/*
-|--------------------------------------------------------------------------
-| USER ROOM LIST
-|--------------------------------------------------------------------------
-*/
 
 app.get(
   "/api/rooms/:accessKey",
   (req, res) => {
     const db = readDB();
 
-    const auth =
-      getActiveUserByAccessKey(
-        db,
-        req.params.accessKey
-      );
+    const auth = getActiveUserByAccessKey(
+      db,
+      req.params.accessKey
+    );
 
     if (auth.error) {
-      return res
-        .status(auth.status)
-        .json({
-          error: auth.error,
-        });
+      return res.status(auth.status).json({
+        error: auth.error,
+        subscriptionStatus:
+          auth.subscriptionStatus || "invalid",
+        subscriptionEnd:
+          auth.subscriptionEnd ||
+          auth.user?.subscriptionEnd ||
+          "",
+      });
     }
 
     const rooms = db.rooms
@@ -616,12 +751,6 @@ app.get(
     return res.json(rooms);
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| DELETE ONE ROOM
-|--------------------------------------------------------------------------
-*/
 
 app.post(
   "/api/rooms/delete-one",
@@ -652,6 +781,13 @@ app.post(
           .status(auth.status)
           .json({
             error: auth.error,
+            subscriptionStatus:
+              auth.subscriptionStatus ||
+              "invalid",
+            subscriptionEnd:
+              auth.subscriptionEnd ||
+              auth.user?.subscriptionEnd ||
+              "",
           });
       }
 
@@ -709,12 +845,6 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| DELETE MULTIPLE SELECTED ROOMS
-|--------------------------------------------------------------------------
-*/
-
 app.post(
   "/api/rooms/delete-multiple",
   async (req, res) => {
@@ -748,6 +878,13 @@ app.post(
           .status(auth.status)
           .json({
             error: auth.error,
+            subscriptionStatus:
+              auth.subscriptionStatus ||
+              "invalid",
+            subscriptionEnd:
+              auth.subscriptionEnd ||
+              auth.user?.subscriptionEnd ||
+              "",
           });
       }
 
@@ -819,12 +956,6 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| DELETE ALL ROOMS FOR ONE ACCESS KEY
-|--------------------------------------------------------------------------
-*/
-
 app.post(
   "/api/rooms/delete-by-access-key",
   async (req, res) => {
@@ -853,6 +984,13 @@ app.post(
           .status(auth.status)
           .json({
             error: auth.error,
+            subscriptionStatus:
+              auth.subscriptionStatus ||
+              "invalid",
+            subscriptionEnd:
+              auth.subscriptionEnd ||
+              auth.user?.subscriptionEnd ||
+              "",
           });
       }
 
@@ -904,12 +1042,6 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| SUBSCRIPTION PLANS
-|--------------------------------------------------------------------------
-*/
-
 app.get("/api/plans", (_req, res) => {
   const db = readDB();
 
@@ -955,12 +1087,6 @@ app.get("/api/plans", (_req, res) => {
   );
 });
 
-/*
-|--------------------------------------------------------------------------
-| PAYMENT SETTINGS
-|--------------------------------------------------------------------------
-*/
-
 app.get(
   "/api/payment-settings",
   (_req, res) => {
@@ -975,12 +1101,6 @@ app.get(
     });
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| SUBMIT PAYMENT REQUEST
-|--------------------------------------------------------------------------
-*/
 
 app.post(
   "/api/subscribe/request",
@@ -1108,12 +1228,6 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| PAYMENT STATUS
-|--------------------------------------------------------------------------
-*/
-
 app.get(
   "/api/subscribe/status/:paymentId",
   (req, res) => {
@@ -1133,6 +1247,24 @@ app.get(
       });
     }
 
+    let user = null;
+
+    if (payment.userId) {
+      user = db.users.find(
+        (item) =>
+          item.id === payment.userId
+      );
+    }
+
+    if (user) {
+      const changed =
+        updateSubscriptionStatus(user);
+
+      if (changed) {
+        writeDB(db);
+      }
+    }
+
     return res.json({
       ...payment,
 
@@ -1140,15 +1272,18 @@ app.get(
         payment.status === "approved"
           ? payment.accessKey
           : "",
+
+      subscriptionStatus:
+        user?.subscriptionStatus || "",
+
+      subscriptionStart:
+        user?.subscriptionStart || "",
+
+      subscriptionEnd:
+        user?.subscriptionEnd || "",
     });
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| PUBLIC SUPPORT
-|--------------------------------------------------------------------------
-*/
 
 app.post(
   "/api/support/public",
@@ -1227,12 +1362,6 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| ROOM SUPPORT
-|--------------------------------------------------------------------------
-*/
-
 app.post(
   "/api/support/room",
   (req, res) => {
@@ -1271,6 +1400,13 @@ app.post(
         .status(auth.status)
         .json({
           error: auth.error,
+          subscriptionStatus:
+            auth.subscriptionStatus ||
+            "invalid",
+          subscriptionEnd:
+            auth.subscriptionEnd ||
+            auth.user?.subscriptionEnd ||
+            "",
         });
     }
 
@@ -1367,12 +1503,6 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| GENERAL SUPPORT REQUEST
-|--------------------------------------------------------------------------
-*/
-
 app.post("/api/support", (req, res) => {
   const {
     accessKey,
@@ -1408,6 +1538,13 @@ app.post("/api/support", (req, res) => {
         .status(auth.status)
         .json({
           error: auth.error,
+          subscriptionStatus:
+            auth.subscriptionStatus ||
+            "invalid",
+          subscriptionEnd:
+            auth.subscriptionEnd ||
+            auth.user?.subscriptionEnd ||
+            "",
         });
     }
   }
@@ -1493,12 +1630,6 @@ app.post("/api/support", (req, res) => {
   });
 });
 
-/*
-|--------------------------------------------------------------------------
-| GET SUPPORT FOR ACCESS KEY
-|--------------------------------------------------------------------------
-*/
-
 app.get(
   "/api/support/:accessKey",
   (req, res) => {
@@ -1515,6 +1646,13 @@ app.get(
         .status(auth.status)
         .json({
           error: auth.error,
+          subscriptionStatus:
+            auth.subscriptionStatus ||
+            "invalid",
+          subscriptionEnd:
+            auth.subscriptionEnd ||
+            auth.user?.subscriptionEnd ||
+            "",
         });
     }
 
@@ -1545,12 +1683,6 @@ app.get(
     return res.json(tickets);
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| USER SUPPORT REPLY
-|--------------------------------------------------------------------------
-*/
 
 app.post(
   "/api/support/:requestId/reply",
@@ -1608,6 +1740,27 @@ app.post(
       });
     }
 
+    const auth =
+      getActiveUserByAccessKey(
+        db,
+        accessKey
+      );
+
+    if (auth.error) {
+      return res
+        .status(auth.status)
+        .json({
+          error: auth.error,
+          subscriptionStatus:
+            auth.subscriptionStatus ||
+            "invalid",
+          subscriptionEnd:
+            auth.subscriptionEnd ||
+            auth.user?.subscriptionEnd ||
+            "",
+        });
+    }
+
     const reply = {
       id: makeId("msg"),
 
@@ -1651,12 +1804,6 @@ app.post(
     });
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| ADMIN CREATE USER
-|--------------------------------------------------------------------------
-*/
 
 app.post(
   "/api/admin/users",
@@ -1714,9 +1861,20 @@ app.post(
       subscriptionStart:
         getTodayDate(),
 
-      subscriptionEnd,
+      subscriptionEnd:
+        String(subscriptionEnd).slice(
+          0,
+          10
+        ),
+
       subscriptionStatus:
-        "active",
+        getTodayDate() >=
+        String(subscriptionEnd).slice(
+          0,
+          10
+        )
+          ? "expired"
+          : "active",
 
       deviceLimit:
         Number(deviceLimit) || 2,
@@ -1740,12 +1898,6 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| ADMIN GET USERS
-|--------------------------------------------------------------------------
-*/
-
 app.get(
   "/api/admin/users",
   (req, res) => {
@@ -1754,6 +1906,20 @@ app.get(
     }
 
     const db = readDB();
+
+    let statusChanged = false;
+
+    for (const user of db.users) {
+      if (
+        updateSubscriptionStatus(user)
+      ) {
+        statusChanged = true;
+      }
+    }
+
+    if (statusChanged) {
+      writeDB(db);
+    }
 
     const users = db.users.map(
       (user) => ({
@@ -1793,12 +1959,6 @@ app.get(
     return res.json(users);
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| ADMIN UPDATE USER
-|--------------------------------------------------------------------------
-*/
 
 app.patch(
   "/api/admin/users/:userId",
@@ -1847,6 +2007,15 @@ app.patch(
       );
     }
 
+    if (
+      req.body.subscriptionEnd !==
+      undefined &&
+      req.body.subscriptionStatus ===
+        undefined
+    ) {
+      updateSubscriptionStatus(user);
+    }
+
     user.updatedAt =
       new Date().toISOString();
 
@@ -1858,12 +2027,6 @@ app.patch(
     });
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| ADMIN UPDATE DEVICE LIMIT
-|--------------------------------------------------------------------------
-*/
 
 app.post(
   "/api/admin/users/:userId/device-limit",
@@ -1914,12 +2077,6 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| ADMIN EXTEND SUBSCRIPTION
-|--------------------------------------------------------------------------
-*/
-
 app.post(
   "/api/admin/users/:userId/extend",
   (req, res) => {
@@ -1941,31 +2098,52 @@ app.post(
       });
     }
 
-    const today = new Date();
+    const requestedDays = Number(
+      req.body?.days || 30
+    );
 
-    const currentEnd =
-      user.subscriptionEnd
-        ? new Date(
-            user.subscriptionEnd
-          )
-        : today;
+    const monthsToAdd =
+      requestedDays >= 365
+        ? 12
+        : requestedDays >= 90
+        ? 3
+        : 1;
 
-    const baseDate =
+    const today = getTodayDate();
+
+    const currentEnd = String(
+      user.subscriptionEnd || ""
+    ).slice(0, 10);
+
+    const baseDateString =
       currentEnd > today
         ? currentEnd
         : today;
 
-    baseDate.setDate(
-      baseDate.getDate() +
-        Number(
-          req.body?.days || 30
-        )
+    const [
+      baseYear,
+      baseMonth,
+      baseDay,
+    ] = baseDateString
+      .split("-")
+      .map(Number);
+
+    const baseDate = new Date(
+      Date.UTC(
+        baseYear,
+        baseMonth - 1,
+        baseDay,
+        12,
+        0,
+        0
+      )
     );
 
     user.subscriptionEnd =
-      baseDate
-        .toISOString()
-        .slice(0, 10);
+      addCalendarMonthsToDate(
+        monthsToAdd,
+        baseDate
+      );
 
     user.subscriptionStatus =
       "active";
@@ -1983,12 +2161,6 @@ app.post(
     });
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| ADMIN UPDATE PLAN
-|--------------------------------------------------------------------------
-*/
 
 app.patch(
   "/api/admin/plans/:planId",
@@ -2036,9 +2208,9 @@ app.patch(
     if (
       req.body.active !== undefined
     ) {
-      plan.active = Boolean(
-        req.body.active
-      );
+      plan.active =
+        req.body.active === true ||
+        req.body.active === "true";
     }
 
     plan.updatedAt =
@@ -2052,12 +2224,6 @@ app.patch(
     });
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| ADMIN GET PAYMENTS
-|--------------------------------------------------------------------------
-*/
 
 app.get(
   "/api/admin/payments",
@@ -2079,12 +2245,6 @@ app.get(
     return res.json(payments);
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| ADMIN APPROVE PAYMENT
-|--------------------------------------------------------------------------
-*/
 
 app.post(
   "/api/admin/payments/:paymentId/approve",
@@ -2137,19 +2297,23 @@ app.post(
 
     const user = {
       id: makeId("user"),
+
       username:
         payment.username,
+
       contact:
         payment.contact,
+
       accessKey,
+
       deviceLimit: 2,
 
       subscriptionStart:
         getTodayDate(),
 
       subscriptionEnd:
-        addDaysToDate(
-          payment.days
+        addSubscriptionDate(
+          payment.planName
         ),
 
       subscriptionStatus:
@@ -2193,12 +2357,6 @@ app.post(
     });
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| ADMIN REJECT PAYMENT
-|--------------------------------------------------------------------------
-*/
 
 app.post(
   "/api/admin/payments/:paymentId/reject",
@@ -2258,12 +2416,6 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| ADMIN GET ROOMS
-|--------------------------------------------------------------------------
-*/
-
 app.get(
   "/api/admin/rooms",
   (req, res) => {
@@ -2295,6 +2447,10 @@ app.get(
               )
           );
 
+        if (user) {
+          updateSubscriptionStatus(user);
+        }
+
         return {
           ...room,
 
@@ -2307,6 +2463,10 @@ app.get(
             user?.subscriptionEnd ||
             "",
 
+          subscriptionStatus:
+            user?.subscriptionStatus ||
+            "unknown",
+
           userStatus:
             user?.status ||
             "unknown",
@@ -2314,15 +2474,11 @@ app.get(
       }
     );
 
+    writeDB(db);
+
     return res.json(result);
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| ADMIN DELETE ALL ROOMS FOR ACCESS KEY
-|--------------------------------------------------------------------------
-*/
 
 app.post(
   "/api/admin/rooms/delete-by-access-key",
@@ -2400,12 +2556,6 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| ADMIN GET SUPPORT
-|--------------------------------------------------------------------------
-*/
-
 app.get(
   "/api/admin/support",
   (req, res) => {
@@ -2451,12 +2601,6 @@ app.get(
     return res.json(result);
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| ADMIN SUPPORT REPLY
-|--------------------------------------------------------------------------
-*/
 
 app.post(
   "/api/admin/support/:requestId/reply",
@@ -2529,12 +2673,6 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| ADMIN UPDATE SUPPORT STATUS
-|--------------------------------------------------------------------------
-*/
-
 app.patch(
   "/api/admin/support/:requestId/status",
   (req, res) => {
@@ -2603,12 +2741,6 @@ app.patch(
     });
   }
 );
-
-/*
-|--------------------------------------------------------------------------
-| SOCKET.IO CALLS AND SIGNALING
-|--------------------------------------------------------------------------
-*/
 
 const httpServer =
   createServer(app);
