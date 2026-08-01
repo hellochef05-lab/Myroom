@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { StreamChat } from "stream-chat";
 import {
   Attachment,
@@ -13,6 +13,7 @@ import {
   useMessageContext,
 } from "stream-chat-react";
 import "stream-chat-react/dist/css/v2/index.css";
+import "./App.css";
 
 import {
   Camera,
@@ -110,6 +111,25 @@ function getDeviceId() {
 
 function getDeviceName() {
   return navigator.userAgent || "Unknown Device";
+}
+
+function getClientLocationInfo() {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  const locale = navigator.language || "";
+  const region = locale.includes("-") ? locale.split("-").pop().toUpperCase() : "";
+  const regionNames = typeof Intl.DisplayNames === "function"
+    ? new Intl.DisplayNames(["en"], { type: "region" })
+    : null;
+  let country = region && regionNames ? regionNames.of(region) : "Unknown";
+
+  if (timezone === "Asia/Dubai") country = "United Arab Emirates";
+  if (!country) country = "Unknown";
+
+  return {
+    country,
+    timezone,
+    platform: navigator.userAgentData?.platform || navigator.platform || "",
+  };
 }
 
 
@@ -1600,6 +1620,526 @@ function WebRTCCall({ roomId, displayRoomId, myName, onExitRoom }) {
   );
 }
 
+const inputClass = "admin-field";
+
+function formatDate(value) {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString();
+}
+
+function formatDateTime(value) {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString();
+}
+
+function deviceType(deviceName = "") {
+  const value = String(deviceName).toLowerCase();
+  if (/iphone|ipad|ios/.test(value)) return "iOS";
+  if (/android/.test(value)) return "Android";
+  if (/macintosh|mac os|macbook/.test(value)) return "Mac";
+  if (/windows/.test(value)) return "Windows";
+  if (/linux/.test(value)) return "Linux";
+  return "Other";
+}
+
+function StatCard({ label, value, accent, active, onClick, subtitle }) {
+  return (
+    <button
+      type="button"
+      className={`admin-stat-card ${active ? "is-active" : ""}`}
+      style={{ "--accent": accent }}
+      onClick={onClick}
+    >
+      <span className="admin-stat-value">{value}</span>
+      <span className="admin-stat-label">{label}</span>
+      {subtitle ? <span className="admin-stat-subtitle">{subtitle}</span> : null}
+    </button>
+  );
+}
+
+function EmptyState({ children }) {
+  return <div className="admin-empty">{children}</div>;
+}
+
+function AdminDashboard({ API_BASE, onBack }) {
+  const [adminPin, setAdminPin] = useState("");
+  const [authenticated, setAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [activeView, setActiveView] = useState("overview");
+  const [search, setSearch] = useState("");
+
+  const [dashboard, setDashboard] = useState({
+    totalUsers: 0,
+    onlineNow: 0,
+    joinedThisWeek: 0,
+    countries: 0,
+    activeUsers: 0,
+    expiredUsers: 0,
+    pendingPayments: 0,
+    openSupport: 0,
+    totalRooms: 0,
+    totalDevices: 0,
+    topCountries: [],
+    deviceSummary: [],
+  });
+
+  const [users, setUsers] = useState([]);
+  const [devices, setDevices] = useState([]);
+  const [rooms, setRooms] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [support, setSupport] = useState([]);
+  const [plans, setPlans] = useState([]);
+  const [userDrafts, setUserDrafts] = useState({});
+  const [planDrafts, setPlanDrafts] = useState({});
+  const [replyDrafts, setReplyDrafts] = useState({});
+
+  const headers = useMemo(
+    () => ({
+      "Content-Type": "application/json",
+      "x-admin-pin": adminPin,
+    }),
+    [adminPin]
+  );
+
+  async function request(path, options = {}) {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: {
+        ...headers,
+        ...(options.headers || {}),
+      },
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || "Request failed");
+    }
+    return data;
+  }
+
+  function buildUserDrafts(nextUsers) {
+    setUserDrafts(
+      nextUsers.reduce((acc, user) => {
+        acc[user.id] = {
+          username: user.username || "",
+          contact: user.contact || "",
+          accessKey: user.accessKey || "",
+          subscriptionEnd: user.subscriptionEnd || "",
+          deviceLimit: user.deviceLimit || 2,
+          status: user.status || "active",
+          subscriptionStatus: user.subscriptionStatus || "active",
+        };
+        return acc;
+      }, {})
+    );
+  }
+
+  async function loadAll() {
+    if (!adminPin.trim()) {
+      alert("Enter admin PIN");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const [dashboardData, usersData, devicesData, roomsData, paymentsData, supportData, plansData] =
+        await Promise.all([
+          request("/api/admin/dashboard"),
+          request("/api/admin/users"),
+          request("/api/admin/devices"),
+          request("/api/admin/rooms"),
+          request("/api/admin/payments"),
+          request("/api/admin/support"),
+          fetch(`${API_BASE}/api/plans`).then((res) => res.json()),
+        ]);
+
+      const nextUsers = Array.isArray(usersData) ? usersData : [];
+      const nextPlans = Array.isArray(plansData) ? plansData : [];
+
+      setDashboard(dashboardData);
+      setUsers(nextUsers);
+      setDevices(Array.isArray(devicesData) ? devicesData : []);
+      setRooms(Array.isArray(roomsData) ? roomsData : []);
+      setPayments(Array.isArray(paymentsData) ? paymentsData : []);
+      setSupport(Array.isArray(supportData) ? supportData : []);
+      setPlans(nextPlans);
+      buildUserDrafts(nextUsers);
+      setPlanDrafts(
+        nextPlans.reduce((acc, plan) => {
+          acc[plan.id] = {
+            name: plan.name || "",
+            price: plan.price ?? 0,
+            days: plan.days ?? 30,
+            active: plan.active !== false,
+          };
+          return acc;
+        }, {})
+      );
+      setAuthenticated(true);
+    } catch (error) {
+      setAuthenticated(false);
+      alert(error.message || "Failed to load admin data");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!authenticated) return undefined;
+    const id = setInterval(() => {
+      request("/api/admin/dashboard")
+        .then(setDashboard)
+        .catch(() => {});
+    }, 30000);
+    return () => clearInterval(id);
+  }, [authenticated, adminPin]);
+
+  const normalizedSearch = search.trim().toLowerCase();
+
+  const filteredUsers = users.filter((user) => {
+    if (!normalizedSearch) return true;
+    return [user.username, user.contact, user.accessKey, user.subscriptionStatus, user.status]
+      .some((value) => String(value || "").toLowerCase().includes(normalizedSearch));
+  });
+
+  const onlineUsers = users.filter((user) => user.isOnline);
+  const joinedThisWeekUsers = users.filter((user) => user.joinedThisWeek);
+  const expiredUsers = users.filter((user) => user.subscriptionStatus === "expired");
+  const activeUsers = users.filter(
+    (user) => user.status === "active" && user.subscriptionStatus !== "expired"
+  );
+  const pendingPayments = payments.filter((payment) => payment.status === "pending");
+  const openSupport = support.filter(
+    (ticket) => !["closed", "solved", "archived"].includes(ticket.status)
+  );
+
+  async function saveUser(userId) {
+    const draft = userDrafts[userId];
+    if (!draft) return;
+    try {
+      await request(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...draft,
+          deviceLimit: Number(draft.deviceLimit) || 2,
+        }),
+      });
+      await loadAll();
+      alert("User updated");
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function extendUser(userId, days) {
+    try {
+      await request(`/api/admin/users/${userId}/extend`, {
+        method: "POST",
+        body: JSON.stringify({ days }),
+      });
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function removeDevice(deviceId) {
+    if (!window.confirm("Remove this device from the Access Key?")) return;
+    try {
+      await request(`/api/admin/devices/${encodeURIComponent(deviceId)}`, {
+        method: "DELETE",
+      });
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function deleteRoom(roomId) {
+    if (!window.confirm(`Delete room ${roomId}?`)) return;
+    try {
+      await request(`/api/admin/rooms/${encodeURIComponent(roomId)}`, {
+        method: "DELETE",
+      });
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function approvePayment(paymentId) {
+    if (!window.confirm("Approve payment and generate Access Key?")) return;
+    try {
+      const result = await request(`/api/admin/payments/${paymentId}/approve`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      alert(`Approved. Access Key: ${result.accessKey || result.user?.accessKey}`);
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function rejectPayment(paymentId) {
+    const reason = window.prompt("Rejection reason", "Payment not verified");
+    if (reason === null) return;
+    try {
+      await request(`/api/admin/payments/${paymentId}/reject`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      });
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function replySupport(requestId) {
+    const message = String(replyDrafts[requestId] || "").trim();
+    if (!message) {
+      alert("Write a reply first");
+      return;
+    }
+    try {
+      await request(`/api/admin/support/${requestId}/reply`, {
+        method: "POST",
+        body: JSON.stringify({ message }),
+      });
+      setReplyDrafts((current) => ({ ...current, [requestId]: "" }));
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function updateTicketStatus(requestId, status) {
+    try {
+      await request(`/api/admin/support/${requestId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function savePlan(planId) {
+    const draft = planDrafts[planId];
+    if (!draft) return;
+    try {
+      await request(`/api/admin/plans/${planId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: draft.name,
+          price: Number(draft.price),
+          days: Number(draft.days),
+          active: Boolean(draft.active),
+        }),
+      });
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  function openView(view) {
+    setActiveView(view);
+    window.setTimeout(() => {
+      document.getElementById("admin-detail-panel")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 50);
+  }
+
+  const userListForView =
+    activeView === "online"
+      ? onlineUsers
+      : activeView === "joined"
+        ? joinedThisWeekUsers
+        : activeView === "expired"
+          ? expiredUsers
+          : activeView === "active"
+            ? activeUsers
+            : filteredUsers;
+
+  return (
+    <div className="admin-page-shell">
+      <main className="admin-dashboard">
+        <header className="admin-topbar">
+          <div>
+            <p className="admin-eyebrow">PRIVATE ROOM CONTROL CENTER</p>
+            <h1>Admin Dashboard</h1>
+            <p>Click any number to open its data and make changes.</p>
+          </div>
+          <button type="button" className="admin-back-button" onClick={onBack}>
+            Back to App
+          </button>
+        </header>
+
+        <section className="admin-login-panel">
+          <input
+            type="password"
+            value={adminPin}
+            onChange={(event) => setAdminPin(event.target.value)}
+            placeholder="Admin PIN"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") loadAll();
+            }}
+          />
+          <button type="button" onClick={loadAll} disabled={loading}>
+            {loading ? "Loading..." : authenticated ? "Refresh Data" : "Open Dashboard"}
+          </button>
+        </section>
+
+        {authenticated ? (
+          <>
+            <section className="admin-stat-grid">
+              <StatCard label="Total users" value={dashboard.totalUsers} accent="#27c3cf" active={activeView === "users"} onClick={() => openView("users")} />
+              <StatCard label="Online now" value={dashboard.onlineNow} accent="#36b875" active={activeView === "online"} onClick={() => openView("online")} />
+              <StatCard label="Joined this week" value={dashboard.joinedThisWeek} accent="#ff765a" active={activeView === "joined"} onClick={() => openView("joined")} />
+              <StatCard label="Countries" value={dashboard.countries} accent="#9468db" active={activeView === "countries"} onClick={() => openView("countries")} />
+              <StatCard label="Active users" value={dashboard.activeUsers} accent="#3b82f6" active={activeView === "active"} onClick={() => openView("active")} />
+              <StatCard label="Expired users" value={dashboard.expiredUsers} accent="#ef4444" active={activeView === "expired"} onClick={() => openView("expired")} />
+              <StatCard label="Rooms" value={dashboard.totalRooms} accent="#f59e0b" active={activeView === "rooms"} onClick={() => openView("rooms")} />
+              <StatCard label="Devices" value={dashboard.totalDevices} accent="#14b8a6" active={activeView === "devices"} onClick={() => openView("devices")} />
+              <StatCard label="Pending payments" value={dashboard.pendingPayments} accent="#8b5cf6" active={activeView === "payments"} onClick={() => openView("payments")} />
+              <StatCard label="Open support" value={dashboard.openSupport} accent="#ec4899" active={activeView === "support"} onClick={() => openView("support")} />
+            </section>
+
+            <section className="admin-overview-grid">
+              <button className="admin-overview-card" type="button" onClick={() => openView("countries")}>
+                <div className="admin-card-heading"><h2>Top countries</h2><span>{dashboard.totalUsers} located</span></div>
+                {(dashboard.topCountries || []).length ? dashboard.topCountries.map((item) => (
+                  <div className="admin-progress-row" key={item.country}>
+                    <strong>{item.country || "Unknown"}</strong>
+                    <span className="admin-progress-track"><span style={{ width: `${Math.max(8, item.percentage || 0)}%` }} /></span>
+                    <em>{item.count}</em>
+                  </div>
+                )) : <EmptyState>No country data yet.</EmptyState>}
+              </button>
+
+              <button className="admin-overview-card" type="button" onClick={() => openView("devices")}>
+                <div className="admin-card-heading"><h2>Devices</h2><span>Latest login</span></div>
+                {(dashboard.deviceSummary || []).length ? dashboard.deviceSummary.map((item) => (
+                  <div className="admin-progress-row" key={item.type}>
+                    <strong>{item.type}</strong>
+                    <span className="admin-progress-track"><span style={{ width: `${Math.max(8, item.percentage || 0)}%` }} /></span>
+                    <em>{item.count}</em>
+                  </div>
+                )) : <EmptyState>No device data yet.</EmptyState>}
+              </button>
+            </section>
+
+            <section id="admin-detail-panel" className="admin-detail-panel">
+              <div className="admin-detail-heading">
+                <div>
+                  <p className="admin-eyebrow">CLICKABLE DATA VIEW</p>
+                  <h2>{activeView.replace(/(^|_)(\w)/g, (_, __, letter) => ` ${letter.toUpperCase()}`).trim()}</h2>
+                </div>
+                {["users", "online", "joined", "active", "expired"].includes(activeView) ? (
+                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, contact or Access Key" />
+                ) : null}
+              </div>
+
+              {["overview", "users", "online", "joined", "active", "expired"].includes(activeView) && (
+                <div className="admin-record-list">
+                  {userListForView.length ? userListForView.map((user) => {
+                    const draft = userDrafts[user.id] || {};
+                    return (
+                      <article className="admin-user-card" key={user.id}>
+                        <div className="admin-user-card-top">
+                          <div>
+                            <h3>{user.username || "Unnamed user"}</h3>
+                            <p>Access Key: <strong>{user.accessKey}</strong></p>
+                          </div>
+                          <span className={`admin-status ${user.subscriptionStatus === "expired" || user.status === "blocked" ? "danger" : "success"}`}>
+                            {user.status === "blocked" ? "Blocked" : user.subscriptionStatus || "active"}
+                          </span>
+                        </div>
+
+                        <div className="admin-edit-grid">
+                          <label>Username<input className={inputClass} value={draft.username || ""} onChange={(e) => setUserDrafts((current) => ({ ...current, [user.id]: { ...current[user.id], username: e.target.value } }))} /></label>
+                          <label>Contact<input className={inputClass} value={draft.contact || ""} onChange={(e) => setUserDrafts((current) => ({ ...current, [user.id]: { ...current[user.id], contact: e.target.value } }))} /></label>
+                          <label>Access Key<input className={inputClass} value={draft.accessKey || ""} onChange={(e) => setUserDrafts((current) => ({ ...current, [user.id]: { ...current[user.id], accessKey: e.target.value } }))} /></label>
+                          <label>Expiry<input className={inputClass} type="date" value={String(draft.subscriptionEnd || "").slice(0, 10)} onChange={(e) => setUserDrafts((current) => ({ ...current, [user.id]: { ...current[user.id], subscriptionEnd: e.target.value } }))} /></label>
+                          <label>Device limit<input className={inputClass} type="number" min="1" value={draft.deviceLimit || 2} onChange={(e) => setUserDrafts((current) => ({ ...current, [user.id]: { ...current[user.id], deviceLimit: e.target.value } }))} /></label>
+                          <label>Account status<select className={inputClass} value={draft.status || "active"} onChange={(e) => setUserDrafts((current) => ({ ...current, [user.id]: { ...current[user.id], status: e.target.value } }))}><option value="active">Active</option><option value="blocked">Blocked</option></select></label>
+                        </div>
+
+                        <div className="admin-meta-grid">
+                          <span>Joined: {formatDate(user.createdAt)}</span>
+                          <span>Last login: {formatDateTime(user.lastLoginAt)}</span>
+                          <span>Country: {user.country || "Unknown"}</span>
+                          <span>Devices: {user.devicesUsed || 0}/{user.deviceLimit || 2}</span>
+                          <span>Rooms: {user.roomsCount || 0}</span>
+                          <span>{user.isOnline ? "Online now" : "Offline"}</span>
+                        </div>
+
+                        <div className="admin-actions">
+                          <button onClick={() => saveUser(user.id)}>Save changes</button>
+                          <button className="secondary" onClick={() => extendUser(user.id, 30)}>+1 month</button>
+                          <button className="secondary" onClick={() => extendUser(user.id, 90)}>+3 months</button>
+                          <button className="secondary" onClick={() => extendUser(user.id, 365)}>+1 year</button>
+                        </div>
+                      </article>
+                    );
+                  }) : <EmptyState>No matching users.</EmptyState>}
+                </div>
+              )}
+
+              {activeView === "countries" && (
+                <div className="admin-table-wrap"><table><thead><tr><th>Country</th><th>Users</th><th>Percentage</th></tr></thead><tbody>{(dashboard.topCountries || []).map((item) => <tr key={item.country}><td>{item.country || "Unknown"}</td><td>{item.count}</td><td>{item.percentage || 0}%</td></tr>)}</tbody></table></div>
+              )}
+
+              {activeView === "devices" && (
+                <div className="admin-table-wrap"><table><thead><tr><th>User</th><th>Access Key</th><th>Type</th><th>Device</th><th>Country</th><th>Last login</th><th>Action</th></tr></thead><tbody>{devices.map((device) => <tr key={device.id}><td>{device.username || "Unknown"}</td><td>{device.accessKey}</td><td>{device.deviceType || deviceType(device.deviceName)}</td><td>{device.deviceName || "Unknown"}</td><td>{device.country || "Unknown"}</td><td>{formatDateTime(device.lastLoginAt)}</td><td><button className="table-danger" onClick={() => removeDevice(device.id)}>Remove</button></td></tr>)}</tbody></table></div>
+              )}
+
+              {activeView === "rooms" && (
+                <div className="admin-table-wrap"><table><thead><tr><th>Room</th><th>Owner</th><th>Access Key</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody>{rooms.map((room) => <tr key={room.id}><td>{room.roomName || room.roomId}</td><td>{room.username || room.ownerName || "Unknown"}</td><td>{room.accessKey}</td><td>{room.status || "active"}</td><td>{formatDate(room.createdAt)}</td><td><button className="table-danger" onClick={() => deleteRoom(room.id)}>Delete</button></td></tr>)}</tbody></table></div>
+              )}
+
+              {activeView === "payments" && (
+                <div className="admin-record-list">{pendingPayments.length ? pendingPayments.map((payment) => <article className="admin-user-card" key={payment.id}><div className="admin-user-card-top"><div><h3>{payment.username}</h3><p>{payment.contact}</p></div><span className="admin-status warning">Pending</span></div><div className="admin-meta-grid"><span>Plan: {payment.planName}</span><span>Amount: AED {payment.amount}</span><span>UPI ref: {payment.upiReference}</span><span>Submitted: {formatDateTime(payment.createdAt)}</span></div><div className="admin-actions"><button onClick={() => approvePayment(payment.id)}>Approve & generate key</button><button className="danger-button" onClick={() => rejectPayment(payment.id)}>Reject</button></div></article>) : <EmptyState>No pending payments.</EmptyState>}</div>
+              )}
+
+              {activeView === "support" && (
+                <div className="admin-record-list">{openSupport.length ? openSupport.map((ticket) => <article className="admin-user-card" key={ticket.id}><div className="admin-user-card-top"><div><h3>{ticket.issueType || "Support"}</h3><p>{ticket.username || ticket.guestName || "Guest"} · {ticket.accessKey || "Public"}</p></div><select className={inputClass} value={ticket.status || "open"} onChange={(e) => updateTicketStatus(ticket.id, e.target.value)}><option value="open">Open</option><option value="in_progress">In progress</option><option value="waiting_for_user">Waiting for user</option><option value="solved">Solved</option><option value="closed">Closed</option></select></div><div className="admin-message-thread">{(ticket.messages || []).map((message) => <div className={message.senderType === "admin" ? "admin-message admin" : "admin-message"} key={message.id}><strong>{message.senderType === "admin" ? "Admin" : "User"}</strong><p>{message.message}</p><small>{formatDateTime(message.createdAt)}</small></div>)}</div><textarea className={inputClass} rows="3" value={replyDrafts[ticket.id] || ""} onChange={(e) => setReplyDrafts((current) => ({ ...current, [ticket.id]: e.target.value }))} placeholder="Reply to user" /><div className="admin-actions"><button onClick={() => replySupport(ticket.id)}>Send reply</button></div></article>) : <EmptyState>No open support tickets.</EmptyState>}</div>
+              )}
+
+              {activeView === "plans" && (
+                <div className="admin-record-list">{plans.map((plan) => { const draft = planDrafts[plan.id] || {}; return <article className="admin-user-card" key={plan.id}><h3>{plan.name}</h3><div className="admin-edit-grid"><label>Name<input className={inputClass} value={draft.name || ""} onChange={(e) => setPlanDrafts((current) => ({ ...current, [plan.id]: { ...current[plan.id], name: e.target.value } }))} /></label><label>Price<input className={inputClass} type="number" value={draft.price ?? 0} onChange={(e) => setPlanDrafts((current) => ({ ...current, [plan.id]: { ...current[plan.id], price: e.target.value } }))} /></label><label>Days<input className={inputClass} type="number" value={draft.days ?? 30} onChange={(e) => setPlanDrafts((current) => ({ ...current, [plan.id]: { ...current[plan.id], days: e.target.value } }))} /></label></div><div className="admin-actions"><button onClick={() => savePlan(plan.id)}>Save plan</button></div></article>; })}</div>
+              )}
+            </section>
+
+            <nav className="admin-quick-nav">
+              <button onClick={() => openView("users")}>Users</button>
+              <button onClick={() => openView("devices")}>Devices</button>
+              <button onClick={() => openView("rooms")}>Rooms</button>
+              <button onClick={() => openView("payments")}>Payments</button>
+              <button onClick={() => openView("support")}>Support</button>
+              <button onClick={() => openView("plans")}>Plans</button>
+            </nav>
+          </>
+        ) : (
+          <div className="admin-locked-state">
+            <div>🔐</div>
+            <h2>Enter the Admin PIN</h2>
+            <p>The dashboard will load users, devices, rooms, payments and support data.</p>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
 export default function App() {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
@@ -1694,6 +2234,27 @@ const [supportReplyText, setSupportReplyText] = useState("");
     if (client) client.disconnectUser();
   };
 }, [client]);
+
+useEffect(() => {
+  if (!loggedUser?.accessKey) return undefined;
+
+  const sendActivity = () => {
+    const location = getClientLocationInfo();
+    fetch(`${API_BASE}/api/activity`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accessKey: loggedUser.accessKey,
+        deviceId: getDeviceId(),
+        ...location,
+      }),
+    }).catch(() => {});
+  };
+
+  sendActivity();
+  const id = setInterval(sendActivity, 60000);
+  return () => clearInterval(id);
+}, [loggedUser]);
 
 useEffect(() => {
   let cancelled = false;
@@ -2644,6 +3205,7 @@ async function joinRoom() {
           privateRoomId: privateRoomIdForLogin,
           deviceId: currentDeviceId,
           deviceName: getDeviceName(),
+          ...getClientLocationInfo(),
         }),
       });
 
@@ -3058,816 +3620,13 @@ alert(err.message || "Join failed - see console");
   const isAdminPage = window.location.pathname === "/admin";
 
   if (isAdminPage) {
-    const visibleAdminPayments = adminPayments.filter((payment) => {
-  const search = adminPaymentSearch.trim().toLowerCase();
-
-  const isPending = payment.status === "pending";
-
-  const matchesSearch =
-    !search ||
-    String(payment.username || "").toLowerCase().includes(search) ||
-    String(payment.contact || "").toLowerCase().includes(search) ||
-    String(payment.upiReference || "").toLowerCase().includes(search) ||
-    String(payment.planName || "").toLowerCase().includes(search);
-
-  return isPending && matchesSearch;
-});
-    const totalUsers = adminUsers.length;
-    const activeUsers = adminUsers.filter((user) => user.status === "active").length;
-    const expiredUsers = adminUsers.filter(
-      (user) =>
-        user.subscriptionStatus === "expired" ||
-        (user.subscriptionEnd && new Date(user.subscriptionEnd) < new Date())
-    ).length;
-
     return (
-      <div
-        style={{
-          minHeight: "100dvh",
-          background: "linear-gradient(135deg, #062c2a 0%, #0f766e 100%)",
-          padding: 24,
-          boxSizing: "border-box",
-          color: "#123c3a",
+      <AdminDashboard
+        API_BASE={API_BASE}
+        onBack={() => {
+          window.location.href = "/";
         }}
-      >
-        <div
-          style={{
-            maxWidth: 1200,
-            margin: "0 auto",
-            background: "#ffffff",
-            borderRadius: 24,
-            padding: 24,
-            boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 12,
-              alignItems: "center",
-              marginBottom: 20,
-              flexWrap: "wrap",
-            }}
-          >
-            <div>
-              <h1 style={{ margin: 0 }}>Admin Dashboard</h1>
-              <p style={{ margin: "6px 0 0", color: "#64748b" }}>
-                Manage users, 5-digit Access Keys, subscriptions, rooms, support, and devices.
-              </p>
-            </div>
-
-            <button
-              onClick={() => {
-                window.location.href = "/";
-              }}
-              style={{
-                border: "none",
-                borderRadius: 999,
-                padding: "10px 16px",
-                background: "#0f766e",
-                color: "#fff",
-                fontWeight: 800,
-                cursor: "pointer",
-              }}
-            >
-              Back to App
-            </button>
-          </div>
-
-          <div style={{ ...adminCardStyle, marginBottom: 18 }}>
-            <h2 style={{ marginTop: 0 }}>Admin Access</h2>
-            <input
-              value={adminPin}
-              onChange={(e) => setAdminPin(e.target.value)}
-              placeholder="Admin PIN"
-              type="password"
-              style={adminInputStyle}
-            />
-            <button
-              onClick={() => {
-  adminLoadUsers();
-  adminLoadRooms();
-  adminSearchSupport();
-  adminLoadPayments();
-}}
-              style={{ ...adminButtonStyle, background: "#0f766e" }}
-            >
-              Load Admin Data
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: 12,
-              marginBottom: 18,
-            }}
-          >
-            {[
-              ["Total users", totalUsers],
-              ["Active users", activeUsers],
-              ["Expired users", expiredUsers],
-              ["Rooms loaded", adminRooms.length],
-              ["Support tickets", adminSupportResults.length],
-            ].map(([label, value]) => (
-              <div
-                key={label}
-                style={{
-                  background: "#f8fafc",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 16,
-                  padding: 16,
-                }}
-              >
-                <div style={{ color: "#64748b", fontSize: 13 }}>{label}</div>
-                <div style={{ fontSize: 28, fontWeight: 900, color: "#0f766e" }}>
-                  {value}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-              gap: 18,
-            }}
-          >
-            <div style={{ ...adminCardStyle, gridColumn: "1 / -1" }}>
-  <h2 style={{ marginTop: 0 }}>Pending Payment / Access Key Requests</h2>
-
-  <p style={{ color: "#64748b" }}>
-    Users who paid by UPI and submitted reference number will appear here.
-    Approving payment will generate a 5-digit Access Key with 2-device limit.
-  </p>
-  <input
-  value={adminPaymentSearch}
-  onChange={(e) => setAdminPaymentSearch(e.target.value)}
-  placeholder="Search by name, mobile number, email, or UPI reference"
-  style={{
-    ...adminInputStyle,
-    maxWidth: 520,
-  }}
-/>
-
-  <button
-    onClick={adminLoadPayments}
-    style={{
-      ...adminButtonStyle,
-      background: "#0f766e",
-      maxWidth: 220,
-      marginBottom: 12,
-    }}
-  >
-    Load Pending Payments
-  </button>
-
-  {visibleAdminPayments.length === 0 ? (
-  <p style={{ color: "#64748b" }}>
-    No pending payment requests found.
-  </p>
-) : (
-  visibleAdminPayments.map((payment) => (
-      <div
-        key={payment.id}
-        style={{
-          background: "#ffffff",
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 12,
-          marginBottom: 12,
-        }}
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-            gap: 10,
-          }}
-        >
-          <p><strong>User:</strong> {payment.username}</p>
-          <p><strong>Contact:</strong> {payment.contact}</p>
-          <p>
-            <strong>Package Used:</strong> {payment.planName || payment.planId || "N/A"}
-          </p>
-          <p>
-            <strong>Package Duration:</strong> {payment.days || "N/A"} days
-          </p>
-          <p>
-            <strong>Package Amount:</strong> AED {payment.amount || payment.price || "N/A"}
-          </p>
-          <p><strong>UPI ID:</strong> {payment.upiId}</p>
-          <p><strong>UPI Ref:</strong> {payment.upiReference}</p>
-          <p><strong>Status:</strong> {payment.status}</p>
-          <p><strong>Access Key:</strong> {payment.accessKey || "Not generated yet"}</p>
-          <p>
-  <strong>Request Date:</strong>{" "}
-  {payment.createdAt ? new Date(payment.createdAt).toLocaleDateString() : "N/A"}
-</p>
-
-<p>
-  <strong>Subscription Days:</strong> {payment.days || "N/A"}
-</p>
-
-<p>
-  <strong>Expiry After Approval:</strong>{" "}
-  {payment.days
-    ? new Date(Date.now() + Number(payment.days) * 24 * 60 * 60 * 1000).toLocaleDateString()
-    : "N/A"}
-</p>
-
-<p>
-  <strong>Admin Comment:</strong> {payment.adminComment || "No comment yet"}
-</p>
-
-<textarea
-  value={adminPaymentComments[payment.id] || payment.adminComment || ""}
-  onChange={(e) =>
-    setAdminPaymentComments((current) => ({
-      ...current,
-      [payment.id]: e.target.value,
-    }))
-  }
-  placeholder="Admin payment comment / verification note"
-  rows={3}
-  style={{
-    width: "100%",
-    marginTop: 10,
-    padding: 10,
-    borderRadius: 10,
-    border: "1px solid #d1d5db",
-    boxSizing: "border-box",
-  }}
-/>
-        </div>
-
-        {payment.status === "pending" && (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-            <button
-              onClick={() => adminApprovePayment(payment.id)}
-              style={{
-                ...adminButtonStyle,
-                background: "#0f766e",
-                width: 180,
-              }}
-            >
-              Approve & Generate Key
-            </button>
-
-            <button
-              onClick={() => adminRejectPayment(payment.id)}
-              style={{
-                ...adminButtonStyle,
-                background: "#dc2626",
-                width: 140,
-              }}
-            >
-              Reject
-            </button>
-          </div>
-        )}
-      </div>
-    ))
-  )}
-</div>
-            <div style={adminCardStyle}>
-              <h2 style={{ marginTop: 0 }}>Subscription Rates</h2>
-              <p style={{ color: "#64748b" }}>
-                Edit plan price and days shown on the first page.
-              </p>
-
-              {plans.map((plan) => (
-                <div
-                  key={plan.id}
-                  style={{
-                    background: "#ffffff",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 14,
-                    padding: 12,
-                    marginBottom: 10,
-                  }}
-                >
-                  <input
-                    value={planDrafts[plan.id]?.name ?? plan.name}
-                    onChange={(e) =>
-                      setPlanDrafts((current) => ({
-                        ...current,
-                        [plan.id]: {
-                          ...(current[plan.id] || plan),
-                          name: e.target.value,
-                        },
-                      }))
-                    }
-                    placeholder="Plan name"
-                    style={adminInputStyle}
-                  />
-
-                  <input
-                    value={planDrafts[plan.id]?.price ?? plan.price}
-                    onChange={(e) =>
-                      setPlanDrafts((current) => ({
-                        ...current,
-                        [plan.id]: {
-                          ...(current[plan.id] || plan),
-                          price: e.target.value,
-                        },
-                      }))
-                    }
-                    placeholder="Price"
-                    type="number"
-                    style={adminInputStyle}
-                  />
-
-                  <input
-                    value={planDrafts[plan.id]?.days ?? plan.days}
-                    onChange={(e) =>
-                      setPlanDrafts((current) => ({
-                        ...current,
-                        [plan.id]: {
-                          ...(current[plan.id] || plan),
-                          days: e.target.value,
-                        },
-                      }))
-                    }
-                    placeholder="Days"
-                    type="number"
-                    style={adminInputStyle}
-                  />
-
-                  <button
-                    onClick={() => adminSavePlan(plan.id)}
-                    style={{ ...adminButtonStyle, background: "#2563eb" }}
-                  >
-                    Save Plan
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div style={adminCardStyle}>
-              <h2 style={{ marginTop: 0 }}>Create User / Access Key</h2>
-              <p style={{ color: "#64748b" }}>
-                Access Key is 5 digits. Leave Access Key empty to let the system generate it.
-                Default device limit is 2.
-              </p>
-
-              <input
-                value={newUserName}
-                onChange={(e) => setNewUserName(e.target.value)}
-                placeholder="Username"
-                style={adminInputStyle}
-              />
-
-              <input
-                value={newUserContact}
-                onChange={(e) => setNewUserContact(e.target.value)}
-                placeholder="Phone or email"
-                style={adminInputStyle}
-              />
-
-              <input
-                value={newUserAccessKey}
-                onChange={(e) => setNewUserAccessKey(e.target.value)}
-                placeholder="Access Key, optional"
-                maxLength={5}
-                style={adminInputStyle}
-              />
-
-              <input
-                value={newUserEndDate}
-                onChange={(e) => setNewUserEndDate(e.target.value)}
-                placeholder="Subscription end date"
-                style={adminInputStyle}
-              />
-
-              <input
-                value={newUserDeviceLimit}
-                onChange={(e) => setNewUserDeviceLimit(e.target.value)}
-                placeholder="Device limit"
-                type="number"
-                style={adminInputStyle}
-              />
-
-              <button
-                onClick={adminCreateUser}
-                style={{ ...adminButtonStyle, background: "#0f766e" }}
-              >
-                Create User
-              </button>
-            </div>
-
-            <div style={{ ...adminCardStyle, gridColumn: "1 / -1" }}>
-              <h2 style={{ marginTop: 0 }}>All Users</h2>
-              <p style={{ color: "#64748b" }}>
-                Admin can see Access Keys, update device limit, block users, and extend subscriptions.
-                Each Access Key works on 2 devices by default.
-              </p>
-
-              <button
-                onClick={adminLoadUsers}
-                style={{
-                  ...adminButtonStyle,
-                  background: "#0f766e",
-                  maxWidth: 220,
-                  marginBottom: 12,
-                }}
-              >
-                {adminLoading ? "Loading..." : "Load Users"}
-              </button>
-
-              {adminUsers.map((user) => {
-                const draft = userEditDrafts[user.id] || {};
-                return (
-                  <div
-                    key={user.id}
-                    style={{
-                      background: "#ffffff",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 14,
-                      padding: 12,
-                      marginBottom: 12,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                        gap: 10,
-                      }}
-                    >
-                      <input
-                        value={draft.username || ""}
-                        onChange={(e) =>
-                          setUserEditDrafts((current) => ({
-                            ...current,
-                            [user.id]: { ...(current[user.id] || {}), username: e.target.value },
-                          }))
-                        }
-                        placeholder="Username"
-                        style={adminInputStyle}
-                      />
-
-                      <input
-                        value={draft.contact || ""}
-                        onChange={(e) =>
-                          setUserEditDrafts((current) => ({
-                            ...current,
-                            [user.id]: { ...(current[user.id] || {}), contact: e.target.value },
-                          }))
-                        }
-                        placeholder="Contact"
-                        style={adminInputStyle}
-                      />
-
-                      <input
-                        value={draft.accessKey || ""}
-                        onChange={(e) =>
-                          setUserEditDrafts((current) => ({
-                            ...current,
-                            [user.id]: { ...(current[user.id] || {}), accessKey: e.target.value },
-                          }))
-                        }
-                        placeholder="Access Key"
-                        maxLength={5}
-                        style={adminInputStyle}
-                      />
-
-                      <input
-                        value={draft.subscriptionEnd || ""}
-                        onChange={(e) =>
-                          setUserEditDrafts((current) => ({
-                            ...current,
-                            [user.id]: {
-                              ...(current[user.id] || {}),
-                              subscriptionEnd: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="Subscription end"
-                        style={adminInputStyle}
-                      />
-
-                      <input
-                        value={draft.deviceLimit || 2}
-                        onChange={(e) =>
-                          setUserEditDrafts((current) => ({
-                            ...current,
-                            [user.id]: {
-                              ...(current[user.id] || {}),
-                              deviceLimit: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="Device limit"
-                        type="number"
-                        style={adminInputStyle}
-                      />
-
-                      <select
-                        value={draft.status || "active"}
-                        onChange={(e) =>
-                          setUserEditDrafts((current) => ({
-                            ...current,
-                            [user.id]: { ...(current[user.id] || {}), status: e.target.value },
-                          }))
-                        }
-                        style={adminInputStyle}
-                      >
-                        <option value="active">Active</option>
-                        <option value="blocked">Blocked</option>
-                      </select>
-                    </div>
-                    <div
-  style={{
-    gridColumn: "1 / -1",
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: 10,
-    marginTop: 10,
-    padding: 10,
-    background: "#f8fafc",
-    borderRadius: 12,
-    border: "1px solid #e2e8f0",
-  }}
->
-  <p>
-    <strong>Package Used:</strong>{" "}
-    {user.planName || user.planId || "N/A"}
-  </p>
-
-  <p>
-    <strong>Subscription Start:</strong>{" "}
-    {user.subscriptionStart
-      ? new Date(user.subscriptionStart).toLocaleDateString()
-      : "N/A"}
-  </p>
-
-  <p>
-    <strong>Subscription Expiry:</strong>{" "}
-    {user.subscriptionEnd
-      ? new Date(user.subscriptionEnd).toLocaleDateString()
-      : "N/A"}
-  </p>
-
-  <p>
-    <strong>Joining Date:</strong>{" "}
-    {user.joiningDate || user.createdAt
-      ? new Date(user.joiningDate || user.createdAt).toLocaleDateString()
-      : "N/A"}
-  </p>
-
-  <p>
-    <strong>Paid Amount:</strong>{" "}
-    {user.paidAmount ? `AED ${user.paidAmount}` : "N/A"}
-  </p>
-</div>
-
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <button
-                        onClick={() => adminSaveUser(user.id)}
-                        style={{ ...adminButtonStyle, background: "#2563eb", width: 160 }}
-                      >
-                        Save User
-                      </button>
-
-                      <button
-                        onClick={() => adminExtendUser(user.id, 30)}
-                        style={{ ...adminButtonStyle, background: "#0f766e", width: 180 }}
-                      >
-                        Extend 30 Days
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setAdminRoomsAccessKey(draft.accessKey || user.accessKey || "");
-                          setAdminAccessKeySearch(draft.accessKey || user.accessKey || "");
-                        }}
-                        style={{ ...adminButtonStyle, background: "#475569", width: 190 }}
-                      >
-                        Use Access Key
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div style={adminCardStyle}>
-              <h2 style={{ marginTop: 0 }}>Rooms by Access Key</h2>
-              <input
-                value={adminRoomsAccessKey}
-                onChange={(e) => setAdminRoomsAccessKey(e.target.value)}
-                placeholder="Access Key, leave empty for all rooms"
-                style={adminInputStyle}
-              />
-
-              <button
-                onClick={adminLoadRooms}
-                style={{ ...adminButtonStyle, background: "#2563eb", marginBottom: 10 }}
-              >
-                Load Rooms
-              </button>
-
-              <button
-                onClick={adminDeleteRoomsByAccessKey}
-                style={{ ...adminButtonStyle, background: "#991b1b", marginBottom: 10 }}
-              >
-                Delete Rooms for This Access Key
-              </button>
-
-              <input
-                value={adminDeleteKey}
-                onChange={(e) => setAdminDeleteKey(e.target.value)}
-                placeholder="Admin delete key"
-                type="password"
-                style={adminInputStyle}
-              />
-
-              <button
-                onClick={adminDeleteAllRooms}
-                style={{ ...adminButtonStyle, background: "#7f1d1d" }}
-              >
-                Admin Delete All Rooms
-              </button>
-
-              <div style={{ marginTop: 12 }}>
-                {adminRooms.map((item) => (
-                  <div
-                    key={item.id || item.roomId}
-                    style={{
-                      background: "#ffffff",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 14,
-                      padding: 12,
-                      marginBottom: 10,
-                    }}
-                  >
-                    <strong>Room {item.roomId || item.roomName}</strong>
-                    <p style={{ margin: "6px 0" }}>Access Key: {item.accessKey || "N/A"}</p>
-                    <p style={{ margin: "6px 0" }}>Owner: {item.ownerName || item.username || "N/A"}</p>
-                    <p style={{ margin: "6px 0" }}>Status: {item.status || item.roomStatus || "active"}</p>
-                    <button
-                      onClick={() => adminDeleteRoom(item.roomId)}
-                      style={{ ...adminButtonStyle, background: "#dc2626" }}
-                    >
-                      Delete Room
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={adminCardStyle}>
-              <h2 style={{ marginTop: 0 }}>Support Messages</h2>
-              <p style={{ color: "#64748b" }}>
-                Leave Access Key empty to see all tickets.
-              </p>
-
-              <input
-                value={adminAccessKeySearch}
-                onChange={(e) => setAdminAccessKeySearch(e.target.value)}
-                placeholder="Access Key filter, optional"
-                style={adminInputStyle}
-              />
-
-              <button
-                onClick={adminSearchSupport}
-                style={{ ...adminButtonStyle, background: "#2563eb", marginBottom: 12 }}
-              >
-                Search Support
-              </button>
-
-              {adminSupportResults
-  .filter((item) => {
-    const isSearchingByAccessKey = adminAccessKeySearch.trim().length > 0;
-
-    if (isSearchingByAccessKey) {
-      return true;
-    }
-
-    return (
-      item.status !== "closed" &&
-      item.status !== "solved" &&
-      item.status !== "archived"
-    );
-  })
-  .map((item) => (
-                <div
-                  key={item.id}
-                  style={{
-                    background: "#ffffff",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 14,
-                    padding: 12,
-                    marginBottom: 10,
-                  }}
-                >
-                  <p style={{ margin: "6px 0", fontWeight: 900 }}>
-  <strong>Subject:</strong> {item.issueType || "Support Request"}
-</p>
-                  <p style={{ margin: "6px 0" }}>
-                    <strong>User:</strong> {item.username || item.guestName || "Guest"}
-                  </p>
-                  
-  <p style={{ margin: "6px 0" }}>
-  <strong>Contact:</strong> {item.contact || item.phone || item.email || "N/A"}
-</p>
-                  <p style={{ margin: "6px 0" }}>
-                    <strong>Access Key:</strong> {item.accessKey || "N/A"}
-                  </p>
-                  <p style={{ margin: "6px 0" }}>
-                    <strong>Room:</strong> {item.roomName || item.roomId || "N/A"}
-                  </p>
-                  <p style={{ margin: "6px 0" }}>
-                    <strong>Status:</strong> {item.status || "open"}
-                  </p>
-
-                  <select
-                    value={item.status || "open"}
-                    onChange={(e) => adminUpdateTicketStatus(item.id, e.target.value)}
-                    style={adminInputStyle}
-                  >
-                    <option value="open">Open</option>
-                    <option value="in_progress">In progress</option>
-                    <option value="waiting_for_user">Waiting for user</option>
-                    <option value="solved">Solved</option>
-                    <option value="closed">Closed</option>
-                  </select>
-
-                  <div
-                    style={{
-                      marginTop: 10,
-                      padding: 10,
-                      background: "#f8fafc",
-                      borderRadius: 10,
-                    }}
-                  >
-                    {(item.messages || []).map((msg) => (
-                      <p key={msg.id} style={{ margin: "8px 0" }}>
-                        <strong>{msg.senderType || "user"}:</strong> {msg.message}
-                      </p>
-                    ))}
-                  </div>
-
-                  {item.status !== "closed" &&
-item.status !== "solved" &&
-item.status !== "archived" ? (
-  <>
-    <textarea
-      value={adminReplyDrafts[item.id] || ""}
-      onChange={(e) =>
-        setAdminReplyDrafts((current) => ({
-          ...current,
-          [item.id]: e.target.value,
-        }))
-      }
-      placeholder="Write admin reply"
-      style={{
-        width: "100%",
-        marginTop: 10,
-        padding: 10,
-        borderRadius: 10,
-        border: "1px solid #d1d5db",
-        boxSizing: "border-box",
-      }}
-    />
-
-    <button
-      onClick={() => adminReplyToSupport(item.id)}
-      style={{
-        ...adminButtonStyle,
-        width: "100%",
-        marginTop: 10,
-        background: "#0f766e",
-      }}
-    >
-      Reply to User
-    </button>
-  </>
-) : (
-  <div
-    style={{
-      marginTop: 10,
-      padding: 10,
-      borderRadius: 10,
-      background: "#f1f5f9",
-      color: "#64748b",
-      fontWeight: 700,
-      textAlign: "center",
-    }}
-  >
-    This ticket is closed. Reply disabled.
-  </div>
-)}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      />
     );
   }
 
