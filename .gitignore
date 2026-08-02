@@ -27,3 +27,8 @@ dist-ssr
 server/.env
 server/db.json
 server/server/
+.vercel/
+server/db-before-supabase.json
+server/index-before-supabase.js
+server/.env
+server/migrate-to-supabase.js

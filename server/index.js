@@ -1,17 +1,43 @@
+import { createClient } from "@supabase/supabase-js";
 import { StreamChat } from "stream-chat";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import fs from "fs";
+dotenv.config({
+  path: new URL("./.env", import.meta.url).pathname,
+});
 
-dotenv.config();
 
 const app = express();
 app.use(express.json());
 
-const DB_FILE = new URL("./db.json", import.meta.url).pathname;
+const supabaseUrl = String(
+  process.env.SUPABASE_URL || ""
+).trim();
+
+const supabaseSecretKey = String(
+  process.env.SUPABASE_SECRET_KEY || ""
+).trim();
+
+if (!supabaseUrl || !supabaseSecretKey) {
+  throw new Error(
+    "SUPABASE_URL and SUPABASE_SECRET_KEY are required"
+  );
+}
+
+const supabase = createClient(
+  supabaseUrl,
+  supabaseSecretKey,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  }
+);
 
 function createEmptyDB() {
   return {
@@ -22,17 +48,17 @@ function createEmptyDB() {
     payments: [],
     supportRequests: [],
     supportMessages: [],
+    loginHistory: [],
   };
 }
 
-function readDB() {
-  if (!fs.existsSync(DB_FILE)) {
-    const db = createEmptyDB();
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
-    return db;
-  }
+function normalizeDatabase(value) {
+  const source =
+    value && typeof value === "object"
+      ? value
+      : {};
 
-  const db = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  const db = { ...source };
   const defaults = createEmptyDB();
 
   for (const key of Object.keys(defaults)) {
@@ -44,8 +70,107 @@ function readDB() {
   return db;
 }
 
+let databaseCache = createEmptyDB();
+let databaseReady = false;
+let saveQueue = Promise.resolve();
+let lastSaveError = "";
+
+async function initializeDatabase() {
+  const { data, error } = await supabase
+    .from("app_data")
+    .select("data")
+    .eq("id", "main")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(
+      `Failed to load Supabase data: ${error.message}`
+    );
+  }
+
+  if (data?.data) {
+    databaseCache = normalizeDatabase(data.data);
+  } else {
+    databaseCache = createEmptyDB();
+
+    const { error: createError } = await supabase
+      .from("app_data")
+      .upsert(
+        {
+          id: "main",
+          data: databaseCache,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
+
+    if (createError) {
+      throw new Error(
+        `Failed to create Supabase data: ${createError.message}`
+      );
+    }
+  }
+
+  databaseReady = true;
+  lastSaveError = "";
+
+  console.log("Supabase database loaded", {
+    plans: databaseCache.plans.length,
+    users: databaseCache.users.length,
+    devices: databaseCache.devices.length,
+    rooms: databaseCache.rooms.length,
+    payments: databaseCache.payments.length,
+    supportRequests:
+      databaseCache.supportRequests.length,
+    supportMessages:
+      databaseCache.supportMessages.length,
+  });
+}
+
+function readDB() {
+  if (!databaseReady) {
+    throw new Error("Database is not ready");
+  }
+
+  return databaseCache;
+}
+
 function writeDB(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  databaseCache = normalizeDatabase(db);
+
+  const snapshot = JSON.parse(
+    JSON.stringify(databaseCache)
+  );
+
+  saveQueue = saveQueue.then(async () => {
+    const { error } = await supabase
+      .from("app_data")
+      .upsert(
+        {
+          id: "main",
+          data: snapshot,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
+
+    if (error) {
+      lastSaveError = error.message;
+      console.error(
+        "Supabase save failed:",
+        error.message
+      );
+      return;
+    }
+
+    lastSaveError = "";
+  });
+
+  return saveQueue;
+}
+
+async function flushDatabaseWrites() {
+  await saveQueue;
 }
 
 function makeId(prefix) {
@@ -401,6 +526,15 @@ async function deleteStreamChannels(roomIds) {
 
 app.get("/", (_req, res) => {
   res.send("Backend is running");
+});
+
+app.get("/api/health", (_req, res) => {
+  res.json({
+    success: true,
+    database: databaseReady ? "connected" : "loading",
+    pendingSaveError: lastSaveError || null,
+    time: new Date().toISOString(),
+  });
 });
 
 /*
@@ -2908,6 +3042,197 @@ app.patch(
 
 /*
 |--------------------------------------------------------------------------
+| BACKWARDS-COMPATIBLE USER DELETE-MANY ROUTE
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+  "/api/rooms/delete-many",
+  async (req, res) => {
+    try {
+      const { accessKey, roomIds } = req.body || {};
+
+      if (
+        !accessKey ||
+        !Array.isArray(roomIds) ||
+        roomIds.length === 0
+      ) {
+        return res.status(400).json({
+          error:
+            "Access Key and at least one room ID are required",
+        });
+      }
+
+      const db = readDB();
+      const auth = getActiveUserByAccessKey(db, accessKey);
+
+      if (auth.error) {
+        return res.status(auth.status).json({
+          error: auth.error,
+        });
+      }
+
+      const requestedIds = new Set(roomIds.map(String));
+      const ownedRooms = db.rooms.filter(
+        (room) =>
+          requestedIds.has(String(room.id)) &&
+          sameValue(room.accessKey, auth.user.accessKey)
+      );
+
+      if (ownedRooms.length === 0) {
+        return res.status(404).json({
+          error:
+            "No matching rooms found for this Access Key",
+        });
+      }
+
+      const ownedIds = ownedRooms.map((room) => room.id);
+      await deleteStreamChannels(ownedIds);
+
+      const deletedSet = new Set(ownedIds);
+      db.rooms = db.rooms.filter(
+        (room) =>
+          !(
+            deletedSet.has(room.id) &&
+            sameValue(room.accessKey, auth.user.accessKey)
+          )
+      );
+
+      writeDB(db);
+
+      return res.json({
+        success: true,
+        deleted: ownedIds.length,
+        deletedRooms: ownedIds,
+        message:
+          `${ownedIds.length} selected room(s) deleted successfully`,
+      });
+    } catch (error) {
+      console.error("Delete many rooms error:", error);
+      return res.status(500).json({
+        error: "Failed to delete rooms",
+        details: error.message,
+      });
+    }
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN DELETE MULTIPLE ROOMS
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+  "/api/admin/rooms/delete-multiple",
+  async (req, res) => {
+    try {
+      if (!checkAdminPin(req, res)) return;
+
+      const { roomIds } = req.body || {};
+
+      if (!Array.isArray(roomIds) || roomIds.length === 0) {
+        return res.status(400).json({
+          error: "At least one room ID is required",
+        });
+      }
+
+      const db = readDB();
+      const requestedIds = new Set(roomIds.map(String));
+      const rooms = db.rooms.filter((room) =>
+        requestedIds.has(String(room.id))
+      );
+      const ids = rooms.map((room) => room.id);
+
+      if (ids.length === 0) {
+        return res.status(404).json({
+          error: "No matching rooms found",
+        });
+      }
+
+      await deleteStreamChannels(ids);
+      const deletedSet = new Set(ids.map(String));
+      db.rooms = db.rooms.filter(
+        (room) => !deletedSet.has(String(room.id))
+      );
+      writeDB(db);
+
+      return res.json({
+        success: true,
+        deleted: ids.length,
+        deletedRooms: ids,
+      });
+    } catch (error) {
+      console.error("Admin delete multiple rooms error:", error);
+      return res.status(500).json({
+        error: "Failed to delete rooms",
+        details: error.message,
+      });
+    }
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN DELETE EVERY ROOM FOR EVERY ACCESS KEY
+|--------------------------------------------------------------------------
+*/
+
+app.post(
+  "/api/admin/rooms/delete-all",
+  async (req, res) => {
+    try {
+      if (!checkAdminPin(req, res)) return;
+
+      const suppliedDeleteKey = String(
+        req.headers["x-admin-key"] ||
+          req.body?.adminDeleteKey ||
+          req.body?.deleteKey ||
+          ""
+      ).trim();
+
+      const requiredDeleteKey = String(
+        process.env.ADMIN_DELETE_KEY || ""
+      ).trim();
+
+      if (!requiredDeleteKey) {
+        return res.status(500).json({
+          error: "ADMIN_DELETE_KEY is not configured",
+        });
+      }
+
+      if (suppliedDeleteKey !== requiredDeleteKey) {
+        return res.status(403).json({
+          error: "Invalid admin delete key",
+        });
+      }
+
+      const db = readDB();
+      const roomIds = db.rooms.map((room) => room.id);
+
+      await deleteStreamChannels(roomIds);
+      db.rooms = [];
+      writeDB(db);
+
+      return res.json({
+        success: true,
+        deleted: roomIds.length,
+        deletedRooms: roomIds,
+        message:
+          `Deleted ${roomIds.length} room(s) across all Access Keys`,
+      });
+    } catch (error) {
+      console.error("Admin delete all rooms error:", error);
+      return res.status(500).json({
+        error: "Failed to delete all rooms",
+        details: error.message,
+      });
+    }
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
 | SOCKET.IO CALLS AND SIGNALING
 |--------------------------------------------------------------------------
 */
@@ -3027,13 +3352,47 @@ io.on(
 const PORT =
   process.env.PORT || 4000;
 
-httpServer.listen(
-  PORT,
-  "0.0.0.0",
-  () => {
-    console.log(
-      "Server running on port",
-      PORT
+async function startServer() {
+  try {
+    await initializeDatabase();
+
+    httpServer.listen(
+      PORT,
+      "0.0.0.0",
+      () => {
+        console.log(
+          "Server running on port",
+          PORT
+        );
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Server startup failed:",
+      error?.message || error
+    );
+    process.exit(1);
+  }
+}
+
+async function shutdown(signal) {
+  console.log(`${signal} received. Saving database...`);
+
+  try {
+    await flushDatabaseWrites();
+  } catch (error) {
+    console.error(
+      "Failed to flush database writes:",
+      error?.message || error
     );
   }
-);
+
+  httpServer.close(() => process.exit(0));
+
+  setTimeout(() => process.exit(1), 10000).unref();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
+startServer();
