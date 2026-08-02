@@ -1681,6 +1681,7 @@ function AdminDashboard({ API_BASE, onBack }) {
     expiredUsers: 0,
     pendingPayments: 0,
     openSupport: 0,
+    closedSupport: 0,
     totalRooms: 0,
     totalDevices: 0,
     topCountries: [],
@@ -1696,6 +1697,10 @@ function AdminDashboard({ API_BASE, onBack }) {
   const [userDrafts, setUserDrafts] = useState({});
   const [planDrafts, setPlanDrafts] = useState({});
   const [replyDrafts, setReplyDrafts] = useState({});
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState([]);
+  const [selectedRoomIds, setSelectedRoomIds] = useState([]);
+  const [adminDeleteKey, setAdminDeleteKey] = useState("");
 
   const headers = useMemo(
     () => ({
@@ -1767,6 +1772,9 @@ function AdminDashboard({ API_BASE, onBack }) {
       setPayments(Array.isArray(paymentsData) ? paymentsData : []);
       setSupport(Array.isArray(supportData) ? supportData : []);
       setPlans(nextPlans);
+      setSelectedUserIds([]);
+      setSelectedDeviceIds([]);
+      setSelectedRoomIds([]);
       buildUserDrafts(nextUsers);
       setPlanDrafts(
         nextPlans.reduce((acc, plan) => {
@@ -1816,6 +1824,9 @@ function AdminDashboard({ API_BASE, onBack }) {
   const openSupport = support.filter(
     (ticket) => !["closed", "solved", "archived"].includes(ticket.status)
   );
+  const closedSupport = support.filter(
+    (ticket) => ticket.status === "closed"
+  );
 
   async function saveUser(userId) {
     const draft = userDrafts[userId];
@@ -1848,11 +1859,67 @@ function AdminDashboard({ API_BASE, onBack }) {
   }
 
   async function removeDevice(deviceId) {
-    if (!window.confirm("Remove this device from the Access Key?")) return;
+    if (!window.confirm("Delete this device permanently? The device will disappear immediately and may log in again if the Access Key still has space.")) return;
     try {
       await request(`/api/admin/devices/${encodeURIComponent(deviceId)}`, {
         method: "DELETE",
       });
+      setDevices((current) => current.filter((device) => device.id !== deviceId));
+      setSelectedDeviceIds((current) => current.filter((id) => id !== deviceId));
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  function toggleDeviceSelection(deviceId) {
+    setSelectedDeviceIds((current) =>
+      current.includes(deviceId)
+        ? current.filter((id) => id !== deviceId)
+        : [...current, deviceId]
+    );
+  }
+
+  function toggleAllDevices() {
+    const ids = devices.map((device) => device.id);
+    const allSelected = ids.length > 0 && ids.every((id) => selectedDeviceIds.includes(id));
+    setSelectedDeviceIds(allSelected ? [] : ids);
+  }
+
+  async function deleteSelectedDevices() {
+    if (!selectedDeviceIds.length) {
+      alert("Select at least one device");
+      return;
+    }
+    if (!window.confirm(`Delete ${selectedDeviceIds.length} selected device(s) permanently?`)) return;
+    try {
+      await request("/api/admin/devices/delete-multiple", {
+        method: "POST",
+        body: JSON.stringify({ deviceIds: selectedDeviceIds }),
+      });
+      setDevices((current) => current.filter((device) => !selectedDeviceIds.includes(device.id)));
+      setSelectedDeviceIds([]);
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function deleteAllDevices() {
+    if (!devices.length) return;
+    if (!adminDeleteKey.trim()) {
+      alert("Enter the Admin Delete Key first");
+      return;
+    }
+    if (!window.confirm(`Delete all ${devices.length} devices permanently?`)) return;
+    try {
+      await request("/api/admin/devices/delete-all", {
+        method: "POST",
+        headers: { "x-admin-key": adminDeleteKey.trim() },
+        body: JSON.stringify({ adminDeleteKey: adminDeleteKey.trim() }),
+      });
+      setDevices([]);
+      setSelectedDeviceIds([]);
       await loadAll();
     } catch (error) {
       alert(error.message);
@@ -1865,6 +1932,134 @@ function AdminDashboard({ API_BASE, onBack }) {
       await request(`/api/admin/rooms/${encodeURIComponent(roomId)}`, {
         method: "DELETE",
       });
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  function toggleRoomSelection(roomId) {
+    setSelectedRoomIds((current) =>
+      current.includes(roomId)
+        ? current.filter((id) => id !== roomId)
+        : [...current, roomId]
+    );
+  }
+
+  function toggleAllRooms() {
+    const ids = rooms.map((room) => room.id);
+    const allSelected = ids.length > 0 && ids.every((id) => selectedRoomIds.includes(id));
+    setSelectedRoomIds(allSelected ? [] : ids);
+  }
+
+  async function deleteSelectedRooms() {
+    if (!selectedRoomIds.length) {
+      alert("Select at least one room");
+      return;
+    }
+    if (!window.confirm(`Delete ${selectedRoomIds.length} selected room(s)? Their Stream channels and messages will also be deleted.`)) return;
+    try {
+      await request("/api/admin/rooms/delete-multiple", {
+        method: "POST",
+        body: JSON.stringify({ roomIds: selectedRoomIds }),
+      });
+      setRooms((current) => current.filter((room) => !selectedRoomIds.includes(room.id)));
+      setSelectedRoomIds([]);
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function deleteAllRooms() {
+    if (!rooms.length) return;
+    if (!adminDeleteKey.trim()) {
+      alert("Enter the Admin Delete Key first");
+      return;
+    }
+    if (!window.confirm(`Delete all ${rooms.length} rooms across every Access Key? Stream channels and messages will also be deleted.`)) return;
+    try {
+      await request("/api/admin/rooms/delete-all", {
+        method: "POST",
+        headers: { "x-admin-key": adminDeleteKey.trim() },
+        body: JSON.stringify({ adminDeleteKey: adminDeleteKey.trim() }),
+      });
+      setRooms([]);
+      setSelectedRoomIds([]);
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  function toggleUserSelection(userId) {
+    setSelectedUserIds((current) =>
+      current.includes(userId)
+        ? current.filter((id) => id !== userId)
+        : [...current, userId]
+    );
+  }
+
+  function toggleAllVisibleUsers() {
+    const ids = userListForView.map((user) => user.id);
+    const allSelected = ids.length > 0 && ids.every((id) => selectedUserIds.includes(id));
+    setSelectedUserIds(allSelected ? [] : ids);
+  }
+
+  async function deleteSelectedUsers() {
+    if (!selectedUserIds.length) {
+      alert("Select at least one user");
+      return;
+    }
+    if (!window.confirm(
+      `Delete ${selectedUserIds.length} selected user(s)? Their Access Keys, rooms, Stream channels, devices and support records will also be deleted.`
+    )) return;
+    try {
+      await request("/api/admin/users/delete-multiple", {
+        method: "POST",
+        body: JSON.stringify({ userIds: selectedUserIds }),
+      });
+      setUsers((current) => current.filter((user) => !selectedUserIds.includes(user.id)));
+      setSelectedUserIds([]);
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function deleteOneUser(userId, username) {
+    if (!window.confirm(`Delete ${username || "this user"}? Their Access Key, devices, rooms, Stream channels and support records will also be deleted.`)) return;
+    try {
+      await request(`/api/admin/users/${encodeURIComponent(userId)}`, {
+        method: "DELETE",
+      });
+      setUsers((current) => current.filter((user) => user.id !== userId));
+      setSelectedUserIds((current) => current.filter((id) => id !== userId));
+      await loadAll();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function deleteAllUsers() {
+    if (!users.length) return;
+    if (!adminDeleteKey.trim()) {
+      alert("Enter the Admin Delete Key first");
+      return;
+    }
+    if (!window.confirm(`Delete all ${users.length} users? This also deletes all Access Keys, devices, rooms, Stream channels and support records.`)) return;
+    try {
+      await request("/api/admin/users/delete-all", {
+        method: "POST",
+        headers: { "x-admin-key": adminDeleteKey.trim() },
+        body: JSON.stringify({ adminDeleteKey: adminDeleteKey.trim() }),
+      });
+      setUsers([]);
+      setDevices([]);
+      setRooms([]);
+      setSelectedUserIds([]);
+      setSelectedDeviceIds([]);
+      setSelectedRoomIds([]);
       await loadAll();
     } catch (error) {
       alert(error.message);
@@ -2011,6 +2206,7 @@ function AdminDashboard({ API_BASE, onBack }) {
               <StatCard label="Devices" value={dashboard.totalDevices} accent="#14b8a6" active={activeView === "devices"} onClick={() => openView("devices")} />
               <StatCard label="Pending payments" value={dashboard.pendingPayments} accent="#8b5cf6" active={activeView === "payments"} onClick={() => openView("payments")} />
               <StatCard label="Open support" value={dashboard.openSupport} accent="#ec4899" active={activeView === "support"} onClick={() => openView("support")} />
+              <StatCard label="Closed tickets" value={dashboard.closedSupport || 0} accent="#64748b" active={activeView === "closed_support"} onClick={() => openView("closed_support")} />
             </section>
 
             <section className="admin-overview-grid">
@@ -2048,13 +2244,54 @@ function AdminDashboard({ API_BASE, onBack }) {
                 ) : null}
               </div>
 
+              {["users", "online", "joined", "active", "expired", "devices", "rooms"].includes(activeView) && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) auto",
+                    gap: 10,
+                    marginBottom: 16,
+                    padding: 14,
+                    borderRadius: 14,
+                    background: "#fff7ed",
+                    border: "1px solid #fed7aa",
+                  }}
+                >
+                  <input
+                    type="password"
+                    value={adminDeleteKey}
+                    onChange={(event) => setAdminDeleteKey(event.target.value)}
+                    placeholder="Admin Delete Key — required only for Delete All"
+                    style={{ ...adminInputStyle, marginBottom: 0 }}
+                  />
+                  <span style={{ alignSelf: "center", color: "#9a3412", fontWeight: 800, fontSize: 12 }}>
+                    Permanent actions
+                  </span>
+                </div>
+              )}
+
               {["overview", "users", "online", "joined", "active", "expired"].includes(activeView) && (
                 <div className="admin-record-list">
+                  <div className="admin-actions" style={{ marginBottom: 14 }}>
+                    <button type="button" className="secondary" onClick={toggleAllVisibleUsers}>
+                      {userListForView.length > 0 && userListForView.every((user) => selectedUserIds.includes(user.id)) ? "Clear selection" : "Select all visible"}
+                    </button>
+                    <button type="button" className="danger-button" disabled={!selectedUserIds.length} onClick={deleteSelectedUsers}>
+                      Delete selected users ({selectedUserIds.length})
+                    </button>
+                    <button type="button" className="danger-button" disabled={!users.length} onClick={deleteAllUsers}>
+                      Delete all users ({users.length})
+                    </button>
+                  </div>
                   {userListForView.length ? userListForView.map((user) => {
                     const draft = userDrafts[user.id] || {};
                     return (
                       <article className="admin-user-card" key={user.id}>
                         <div className="admin-user-card-top">
+                          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, marginRight: 12 }}>
+                            <input type="checkbox" checked={selectedUserIds.includes(user.id)} onChange={() => toggleUserSelection(user.id)} />
+                            Select
+                          </label>
                           <div>
                             <h3>{user.username || "Unnamed user"}</h3>
                             <p>Access Key: <strong>{user.accessKey}</strong></p>
@@ -2087,6 +2324,7 @@ function AdminDashboard({ API_BASE, onBack }) {
                           <button className="secondary" onClick={() => extendUser(user.id, 30)}>+1 month</button>
                           <button className="secondary" onClick={() => extendUser(user.id, 90)}>+3 months</button>
                           <button className="secondary" onClick={() => extendUser(user.id, 365)}>+1 year</button>
+                          <button className="danger-button" onClick={() => deleteOneUser(user.id, user.username)}>Delete user</button>
                         </div>
                       </article>
                     );
@@ -2099,19 +2337,101 @@ function AdminDashboard({ API_BASE, onBack }) {
               )}
 
               {activeView === "devices" && (
-                <div className="admin-table-wrap"><table><thead><tr><th>User</th><th>Access Key</th><th>Type</th><th>Device</th><th>Country</th><th>Last login</th><th>Action</th></tr></thead><tbody>{devices.map((device) => <tr key={device.id}><td>{device.username || "Unknown"}</td><td>{device.accessKey}</td><td>{device.deviceType || deviceType(device.deviceName)}</td><td>{device.deviceName || "Unknown"}</td><td>{device.country || "Unknown"}</td><td>{formatDateTime(device.lastLoginAt)}</td><td><button className="table-danger" onClick={() => removeDevice(device.id)}>Remove</button></td></tr>)}</tbody></table></div>
+                <div>
+                  <div className="admin-actions" style={{ marginBottom: 14 }}>
+                    <button type="button" className="secondary" onClick={toggleAllDevices}>
+                      {devices.length > 0 && devices.every((device) => selectedDeviceIds.includes(device.id)) ? "Clear selection" : "Select all devices"}
+                    </button>
+                    <button type="button" className="danger-button" disabled={!selectedDeviceIds.length} onClick={deleteSelectedDevices}>
+                      Delete selected ({selectedDeviceIds.length})
+                    </button>
+                    <button type="button" className="danger-button" disabled={!devices.length} onClick={deleteAllDevices}>
+                      Delete all devices ({devices.length})
+                    </button>
+                  </div>
+                  <div className="admin-table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th><input type="checkbox" checked={devices.length > 0 && devices.every((device) => selectedDeviceIds.includes(device.id))} onChange={toggleAllDevices} /></th>
+                          <th>User</th><th>Access Key</th><th>Type</th><th>Device</th><th>Country</th><th>Last login</th><th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {devices.map((device) => (
+                          <tr key={device.id}>
+                            <td><input type="checkbox" checked={selectedDeviceIds.includes(device.id)} onChange={() => toggleDeviceSelection(device.id)} /></td>
+                            <td>{device.username || "Unknown"}</td>
+                            <td>{device.accessKey}</td>
+                            <td>{device.deviceType || deviceType(device.deviceName)}</td>
+                            <td>{device.deviceName || "Unknown"}</td>
+                            <td>{device.country || "Unknown"}</td>
+                            <td>{formatDateTime(device.lastLoginAt)}</td>
+                            <td><button className="table-danger" onClick={() => removeDevice(device.id)}>Delete</button></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
 
               {activeView === "rooms" && (
-                <div className="admin-table-wrap"><table><thead><tr><th>Room</th><th>Owner</th><th>Access Key</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody>{rooms.map((room) => <tr key={room.id}><td>{room.roomName || room.roomId}</td><td>{room.username || room.ownerName || "Unknown"}</td><td>{room.accessKey}</td><td>{room.status || "active"}</td><td>{formatDate(room.createdAt)}</td><td><button className="table-danger" onClick={() => deleteRoom(room.id)}>Delete</button></td></tr>)}</tbody></table></div>
+                <div>
+                  <div className="admin-actions" style={{ marginBottom: 14 }}>
+                    <button type="button" className="secondary" onClick={toggleAllRooms}>
+                      {rooms.length > 0 && rooms.every((room) => selectedRoomIds.includes(room.id)) ? "Clear selection" : "Select all rooms"}
+                    </button>
+                    <button type="button" className="danger-button" disabled={!selectedRoomIds.length} onClick={deleteSelectedRooms}>
+                      Delete selected ({selectedRoomIds.length})
+                    </button>
+                    <button type="button" className="danger-button" disabled={!rooms.length} onClick={deleteAllRooms}>
+                      Delete all rooms ({rooms.length})
+                    </button>
+                  </div>
+                  <div className="admin-table-wrap">
+                    <table>
+                      <thead><tr><th><input type="checkbox" checked={rooms.length > 0 && rooms.every((room) => selectedRoomIds.includes(room.id))} onChange={toggleAllRooms} /></th><th>Room</th><th>Owner</th><th>Access Key</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
+                      <tbody>{rooms.map((room) => <tr key={room.id}><td><input type="checkbox" checked={selectedRoomIds.includes(room.id)} onChange={() => toggleRoomSelection(room.id)} /></td><td>{room.roomName || room.roomId}</td><td>{room.username || room.ownerName || "Unknown"}</td><td>{room.accessKey}</td><td>{room.status || "active"}</td><td>{formatDate(room.createdAt)}</td><td><button className="table-danger" onClick={() => deleteRoom(room.id)}>Delete</button></td></tr>)}</tbody>
+                    </table>
+                  </div>
+                </div>
               )}
 
               {activeView === "payments" && (
                 <div className="admin-record-list">{pendingPayments.length ? pendingPayments.map((payment) => <article className="admin-user-card" key={payment.id}><div className="admin-user-card-top"><div><h3>{payment.username}</h3><p>{payment.contact}</p></div><span className="admin-status warning">Pending</span></div><div className="admin-meta-grid"><span>Plan: {payment.planName}</span><span>Amount: AED {payment.amount}</span><span>UPI ref: {payment.upiReference}</span><span>Submitted: {formatDateTime(payment.createdAt)}</span></div><div className="admin-actions"><button onClick={() => approvePayment(payment.id)}>Approve & generate key</button><button className="danger-button" onClick={() => rejectPayment(payment.id)}>Reject</button></div></article>) : <EmptyState>No pending payments.</EmptyState>}</div>
               )}
 
-              {activeView === "support" && (
-                <div className="admin-record-list">{openSupport.length ? openSupport.map((ticket) => <article className="admin-user-card" key={ticket.id}><div className="admin-user-card-top"><div><h3>{ticket.issueType || "Support"}</h3><p>{ticket.username || ticket.guestName || "Guest"} · {ticket.accessKey || "Public"}</p></div><select className={inputClass} value={ticket.status || "open"} onChange={(e) => updateTicketStatus(ticket.id, e.target.value)}><option value="open">Open</option><option value="in_progress">In progress</option><option value="waiting_for_user">Waiting for user</option><option value="solved">Solved</option><option value="closed">Closed</option></select></div><div className="admin-message-thread">{(ticket.messages || []).map((message) => <div className={message.senderType === "admin" ? "admin-message admin" : "admin-message"} key={message.id}><strong>{message.senderType === "admin" ? "Admin" : "User"}</strong><p>{message.message}</p><small>{formatDateTime(message.createdAt)}</small></div>)}</div><textarea className={inputClass} rows="3" value={replyDrafts[ticket.id] || ""} onChange={(e) => setReplyDrafts((current) => ({ ...current, [ticket.id]: e.target.value }))} placeholder="Reply to user" /><div className="admin-actions"><button onClick={() => replySupport(ticket.id)}>Send reply</button></div></article>) : <EmptyState>No open support tickets.</EmptyState>}</div>
+              {["support", "closed_support"].includes(activeView) && (
+                <div className="admin-record-list">
+                  {(activeView === "closed_support" ? closedSupport : openSupport).length ?
+                    (activeView === "closed_support" ? closedSupport : openSupport).map((ticket) => {
+                      const isClosed = ["closed", "solved", "archived"].includes(ticket.status);
+                      return (
+                        <article className="admin-user-card" key={ticket.id}>
+                          <div className="admin-user-card-top">
+                            <div><h3>{ticket.issueType || "Support"}</h3><p>{ticket.username || ticket.guestName || "Guest"} · {ticket.accessKey || "Public"}</p></div>
+                            <select className={inputClass} value={ticket.status || "open"} onChange={(e) => updateTicketStatus(ticket.id, e.target.value)}>
+                              <option value="open">Open / Reopen</option>
+                              <option value="in_progress">In progress</option>
+                              <option value="waiting_for_user">Waiting for user</option>
+                              <option value="solved">Solved</option>
+                              <option value="closed">Closed</option>
+                            </select>
+                          </div>
+                          <div className="admin-message-thread">{(ticket.messages || []).map((message) => <div className={message.senderType === "admin" ? "admin-message admin" : "admin-message"} key={message.id}><strong>{message.senderType === "admin" ? "Admin" : "User"}</strong><p>{message.message}</p><small>{formatDateTime(message.createdAt)}</small></div>)}</div>
+                          {isClosed ? (
+                            <div className="admin-empty">This ticket is closed. Reopen it to send a reply.</div>
+                          ) : (
+                            <>
+                              <textarea className={inputClass} rows="3" value={replyDrafts[ticket.id] || ""} onChange={(e) => setReplyDrafts((current) => ({ ...current, [ticket.id]: e.target.value }))} placeholder="Reply to user" />
+                              <div className="admin-actions"><button onClick={() => replySupport(ticket.id)}>Send reply</button></div>
+                            </>
+                          )}
+                        </article>
+                      );
+                    }) : <EmptyState>{activeView === "closed_support" ? "No closed tickets." : "No open support tickets."}</EmptyState>}
+                </div>
               )}
 
               {activeView === "plans" && (
@@ -2124,7 +2444,8 @@ function AdminDashboard({ API_BASE, onBack }) {
               <button onClick={() => openView("devices")}>Devices</button>
               <button onClick={() => openView("rooms")}>Rooms</button>
               <button onClick={() => openView("payments")}>Payments</button>
-              <button onClick={() => openView("support")}>Support</button>
+              <button onClick={() => openView("support")}>Open Support</button>
+              <button onClick={() => openView("closed_support")}>Closed Tickets</button>
               <button onClick={() => openView("plans")}>Plans</button>
             </nav>
           </>
