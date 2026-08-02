@@ -2123,7 +2123,9 @@ app.get("/api/admin/dashboard", (req, res) => {
 app.get("/api/admin/devices", (req, res) => {
   if (!checkAdminPin(req, res)) return;
   const db = readDB();
-  const devices = db.devices.map((device) => {
+  const devices = db.devices
+  .filter((device) => device.status !== "removed")
+  .map((device) => {
     const user = db.users.find((item) => item.id === device.userId || sameValue(item.accessKey, device.accessKey));
     return {
       ...device,
@@ -2135,16 +2137,285 @@ app.get("/api/admin/devices", (req, res) => {
   });
   return res.json(devices);
 });
+app.post("/api/admin/devices/delete-all", (req, res) => {
+  if (!checkAdminPin(req, res)) return;
 
+  const adminDeleteKey = String(
+    req.body?.adminDeleteKey ||
+    req.headers["x-admin-key"] ||
+    ""
+  );
+
+  if (
+    adminDeleteKey !==
+    String(process.env.ADMIN_DELETE_KEY || "")
+  ) {
+    return res.status(403).json({
+      error: "Invalid admin delete key",
+    });
+  }
+
+  const db = readDB();
+  const deleted = db.devices.length;
+
+  db.devices = [];
+
+  writeDB(db);
+
+  return res.json({
+    success: true,
+    deleted,
+    message: `Deleted all ${deleted} devices`,
+  });
+});
 app.delete("/api/admin/devices/:deviceId", (req, res) => {
   if (!checkAdminPin(req, res)) return;
+
   const db = readDB();
-  const device = db.devices.find((item) => item.id === req.params.deviceId);
-  if (!device) return res.status(404).json({ error: "Device not found" });
-  device.status = "removed";
-  device.removedAt = new Date().toISOString();
+
+  const deviceIndex = db.devices.findIndex(
+    (item) => String(item.id) === String(req.params.deviceId)
+  );
+
+  if (deviceIndex === -1) {
+    return res.status(404).json({
+      error: "Device not found",
+    });
+  }
+
+  const [deletedDevice] = db.devices.splice(deviceIndex, 1);
+
   writeDB(db);
-  return res.json({ success: true, device });
+
+  return res.json({
+    success: true,
+    deletedDevice,
+    message: "Device deleted permanently",
+  });
+});
+app.post("/api/admin/devices/delete-multiple", (req, res) => {
+  if (!checkAdminPin(req, res)) return;
+
+  const { deviceIds } = req.body || {};
+
+  if (!Array.isArray(deviceIds) || deviceIds.length === 0) {
+    return res.status(400).json({
+      error: "Select at least one device",
+    });
+  }
+
+  const db = readDB();
+  const selectedIds = new Set(deviceIds.map(String));
+
+  const deletedDevices = db.devices.filter((device) =>
+    selectedIds.has(String(device.id))
+  );
+
+  db.devices = db.devices.filter(
+    (device) => !selectedIds.has(String(device.id))
+  );
+
+  writeDB(db);
+
+  return res.json({
+    success: true,
+    deleted: deletedDevices.length,
+    deletedDevices,
+    message: `${deletedDevices.length} device(s) deleted successfully`,
+  });
+});
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN USER DELETION HELPERS
+|--------------------------------------------------------------------------
+*/
+
+async function deleteUsersAndRelatedData(db, userIds) {
+  const selectedIds = new Set((userIds || []).map(String));
+
+  const usersToDelete = db.users.filter((user) =>
+    selectedIds.has(String(user.id))
+  );
+
+  const accessKeys = new Set(
+    usersToDelete.map((user) => normalize(user.accessKey))
+  );
+
+  const roomsToDelete = db.rooms.filter((room) =>
+    accessKeys.has(normalize(room.accessKey))
+  );
+
+  await deleteStreamChannels(
+    roomsToDelete.map((room) => room.id)
+  );
+
+  const ticketIdsToDelete = new Set(
+    db.supportRequests
+      .filter((ticket) =>
+        accessKeys.has(normalize(ticket.accessKey))
+      )
+      .map((ticket) => String(ticket.id))
+  );
+
+  db.users = db.users.filter(
+    (user) => !selectedIds.has(String(user.id))
+  );
+
+  db.devices = db.devices.filter(
+    (device) => !accessKeys.has(normalize(device.accessKey))
+  );
+
+  db.rooms = db.rooms.filter(
+    (room) => !accessKeys.has(normalize(room.accessKey))
+  );
+
+  db.supportRequests = db.supportRequests.filter(
+    (ticket) => !ticketIdsToDelete.has(String(ticket.id))
+  );
+
+  db.supportMessages = db.supportMessages.filter(
+    (message) =>
+      !ticketIdsToDelete.has(String(message.supportRequestId))
+  );
+
+  return {
+    usersToDelete,
+    deletedDeviceCount: db.devices.length,
+    deletedRoomIds: roomsToDelete.map((room) => room.id),
+    deletedTicketIds: [...ticketIdsToDelete],
+  };
+}
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN DELETE ONE USER
+|--------------------------------------------------------------------------
+*/
+
+app.delete("/api/admin/users/:userId", async (req, res) => {
+  try {
+    if (!checkAdminPin(req, res)) return;
+
+    const db = readDB();
+    const user = db.users.find(
+      (item) => String(item.id) === String(req.params.userId)
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const result = await deleteUsersAndRelatedData(db, [user.id]);
+    writeDB(db);
+
+    return res.json({
+      success: true,
+      deleted: 1,
+      deletedUser: user,
+      deletedRooms: result.deletedRoomIds,
+      message: "User and related devices, rooms and support data deleted",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to delete user",
+      details: error.message,
+    });
+  }
+});
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN DELETE MULTIPLE USERS
+|--------------------------------------------------------------------------
+*/
+
+app.post("/api/admin/users/delete-multiple", async (req, res) => {
+  try {
+    if (!checkAdminPin(req, res)) return;
+
+    const { userIds } = req.body || {};
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({
+        error: "Select at least one user",
+      });
+    }
+
+    const db = readDB();
+    const result = await deleteUsersAndRelatedData(db, userIds);
+
+    if (result.usersToDelete.length === 0) {
+      return res.status(404).json({ error: "No matching users found" });
+    }
+
+    writeDB(db);
+
+    return res.json({
+      success: true,
+      deleted: result.usersToDelete.length,
+      deletedUsers: result.usersToDelete,
+      deletedRooms: result.deletedRoomIds,
+      message: `${result.usersToDelete.length} user(s) deleted successfully`,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to delete users",
+      details: error.message,
+    });
+  }
+});
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN DELETE ALL USERS
+|--------------------------------------------------------------------------
+*/
+
+app.post("/api/admin/users/delete-all", async (req, res) => {
+  try {
+    if (!checkAdminPin(req, res)) return;
+
+    const suppliedDeleteKey = String(
+      req.headers["x-admin-key"] ||
+        req.body?.adminDeleteKey ||
+        req.body?.deleteKey ||
+        ""
+    ).trim();
+
+    const requiredDeleteKey = String(
+      process.env.ADMIN_DELETE_KEY || ""
+    ).trim();
+
+    if (!requiredDeleteKey) {
+      return res.status(500).json({
+        error: "ADMIN_DELETE_KEY is not configured",
+      });
+    }
+
+    if (suppliedDeleteKey !== requiredDeleteKey) {
+      return res.status(403).json({
+        error: "Invalid admin delete key",
+      });
+    }
+
+    const db = readDB();
+    const allUserIds = db.users.map((user) => user.id);
+    const result = await deleteUsersAndRelatedData(db, allUserIds);
+    writeDB(db);
+
+    return res.json({
+      success: true,
+      deleted: result.usersToDelete.length,
+      deletedRooms: result.deletedRoomIds,
+      message: `Deleted all ${result.usersToDelete.length} users and related data`,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to delete all users",
+      details: error.message,
+    });
+  }
 });
 
 app.delete("/api/admin/rooms/:roomId", async (req, res) => {
