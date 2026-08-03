@@ -1549,23 +1549,44 @@ app.get(
   (req, res) => {
     const db = readDB();
 
-    const payment =
-      db.payments.find(
-        (item) =>
-          item.id ===
-          req.params.paymentId
-      );
+    const payment = db.payments.find(
+      (item) =>
+        String(item.id) ===
+        String(req.params.paymentId)
+    );
 
     if (!payment) {
       return res.status(404).json({
-        error:
-          "Payment request not found",
+        error: "Payment request not found",
+      });
+    }
+
+    const linkedUser = db.users.find(
+      (user) =>
+        String(user.id) ===
+          String(payment.userId || "") ||
+        sameValue(
+          user.accessKey,
+          payment.accessKey
+        )
+    );
+
+    if (
+      payment.status === "approved" &&
+      !linkedUser
+    ) {
+      return res.json({
+        ...payment,
+        status: "revoked",
+        accessKey: "",
+        userId: "",
+        message:
+          "This Access Key is no longer active.",
       });
     }
 
     return res.json({
       ...payment,
-
       accessKey:
         payment.status === "approved"
           ? payment.accessKey
@@ -2420,6 +2441,29 @@ async function deleteUsersAndRelatedData(db, userIds) {
     (message) =>
       !ticketIdsToDelete.has(String(message.supportRequestId))
   );
+  for (const payment of db.payments) {
+  const deletedUser = usersToDelete.find(
+    (user) =>
+      String(payment.userId || "") ===
+        String(user.id) ||
+      sameValue(
+        payment.accessKey,
+        user.accessKey
+      )
+  );
+
+  if (deletedUser) {
+    payment.status = "revoked";
+    payment.accessKey = "";
+    payment.userId = "";
+    payment.revokedAt =
+      new Date().toISOString();
+    payment.updatedAt =
+      new Date().toISOString();
+    payment.adminComment =
+      "Access Key revoked because the user was deleted";
+  }
+}
 
   return {
     usersToDelete,
