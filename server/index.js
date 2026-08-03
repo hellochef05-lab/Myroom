@@ -111,8 +111,31 @@ async function initializeDatabase() {
     }
   }
 
+  const recoveryResult = recoverMissingUsersFromApprovedPayments(databaseCache);
+
+  if (recoveryResult.created > 0 || recoveryResult.linked > 0) {
+    const { error: recoverySaveError } = await supabase
+      .from("app_data")
+      .upsert(
+        {
+          id: "main",
+          data: databaseCache,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
+
+    if (recoverySaveError) {
+      throw new Error(
+        `Failed to save recovered users: ${recoverySaveError.message}`
+      );
+    }
+  }
+
   databaseReady = true;
   lastSaveError = "";
+
+  console.log("Approved-payment user recovery", recoveryResult);
 
   console.log("Supabase database loaded", {
     plans: databaseCache.plans.length,
@@ -413,6 +436,112 @@ function updateSubscriptionStatus(user) {
   }
 
   return false;
+}
+
+
+function paymentRecoveryDisabled(payment) {
+  return (
+    payment?.recoveryDisabled === true ||
+    Boolean(payment?.userDeletedAt)
+  );
+}
+
+function getPaymentSubscriptionEnd(payment) {
+  const explicitEnd = String(
+    payment?.subscriptionEnd || payment?.expiryDate || ""
+  ).slice(0, 10);
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(explicitEnd)) {
+    return explicitEnd;
+  }
+
+  const approvedDate = new Date(
+    payment?.approvedAt || payment?.updatedAt || payment?.createdAt || Date.now()
+  );
+
+  const safeApprovedDate = Number.isNaN(approvedDate.getTime())
+    ? new Date()
+    : approvedDate;
+
+  return addSubscriptionDate(
+    payment?.planName || "Monthly Plan",
+    safeApprovedDate
+  );
+}
+
+function recoverMissingUsersFromApprovedPayments(db, options = {}) {
+  const force = options.force === true;
+  const now = new Date().toISOString();
+  let created = 0;
+  let linked = 0;
+  let skipped = 0;
+  const recoveredUsers = [];
+
+  for (const payment of db.payments) {
+    if (
+      normalize(payment?.status) !== "approved" ||
+      !String(payment?.accessKey || "").trim()
+    ) {
+      continue;
+    }
+
+    if (!force && paymentRecoveryDisabled(payment)) {
+      skipped += 1;
+      continue;
+    }
+
+    const accessKey = String(payment.accessKey).trim();
+    const existingUser = db.users.find((user) =>
+      sameValue(user.accessKey, accessKey)
+    );
+
+    if (existingUser) {
+      if (payment.userId !== existingUser.id) {
+        payment.userId = existingUser.id;
+        payment.updatedAt = now;
+        linked += 1;
+      }
+      continue;
+    }
+
+    const subscriptionStart = String(
+      payment.subscriptionStart || payment.approvedAt || payment.createdAt || getTodayDate()
+    ).slice(0, 10);
+
+    const user = {
+      id: payment.userId || makeId("user"),
+      username: payment.username || `User ${accessKey}`,
+      contact: payment.contact || "",
+      accessKey,
+      deviceLimit: Number(payment.deviceLimit || 2) || 2,
+      subscriptionStart,
+      subscriptionEnd: getPaymentSubscriptionEnd(payment),
+      subscriptionStatus: "active",
+      status: "active",
+      recoveredFromPayment: true,
+      recoveredAt: now,
+      createdAt: payment.approvedAt || payment.createdAt || now,
+      updatedAt: now,
+    };
+
+    updateSubscriptionStatus(user);
+    db.users.push(user);
+
+    payment.userId = user.id;
+    payment.recoveryDisabled = false;
+    payment.userDeletedAt = "";
+    payment.updatedAt = now;
+
+    recoveredUsers.push(user);
+    created += 1;
+  }
+
+  return {
+    created,
+    linked,
+    skipped,
+    recoveredUsers,
+  };
 }
 
 const allowedOrigins = (
@@ -2113,6 +2242,7 @@ app.get("/api/admin/dashboard", (req, res) => {
     expiredUsers: db.users.filter((user) => user.subscriptionStatus === "expired").length,
     pendingPayments: db.payments.filter((payment) => payment.status === "pending").length,
     openSupport: db.supportRequests.filter((ticket) => !["closed", "solved", "archived"].includes(ticket.status)).length,
+    closedSupport: db.supportRequests.filter((ticket) => ["closed", "solved", "archived"].includes(ticket.status)).length,
     totalRooms: db.rooms.length,
     totalDevices,
     topCountries,
@@ -2258,6 +2388,18 @@ async function deleteUsersAndRelatedData(db, userIds) {
       .map((ticket) => String(ticket.id))
   );
 
+  const deletedDeviceCount = db.devices.filter(
+    (device) => accessKeys.has(normalize(device.accessKey))
+  ).length;
+
+  for (const payment of db.payments) {
+    if (accessKeys.has(normalize(payment.accessKey))) {
+      payment.recoveryDisabled = true;
+      payment.userDeletedAt = new Date().toISOString();
+      payment.updatedAt = payment.userDeletedAt;
+    }
+  }
+
   db.users = db.users.filter(
     (user) => !selectedIds.has(String(user.id))
   );
@@ -2281,7 +2423,7 @@ async function deleteUsersAndRelatedData(db, userIds) {
 
   return {
     usersToDelete,
-    deletedDeviceCount: db.devices.length,
+    deletedDeviceCount,
     deletedRoomIds: roomsToDelete.map((room) => room.id),
     deletedTicketIds: [...ticketIdsToDelete],
   };
@@ -2876,6 +3018,11 @@ app.post(
     payment.status = "approved";
     payment.accessKey = accessKey;
     payment.userId = user.id;
+    payment.subscriptionStart = user.subscriptionStart;
+    payment.subscriptionEnd = user.subscriptionEnd;
+    payment.deviceLimit = user.deviceLimit;
+    payment.recoveryDisabled = false;
+    payment.userDeletedAt = "";
 
     payment.approvedAt =
       new Date().toISOString();
@@ -3501,6 +3648,230 @@ app.post(
     }
   }
 );
+
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN SYSTEM MAINTENANCE
+|--------------------------------------------------------------------------
+*/
+
+function getAdminDeleteKey(req) {
+  return String(
+    req.headers["x-admin-key"] ||
+      req.body?.adminDeleteKey ||
+      req.body?.deleteKey ||
+      ""
+  ).trim();
+}
+
+function checkAdminDeleteKey(req, res) {
+  const required = String(process.env.ADMIN_DELETE_KEY || "").trim();
+
+  if (!required) {
+    res.status(500).json({
+      error: "ADMIN_DELETE_KEY is not configured",
+    });
+    return false;
+  }
+
+  if (getAdminDeleteKey(req) !== required) {
+    res.status(403).json({
+      error: "Invalid admin delete key",
+    });
+    return false;
+  }
+
+  return true;
+}
+
+app.post("/api/admin/maintenance/sync-users", (req, res) => {
+  if (!checkAdminPin(req, res)) return;
+
+  const db = readDB();
+  const result = recoverMissingUsersFromApprovedPayments(db, {
+    force: req.body?.force === true,
+  });
+
+  if (result.created > 0 || result.linked > 0) {
+    writeDB(db);
+  }
+
+  return res.json({
+    success: true,
+    ...result,
+    totalUsers: db.users.length,
+    message: `${result.created} missing user(s) restored`,
+  });
+});
+
+app.post("/api/admin/maintenance/cleanup-orphans", (req, res) => {
+  if (!checkAdminPin(req, res)) return;
+
+  const db = readDB();
+  const validUserIds = new Set(db.users.map((user) => String(user.id)));
+  const validAccessKeys = new Set(
+    db.users.map((user) => normalize(user.accessKey)).filter(Boolean)
+  );
+  const validTicketIds = new Set(
+    db.supportRequests.map((ticket) => String(ticket.id))
+  );
+
+  const beforeDevices = db.devices.length;
+  const beforeRooms = db.rooms.length;
+  const beforeMessages = db.supportMessages.length;
+
+  db.devices = db.devices.filter(
+    (device) =>
+      validUserIds.has(String(device.userId)) ||
+      validAccessKeys.has(normalize(device.accessKey))
+  );
+
+  db.rooms = db.rooms.filter((room) =>
+    validAccessKeys.has(normalize(room.accessKey))
+  );
+
+  db.supportMessages = db.supportMessages.filter((message) =>
+    validTicketIds.has(String(message.supportRequestId))
+  );
+
+  writeDB(db);
+
+  return res.json({
+    success: true,
+    removedDevices: beforeDevices - db.devices.length,
+    removedRooms: beforeRooms - db.rooms.length,
+    removedSupportMessages: beforeMessages - db.supportMessages.length,
+  });
+});
+
+app.get("/api/admin/maintenance/backup", (req, res) => {
+  if (!checkAdminPin(req, res)) return;
+
+  const db = readDB();
+  const filename = `myroom-backup-${getTodayDate()}.json`;
+
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=\"${filename}\"`
+  );
+  return res.send(JSON.stringify(db, null, 2));
+});
+
+function csvEscape(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+app.get("/api/admin/maintenance/export/:type", (req, res) => {
+  if (!checkAdminPin(req, res)) return;
+
+  const db = readDB();
+  const type = String(req.params.type || "").toLowerCase();
+  const allowed = {
+    users: db.users,
+    devices: db.devices,
+    rooms: db.rooms,
+    payments: db.payments,
+    support: db.supportRequests,
+  };
+  const rows = allowed[type];
+
+  if (!rows) {
+    return res.status(400).json({ error: "Invalid export type" });
+  }
+
+  const columns = [...new Set(rows.flatMap((row) => Object.keys(row || {})))];
+  const csv = [
+    columns.map(csvEscape).join(","),
+    ...rows.map((row) =>
+      columns
+        .map((column) => {
+          const value = row?.[column];
+          return csvEscape(
+            value && typeof value === "object"
+              ? JSON.stringify(value)
+              : value
+          );
+        })
+        .join(",")
+    ),
+  ].join("\n");
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename=\"myroom-${type}-${getTodayDate()}.csv\"`
+  );
+  return res.send(csv);
+});
+
+app.post("/api/admin/payments/delete-all", (req, res) => {
+  if (!checkAdminPin(req, res)) return;
+  if (!checkAdminDeleteKey(req, res)) return;
+
+  const db = readDB();
+  const deleted = db.payments.length;
+  db.payments = [];
+  writeDB(db);
+
+  return res.json({ success: true, deleted });
+});
+
+app.post("/api/admin/support/delete-all", (req, res) => {
+  if (!checkAdminPin(req, res)) return;
+  if (!checkAdminDeleteKey(req, res)) return;
+
+  const db = readDB();
+  const deletedRequests = db.supportRequests.length;
+  const deletedMessages = db.supportMessages.length;
+  db.supportRequests = [];
+  db.supportMessages = [];
+  writeDB(db);
+
+  return res.json({
+    success: true,
+    deletedRequests,
+    deletedMessages,
+  });
+});
+
+app.post("/api/admin/system/reset", async (req, res) => {
+  try {
+    if (!checkAdminPin(req, res)) return;
+    if (!checkAdminDeleteKey(req, res)) return;
+
+    const confirmation = String(req.body?.confirmation || "").trim();
+    if (confirmation !== "RESET MYROOM") {
+      return res.status(400).json({
+        error: 'Type "RESET MYROOM" to confirm',
+      });
+    }
+
+    const db = readDB();
+    const roomIds = db.rooms.map((room) => room.id);
+    await deleteStreamChannels(roomIds);
+
+    const preservedPlans = [...db.plans];
+    databaseCache = {
+      ...createEmptyDB(),
+      plans: preservedPlans,
+    };
+    writeDB(databaseCache);
+
+    return res.json({
+      success: true,
+      deletedRooms: roomIds.length,
+      message: "System reset completed. Subscription plans were preserved.",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to reset system",
+      details: error.message,
+    });
+  }
+});
 
 /*
 |--------------------------------------------------------------------------
