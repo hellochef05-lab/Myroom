@@ -176,6 +176,7 @@ function CallHeader({
   callType,
   joinedRoom,
   onExitRoom,
+  onOpenSupport,
 }) {
   const compact = typeof window !== "undefined" && window.innerWidth <= 768;
   const veryCompact = typeof window !== "undefined" && window.innerWidth <= 430;
@@ -210,6 +211,7 @@ function CallHeader({
 
   return (
     <header
+      className="private-room-call-header"
       style={{
         minHeight: compact ? 76 : 92,
         display: "flex",
@@ -231,6 +233,7 @@ function CallHeader({
       }}
     >
       <div
+        className="private-room-header-user"
         style={{
           display: "flex",
           alignItems: "center",
@@ -350,7 +353,18 @@ function CallHeader({
         </div>
       </div>
 
+      <button
+        type="button"
+        className="private-room-support-button"
+        onClick={onOpenSupport}
+        title="Open room support"
+        aria-label="Open room support"
+      >
+        Support
+      </button>
+
       <div
+        className="private-room-header-actions"
         style={{
           display: "flex",
           alignItems: "center",
@@ -990,7 +1004,13 @@ const adminCardStyle = {
   boxSizing: "border-box",
 };
 
-function WebRTCCall({ roomId, displayRoomId, myName, onExitRoom }) {
+function WebRTCCall({
+  roomId,
+  displayRoomId,
+  myName,
+  onExitRoom,
+  onOpenSupport,
+}) {
   const socketRef = useRef(null);
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -1594,6 +1614,7 @@ function WebRTCCall({ roomId, displayRoomId, myName, onExitRoom }) {
         callType={callType}
         joinedRoom={joinedRoom}
         onExitRoom={onExitRoom}
+        onOpenSupport={onOpenSupport}
       />
 
       <FullScreenCallOverlay
@@ -4657,6 +4678,7 @@ alert(err.message || "Join failed - see console");
 
   return (
     <div
+      className="private-room-chat-page"
       style={{
         minHeight: "100dvh",
         background: "linear-gradient(135deg, #dcebe7 0%, #f4f0ea 100%)",
@@ -4668,6 +4690,7 @@ alert(err.message || "Join failed - see console");
       }}
     >
       <div
+        className="private-room-chat-shell"
         style={{
           width: "100%",
           maxWidth: 1180,
@@ -4776,9 +4799,11 @@ alert(err.message || "Join failed - see console");
                   displayRoomId={room}
                   myName={name}
                   onExitRoom={exitRoom}
+                  onOpenSupport={openRoomSupport}
                 />
 
                 <div
+                  className="private-room-message-area"
                   style={{
                     flex: 1,
                     minHeight: 0,
@@ -4808,6 +4833,7 @@ alert(err.message || "Join failed - see console");
                 </div>
 
                 <div
+                  className="private-room-message-composer"
                   style={{
                     flexShrink: 0,
                     padding: "6px 10px calc(6px + env(safe-area-inset-bottom))",
@@ -4852,26 +4878,6 @@ alert(err.message || "Join failed - see console");
             <Thread />
           </Channel>
         </Chat>
-
-        <button
-          onClick={openRoomSupport}
-          style={{
-            position: "absolute",
-            right: 18,
-            bottom: isMobile ? 82 : 92,
-            zIndex: 120,
-            border: "none",
-            borderRadius: 999,
-            padding: "12px 16px",
-            background: "linear-gradient(180deg, #34d399 0%, #059669 100%)",
-            color: "#fff",
-            fontWeight: 900,
-            cursor: "pointer",
-            boxShadow: "0 10px 28px rgba(0,0,0,0.20)",
-          }}
-        >
-          Support
-        </button>
 
         <SupportModal
   open={supportOpen}
