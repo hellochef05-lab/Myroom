@@ -491,16 +491,38 @@ function recoverMissingUsersFromApprovedPayments(db, options = {}) {
     }
 
     const accessKey = String(payment.accessKey).trim();
-    const existingUser = db.users.find((user) =>
-      sameValue(user.accessKey, accessKey)
+    const existingUser = db.users.find(
+      (user) =>
+        (payment.userId &&
+          String(user.id) === String(payment.userId)) ||
+        sameValue(user.accessKey, accessKey)
     );
 
     if (existingUser) {
+      let paymentChanged = false;
+
       if (payment.userId !== existingUser.id) {
         payment.userId = existingUser.id;
+        paymentChanged = true;
+      }
+
+      const currentUserAccessKey = String(
+        existingUser.accessKey || ""
+      ).trim();
+
+      if (
+        currentUserAccessKey &&
+        !sameValue(payment.accessKey, currentUserAccessKey)
+      ) {
+        payment.accessKey = currentUserAccessKey;
+        paymentChanged = true;
+      }
+
+      if (paymentChanged) {
         payment.updatedAt = now;
         linked += 1;
       }
+
       continue;
     }
 
@@ -2749,8 +2771,8 @@ app.patch(
 
     const user = db.users.find(
       (item) =>
-        item.id ===
-        req.params.userId
+        String(item.id) ===
+        String(req.params.userId)
     );
 
     if (!user) {
@@ -2759,40 +2781,202 @@ app.patch(
       });
     }
 
-    const allowed = [
-      "username",
-      "contact",
-      "accessKey",
-      "subscriptionEnd",
-      "status",
-      "subscriptionStatus",
-    ];
+    const oldAccessKey = String(
+      user.accessKey || ""
+    ).trim();
 
-    for (const key of allowed) {
-      if (
-        req.body[key] !== undefined
-      ) {
-        user[key] = req.body[key];
-      }
+    const requestedAccessKey =
+      req.body.accessKey !== undefined
+        ? String(req.body.accessKey || "").trim()
+        : oldAccessKey;
+
+    if (!requestedAccessKey) {
+      return res.status(400).json({
+        error: "Access Key cannot be empty",
+      });
+    }
+
+    if (!/^\d{5}$/.test(requestedAccessKey)) {
+      return res.status(400).json({
+        error: "Access Key must contain exactly 5 digits",
+      });
+    }
+
+    const duplicateUser = db.users.find(
+      (item) =>
+        String(item.id) !== String(user.id) &&
+        sameValue(item.accessKey, requestedAccessKey)
+    );
+
+    if (duplicateUser) {
+      return res.status(409).json({
+        error:
+          "This Access Key is already being used by another user",
+      });
+    }
+
+    const accessKeyChanged = !sameValue(
+      oldAccessKey,
+      requestedAccessKey
+    );
+
+    const now = new Date().toISOString();
+
+    if (req.body.username !== undefined) {
+      user.username = String(
+        req.body.username || ""
+      ).trim();
+    }
+
+    if (req.body.contact !== undefined) {
+      user.contact = String(
+        req.body.contact || ""
+      ).trim();
+    }
+
+    if (req.body.subscriptionEnd !== undefined) {
+      user.subscriptionEnd = String(
+        req.body.subscriptionEnd || ""
+      ).slice(0, 10);
+    }
+
+    if (req.body.status !== undefined) {
+      user.status = req.body.status;
+    }
+
+    if (
+      req.body.subscriptionStatus !==
+      undefined
+    ) {
+      user.subscriptionStatus =
+        req.body.subscriptionStatus;
     }
 
     if (
       req.body.deviceLimit !==
       undefined
     ) {
-      user.deviceLimit = Number(
+      const deviceLimit = Number(
         req.body.deviceLimit
       );
+
+      if (
+        !Number.isInteger(deviceLimit) ||
+        deviceLimit < 1
+      ) {
+        return res.status(400).json({
+          error:
+            "Device limit must be a whole number of at least 1",
+        });
+      }
+
+      user.deviceLimit = deviceLimit;
     }
 
-    user.updatedAt =
-      new Date().toISOString();
+    if (accessKeyChanged) {
+      user.accessKey = requestedAccessKey;
+
+      for (const payment of db.payments) {
+        if (
+          String(payment.userId || "") ===
+            String(user.id) ||
+          sameValue(
+            payment.accessKey,
+            oldAccessKey
+          )
+        ) {
+          payment.userId = user.id;
+          payment.accessKey = requestedAccessKey;
+          payment.recoveryDisabled = false;
+          payment.userDeletedAt = "";
+          payment.updatedAt = now;
+        }
+      }
+
+      for (const device of db.devices) {
+        if (
+          String(device.userId || "") ===
+            String(user.id) ||
+          sameValue(
+            device.accessKey,
+            oldAccessKey
+          )
+        ) {
+          device.userId = user.id;
+          device.accessKey = requestedAccessKey;
+          device.updatedAt = now;
+        }
+      }
+
+      for (const room of db.rooms) {
+        if (
+          sameValue(
+            room.accessKey,
+            oldAccessKey
+          )
+        ) {
+          room.accessKey = requestedAccessKey;
+          room.updatedAt = now;
+        }
+      }
+
+      for (const ticket of db.supportRequests) {
+        if (
+          String(ticket.userId || "") ===
+            String(user.id) ||
+          sameValue(
+            ticket.accessKey,
+            oldAccessKey
+          )
+        ) {
+          ticket.userId =
+            ticket.userId || user.id;
+          ticket.accessKey = requestedAccessKey;
+          ticket.updatedAt = now;
+        }
+      }
+
+      for (const message of db.supportMessages) {
+        if (
+          sameValue(
+            message.accessKey,
+            oldAccessKey
+          )
+        ) {
+          message.accessKey = requestedAccessKey;
+        }
+      }
+
+      for (const login of db.loginHistory) {
+        if (
+          String(login.userId || "") ===
+            String(user.id) ||
+          sameValue(
+            login.accessKey,
+            oldAccessKey
+          )
+        ) {
+          login.userId = user.id;
+          login.accessKey = requestedAccessKey;
+        }
+      }
+    }
+
+    user.updatedAt = now;
 
     writeDB(db);
 
     return res.json({
       success: true,
       user,
+      accessKeyChanged,
+      previousAccessKey:
+        accessKeyChanged
+          ? oldAccessKey
+          : "",
+      message: accessKeyChanged
+        ? "User and linked records updated with the new Access Key"
+        : "User updated successfully",
     });
   }
 );
