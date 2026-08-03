@@ -1447,19 +1447,61 @@ app.post(
         );
 
       if (existingPayment) {
-        return res.json({
-          success: true,
-          alreadySubmitted: true,
-          status:
-            existingPayment.status,
-          paymentId:
-            existingPayment.id,
-          accessKey:
-            existingPayment.accessKey ||
-            "",
-          payment: existingPayment,
-        });
-      }
+  const linkedUser = db.users.find(
+    (user) =>
+      String(user.id) ===
+        String(existingPayment.userId || "") ||
+      sameValue(
+        user.accessKey,
+        existingPayment.accessKey
+      )
+  );
+
+  if (
+    existingPayment.status === "approved" &&
+    !linkedUser
+  ) {
+    existingPayment.status = "revoked";
+    existingPayment.accessKey = "";
+    existingPayment.userId = "";
+    existingPayment.revokedAt =
+      new Date().toISOString();
+    existingPayment.updatedAt =
+      new Date().toISOString();
+    existingPayment.adminComment =
+      "Access Key revoked because the linked user no longer exists";
+
+    writeDB(db);
+  }
+
+  if (existingPayment.status === "revoked") {
+    return res.status(409).json({
+      error:
+        "This UPI reference was already used and its Access Key was revoked. Please enter a new valid payment reference.",
+      status: "revoked",
+      paymentId: existingPayment.id,
+      accessKey: "",
+    });
+  }
+
+  return res.json({
+    success: true,
+    alreadySubmitted: true,
+    status: existingPayment.status,
+    paymentId: existingPayment.id,
+    accessKey:
+      existingPayment.status === "approved"
+        ? existingPayment.accessKey || ""
+        : "",
+    payment: {
+      ...existingPayment,
+      accessKey:
+        existingPayment.status === "approved"
+          ? existingPayment.accessKey || ""
+          : "",
+    },
+  });
+}
 
       const plan = db.plans.find(
         (item) =>
