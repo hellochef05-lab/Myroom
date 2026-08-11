@@ -1709,3 +1709,137 @@ button {
   }
 }
 
+/* =========================================================
+   IPHONE KEYBOARD VISUAL VIEWPORT FIX
+   Keeps chat header (Support / Call / Video / Exit) visible
+   while the iPhone keyboard is open.
+   Existing admin, login, chat and backend behavior untouched.
+   ========================================================= */
+
+@media (max-width: 767px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden !important;
+  }
+
+  .private-room-chat-page {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .private-room-chat-shell {
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .private-room-call-header {
+    position: relative !important;
+    flex: 0 0 auto !important;
+    flex-shrink: 0 !important;
+    width: 100% !important;
+    min-height: calc(68px + env(safe-area-inset-top)) !important;
+    padding:
+      calc(7px + env(safe-area-inset-top))
+      8px
+      7px !important;
+    z-index: 9999 !important;
+    transform: none !important;
+  }
+
+  .private-room-support-button {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 10000 !important;
+    pointer-events: auto !important;
+  }
+
+  .private-room-header-actions,
+  .private-room-call-actions {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex: 0 0 auto !important;
+    z-index: 10000 !important;
+  }
+
+  .private-room-message-area {
+    position: relative !important;
+    flex: 1 1 0 !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .private-room-chat-shell .str-chat,
+  .private-room-chat-shell .str-chat__channel,
+  .private-room-chat-shell .str-chat__main-panel,
+  .private-room-chat-shell .str-chat__window {
+    min-height: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .private-room-chat-shell .str-chat__list,
+  .private-room-chat-shell .str-chat__message-list {
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  .private-room-message-composer {
+    position: relative !important;
+    flex: 0 0 auto !important;
+    flex-shrink: 0 !important;
+    width: 100% !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    padding:
+      7px
+      9px
+      calc(7px + env(safe-area-inset-bottom)) !important;
+    background: #fff !important;
+    z-index: 9000 !important;
+  }
+
+  .private-room-chat-shell .str-chat__message-input {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .private-room-chat-shell .str-chat__message-input-inner {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .private-room-chat-shell textarea {
+    font-size: 16px !important;
+  }
+}
