@@ -1026,6 +1026,13 @@ function WebRTCCall({
   const acceptedRef = useRef(false);
   const isCallerRef = useRef(false);
   const disconnectTimeoutRef = useRef(null);
+  const callActiveRef = useRef(false);
+  const userMutedRef = useRef(false);
+  const audioRepairInFlightRef = useRef(false);
+  const audioWatchdogRef = useRef(null);
+  const lastAudioBytesSentRef = useRef(null);
+  const stagnantAudioChecksRef = useRef(0);
+  const lastAudioRepairAtRef = useRef(0);
 
   const [joinedRoom, setJoinedRoom] = useState(false);
   const [remoteStream, setRemoteStream] = useState(null);
@@ -1042,10 +1049,136 @@ function WebRTCCall({
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
 
+  const preferredAudioConstraints = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    channelCount: 1,
+  };
+
+  const findSenderByKind = (pc, kind) =>
+    pc?.getSenders?.().find((sender) => sender.track?.kind === kind) || null;
+
+  const installLocalStream = (stream) => {
+    localStreamRef.current = stream;
+
+    if (callType === "video" && localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+      localVideoRef.current.muted = true;
+      localVideoRef.current.playsInline = true;
+      localVideoRef.current.autoplay = true;
+      localVideoRef.current.play?.().catch(() => {});
+    }
+  };
+
+  const replaceLocalAudioTrack = async (audioTrack, audioStream) => {
+    const pc = pcRef.current;
+    if (!pc || !audioTrack) return false;
+
+    audioTrack.enabled = !userMutedRef.current;
+
+    const sender = findSenderByKind(pc, "audio");
+    if (sender) {
+      await sender.replaceTrack(audioTrack);
+    } else {
+      pc.addTrack(audioTrack, audioStream);
+    }
+
+    const currentStream = localStreamRef.current;
+    if (currentStream) {
+      currentStream.getAudioTracks().forEach((oldTrack) => {
+        if (oldTrack.id !== audioTrack.id) {
+          currentStream.removeTrack(oldTrack);
+          oldTrack.onended = null;
+          oldTrack.onmute = null;
+          oldTrack.stop();
+        }
+      });
+      if (!currentStream.getAudioTracks().some((track) => track.id === audioTrack.id)) {
+        currentStream.addTrack(audioTrack);
+      }
+      installLocalStream(currentStream);
+    } else {
+      installLocalStream(audioStream);
+    }
+
+    return true;
+  };
+
+  const repairMicrophone = async (reason = "watchdog", force = false) => {
+    const pc = pcRef.current;
+    if (!pc || pc.signalingState === "closed") return false;
+    if (!callActiveRef.current && !force) return false;
+    if (userMutedRef.current) return true;
+    if (audioRepairInFlightRef.current) return false;
+
+    const now = Date.now();
+    if (!force && now - lastAudioRepairAtRef.current < 5000) return false;
+
+    const currentTrack = localStreamRef.current?.getAudioTracks?.()[0];
+    const sender = findSenderByKind(pc, "audio");
+    const healthy =
+      currentTrack &&
+      currentTrack.readyState === "live" &&
+      currentTrack.enabled &&
+      sender?.track?.id === currentTrack.id;
+
+    if (healthy && !force) return true;
+
+    audioRepairInFlightRef.current = true;
+    lastAudioRepairAtRef.current = now;
+
+    try {
+      console.warn(`Repairing microphone (${reason})`);
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: preferredAudioConstraints,
+        video: false,
+      });
+      const micTrack = micStream.getAudioTracks()[0];
+      if (!micTrack) throw new Error("No microphone track returned");
+
+      micTrack.onended = () => {
+        if (callActiveRef.current && !userMutedRef.current) {
+          window.setTimeout(() => repairMicrophone("track-ended", true), 250);
+        }
+      };
+
+      micTrack.onmute = () => {
+        if (callActiveRef.current && !userMutedRef.current) {
+          window.setTimeout(() => {
+            const activeTrack = localStreamRef.current?.getAudioTracks?.()[0];
+            if (activeTrack?.muted) repairMicrophone("track-muted", true);
+          }, 1500);
+        }
+      };
+
+      await replaceLocalAudioTrack(micTrack, micStream);
+      lastAudioBytesSentRef.current = null;
+      stagnantAudioChecksRef.current = 0;
+      setConnectionMessage("");
+      return true;
+    } catch (err) {
+      console.error("Microphone repair failed:", err);
+      setConnectionMessage("Microphone reconnecting...");
+      return false;
+    } finally {
+      audioRepairInFlightRef.current = false;
+    }
+  };
+
   const cleanupCall = () => {
     if (disconnectTimeoutRef.current) {
       clearTimeout(disconnectTimeoutRef.current);
       disconnectTimeoutRef.current = null;
+    }
+
+    callActiveRef.current = false;
+    userMutedRef.current = false;
+    lastAudioBytesSentRef.current = null;
+    stagnantAudioChecksRef.current = 0;
+    if (audioWatchdogRef.current) {
+      clearInterval(audioWatchdogRef.current);
+      audioWatchdogRef.current = null;
     }
 
     setConnectionMessage("");
@@ -1192,8 +1325,11 @@ function WebRTCCall({
 
     const constraints =
       type === "video"
-        ? { audio: true, video: { facingMode: { ideal: facingMode } } }
-        : { audio: true, video: false };
+        ? {
+            audio: preferredAudioConstraints,
+            video: { facingMode: { ideal: facingMode } },
+          }
+        : { audio: preferredAudioConstraints, video: false };
 
     let stream;
 
@@ -1209,15 +1345,36 @@ function WebRTCCall({
 
     localStreamRef.current = stream;
 
-    stream.getTracks().forEach((track) => {
-      const alreadyAdded = pc
-        .getSenders()
-        .some((sender) => sender.track?.id === track.id);
-
-      if (!alreadyAdded) {
+    for (const track of stream.getTracks()) {
+      track.enabled = true;
+      const sender = findSenderByKind(pc, track.kind);
+      if (sender) {
+        await sender.replaceTrack(track);
+      } else {
         pc.addTrack(track, stream);
       }
-    });
+    }
+
+    const microphoneTrack = stream.getAudioTracks()[0];
+    if (!microphoneTrack || microphoneTrack.readyState !== "live") {
+      stream.getTracks().forEach((track) => track.stop());
+      throw new Error("Microphone did not start correctly");
+    }
+
+    microphoneTrack.onended = () => {
+      if (callActiveRef.current && !userMutedRef.current) {
+        window.setTimeout(() => repairMicrophone("track-ended", true), 250);
+      }
+    };
+
+    microphoneTrack.onmute = () => {
+      if (callActiveRef.current && !userMutedRef.current) {
+        window.setTimeout(() => {
+          const activeTrack = localStreamRef.current?.getAudioTracks?.()[0];
+          if (activeTrack?.muted) repairMicrophone("track-muted", true);
+        }, 1500);
+      }
+    };
 
     if (type === "video" && localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
@@ -1258,6 +1415,7 @@ function WebRTCCall({
       data: { type: "answer", answer },
     });
 
+    callActiveRef.current = true;
     setInCall(true);
     setIncoming(null);
   };
@@ -1371,6 +1529,7 @@ function WebRTCCall({
           }
           iceQueueRef.current = [];
 
+          callActiveRef.current = true;
           setInCall(true);
           return;
         }
@@ -1402,6 +1561,85 @@ function WebRTCCall({
   }, [roomId, myName]);
 
   const overlayVisible = Boolean(incoming || inCall);
+
+  useEffect(() => {
+    callActiveRef.current = inCall;
+
+    if (!inCall) {
+      if (audioWatchdogRef.current) {
+        clearInterval(audioWatchdogRef.current);
+        audioWatchdogRef.current = null;
+      }
+      lastAudioBytesSentRef.current = null;
+      stagnantAudioChecksRef.current = 0;
+      return undefined;
+    }
+
+    const checkOutgoingAudio = async () => {
+      const pc = pcRef.current;
+      if (!pc || pc.connectionState === "closed" || userMutedRef.current) return;
+
+      const track = localStreamRef.current?.getAudioTracks?.()[0];
+      const sender = findSenderByKind(pc, "audio");
+
+      if (!track || track.readyState !== "live" || !track.enabled || !sender?.track) {
+        await repairMicrophone("missing-or-dead-track", true);
+        return;
+      }
+
+      try {
+        const stats = await pc.getStats();
+        let bytesSent = null;
+        stats.forEach((report) => {
+          if (
+            report.type === "outbound-rtp" &&
+            !report.isRemote &&
+            (report.kind === "audio" || report.mediaType === "audio")
+          ) {
+            bytesSent = Number(report.bytesSent || 0);
+          }
+        });
+
+        if (bytesSent === null) return;
+
+        if (lastAudioBytesSentRef.current === null || bytesSent > lastAudioBytesSentRef.current) {
+          stagnantAudioChecksRef.current = 0;
+        } else {
+          stagnantAudioChecksRef.current += 1;
+        }
+
+        lastAudioBytesSentRef.current = bytesSent;
+
+        if (stagnantAudioChecksRef.current >= 2) {
+          stagnantAudioChecksRef.current = 0;
+          await repairMicrophone("no-outbound-audio", true);
+        }
+      } catch (err) {
+        console.warn("Audio watchdog stats check failed:", err);
+      }
+    };
+
+    repairMicrophone("call-connected", false).catch(() => {});
+    audioWatchdogRef.current = window.setInterval(checkOutgoingAudio, 4000);
+
+    const recoverAfterResume = () => {
+      if (document.visibilityState === "visible" && callActiveRef.current && !userMutedRef.current) {
+        window.setTimeout(() => repairMicrophone("app-resumed", true), 500);
+      }
+    };
+
+    document.addEventListener("visibilitychange", recoverAfterResume);
+    window.addEventListener("focus", recoverAfterResume);
+
+    return () => {
+      document.removeEventListener("visibilitychange", recoverAfterResume);
+      window.removeEventListener("focus", recoverAfterResume);
+      if (audioWatchdogRef.current) {
+        clearInterval(audioWatchdogRef.current);
+        audioWatchdogRef.current = null;
+      }
+    };
+  }, [inCall]);
 
   useEffect(() => {
     if (!remoteStream) return;
@@ -1557,15 +1795,34 @@ function WebRTCCall({
     cleanupCall();
   };
 
-  const toggleMute = () => {
-    const stream = localStreamRef.current;
-    if (!stream) return;
-
-    const nextMuted = !muted;
-    stream.getAudioTracks().forEach((track) => {
-      track.enabled = !nextMuted;
-    });
+  const toggleMute = async () => {
+    const nextMuted = !userMutedRef.current;
+    userMutedRef.current = nextMuted;
     setMuted(nextMuted);
+
+    const stream = localStreamRef.current;
+    const audioTracks = stream?.getAudioTracks?.() || [];
+
+    if (nextMuted) {
+      audioTracks.forEach((track) => {
+        track.enabled = false;
+      });
+      return;
+    }
+
+    if (!audioTracks.length || audioTracks[0].readyState !== "live") {
+      await repairMicrophone("manual-unmute", true);
+      return;
+    }
+
+    audioTracks.forEach((track) => {
+      track.enabled = true;
+    });
+
+    const sender = findSenderByKind(pcRef.current, "audio");
+    if (!sender?.track || sender.track.id !== audioTracks[0].id) {
+      await repairMicrophone("manual-unmute-sender", true);
+    }
   };
 
   const toggleCamera = () => {
