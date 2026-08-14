@@ -32,3 +32,7 @@ server/db-before-supabase.json
 server/index-before-supabase.js
 server/.env
 server/migrate-to-supabase.js
+# Environment secrets
+.env
+.env.*
+server/.env

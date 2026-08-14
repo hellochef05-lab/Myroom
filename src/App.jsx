@@ -24,6 +24,7 @@ import {
   Phone,
   PhoneOff,
   Video,
+  SwitchCamera,
 } from "lucide-react";
 import { io } from "socket.io-client";
 const isMobile =
@@ -446,10 +447,12 @@ function FullScreenCallOverlay({
   onHangup,
   onToggleMute,
   onToggleCamera,
+  onSwitchCamera,
   onShareScreen,
   muted,
   cameraOff,
   remoteStream,
+  facingMode,
 }) {
   if (!visible) return null;
 
@@ -457,6 +460,7 @@ function FullScreenCallOverlay({
 
   return (
     <div
+      className={`video-call-overlay ${isVideo ? "is-video" : "is-audio"}`}
       style={{
         position: "fixed",
         inset: 0,
@@ -664,11 +668,12 @@ function FullScreenCallOverlay({
               </button>
 
               <button
-                onClick={onShareScreen}
+                onClick={onSwitchCamera}
                 style={roundActionButton("rgba(255,255,255,0.18)")}
-                title="Share screen"
+                title={facingMode === "environment" ? "Switch to front camera" : "Switch to back camera"}
+                aria-label={facingMode === "environment" ? "Switch to front camera" : "Switch to back camera"}
               >
-                <span style={{ color: "#fff", fontSize: 18 }}>📺</span>
+                <SwitchCamera size={21} color="#fff" />
               </button>
             </>
           )}
@@ -1029,6 +1034,7 @@ function WebRTCCall({
   const [callType, setCallType] = useState(null);
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
+  const [facingMode, setFacingMode] = useState("user");
   const [remoteName, setRemoteName] = useState("Contact");
   const [connectionMessage, setConnectionMessage] = useState("");
 
@@ -1048,6 +1054,7 @@ function WebRTCCall({
     setCallType(null);
     setMuted(false);
     setCameraOff(false);
+    setFacingMode("user");
     setRemoteName("Contact");
 
     acceptedRef.current = false;
@@ -1185,7 +1192,7 @@ function WebRTCCall({
 
     const constraints =
       type === "video"
-        ? { audio: true, video: true }
+        ? { audio: true, video: { facingMode: { ideal: facingMode } } }
         : { audio: true, video: false };
 
     let stream;
@@ -1572,6 +1579,44 @@ function WebRTCCall({
     setCameraOff(nextCameraOff);
   };
 
+  const switchCamera = async () => {
+    if (callType !== "video" || cameraOff) return;
+
+    const currentStream = localStreamRef.current;
+    const pc = pcRef.current;
+    if (!currentStream || !pc) return;
+
+    const nextFacingMode = facingMode === "user" ? "environment" : "user";
+
+    try {
+      const replacementStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: nextFacingMode } },
+        audio: false,
+      });
+      const replacementTrack = replacementStream.getVideoTracks()[0];
+      if (!replacementTrack) return;
+
+      const sender = pc.getSenders().find((item) => item.track?.kind === "video");
+      if (sender) await sender.replaceTrack(replacementTrack);
+
+      currentStream.getVideoTracks().forEach((track) => {
+        currentStream.removeTrack(track);
+        track.stop();
+      });
+      currentStream.addTrack(replacementTrack);
+      localStreamRef.current = currentStream;
+      setFacingMode(nextFacingMode);
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = currentStream;
+        localVideoRef.current.play?.().catch(() => {});
+      }
+    } catch (err) {
+      console.error("switch camera failed", err);
+      alert("Could not switch camera. Your device/browser may not expose a second camera.");
+    }
+  };
+
   const shareScreen = async () => {
     try {
       if (!pcRef.current) return;
@@ -1632,10 +1677,12 @@ function WebRTCCall({
         onHangup={hangup}
         onToggleMute={toggleMute}
         onToggleCamera={toggleCamera}
+        onSwitchCamera={switchCamera}
         onShareScreen={shareScreen}
         muted={muted}
         cameraOff={cameraOff}
         remoteStream={remoteStream}
+        facingMode={facingMode}
       />
     </>
   );
@@ -3724,7 +3771,13 @@ alert(err.message || "Join failed - see console");
       String(senderName).trim().slice(0, 1).toUpperCase() || "U";
     const senderImage = message.user?.image;
     const sentAt = message.created_at || message.updated_at;
-    const readCount = message.read_by?.length || 0;
+    const messageCreatedAt = new Date(message.created_at || message.updated_at || 0).getTime();
+    const readEntries = Object.entries(channel?.state?.read || {});
+    const hasBeenSeen = isMine && readEntries.some(([userId, readState]) => {
+      if (!userId || userId === client?.userID) return false;
+      const lastRead = new Date(readState?.last_read || 0).getTime();
+      return Number.isFinite(lastRead) && lastRead >= messageCreatedAt;
+    });
 
     const rawGroupStyle = Array.isArray(contextGroupStyles)
       ? contextGroupStyles[0]
@@ -3939,11 +3992,11 @@ alert(err.message || "Join failed - see console");
                   {isMine && (
                     <span
                       style={{
-                        color: readCount > 1 ? "#0ea5e9" : "#667781",
+                        color: hasBeenSeen ? "#0ea5e9" : "#667781",
                         fontWeight: 900,
                       }}
                     >
-                      {readCount > 1 ? "✓✓" : "✓"}
+                      {hasBeenSeen ? "✓✓" : "✓"}
                     </span>
                   )}
                 </div>
