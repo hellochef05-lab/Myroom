@@ -1862,3 +1862,413 @@ button {
     max-height: 100dvh;
   }
 }
+
+/* =========================================================
+   FINAL VIDEO CALL + MEDIA VIEWER FIX
+   Keeps call controls visible, hides chat composer during calls,
+   respects iPhone safe areas, and supports image/video galleries.
+   ========================================================= */
+.video-call-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 20000 !important;
+  width: 100% !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+  background: #050809 !important;
+  color: #fff;
+  isolation: isolate;
+}
+
+.video-call-remote-audio {
+  display: none !important;
+}
+
+.video-call-topbar {
+  grid-row: 1;
+  position: relative;
+  z-index: 6;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+  background: linear-gradient(110deg, rgba(7,94,84,.98), rgba(8,127,112,.96), rgba(7,151,168,.94));
+  box-shadow: 0 8px 28px rgba(0,0,0,.22);
+}
+
+.video-call-contact {
+  min-width: 0;
+}
+
+.video-call-contact-name {
+  max-width: min(55vw, 420px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(17px, 4.5vw, 22px);
+  font-weight: 900;
+}
+
+.video-call-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  opacity: .92;
+}
+
+.video-call-status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #4ade80;
+}
+
+.video-call-support-button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255,255,255,.94);
+  color: #102a2d;
+  font-weight: 900;
+  box-shadow: 0 6px 18px rgba(0,0,0,.15);
+}
+
+.video-call-connection-message {
+  position: absolute;
+  z-index: 7;
+  top: calc(76px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.62);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.video-call-stage {
+  grid-row: 2;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.video-call-remote-video {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  background: #000;
+}
+
+.video-call-local-video {
+  position: absolute;
+  z-index: 5;
+  right: 14px;
+  bottom: 14px;
+  width: clamp(92px, 25vw, 150px);
+  aspect-ratio: 3 / 4;
+  height: auto;
+  max-height: 34%;
+  object-fit: cover;
+  border-radius: 18px;
+  border: 2px solid rgba(255,255,255,.72);
+  background: #111;
+  box-shadow: 0 12px 36px rgba(0,0,0,.42);
+}
+
+.video-call-local-video.is-hidden {
+  display: none !important;
+}
+
+.video-call-waiting,
+.video-call-audio-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 14px;
+  color: rgba(255,255,255,.9);
+  font-weight: 800;
+  background: radial-gradient(circle at center, #173a3a 0%, #081111 68%);
+}
+
+.video-call-avatar {
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #1f6d61;
+  font-size: 42px;
+  font-weight: 900;
+}
+
+.video-call-controls,
+.video-call-incoming-actions {
+  grid-row: 3;
+  position: relative;
+  z-index: 8;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: clamp(12px, 5vw, 28px);
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(7,11,12,.84), rgba(4,7,8,.98));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.video-call-action {
+  min-width: 58px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  font-size: 11px !important;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.video-call-action > svg {
+  width: 56px;
+  height: 56px;
+  padding: 16px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.17);
+  box-sizing: border-box;
+  box-shadow: 0 8px 24px rgba(0,0,0,.25);
+}
+
+.video-call-action.is-off > svg {
+  background: #475569;
+}
+
+.video-call-action.is-danger > svg {
+  background: #ef3340;
+}
+
+.video-call-action.is-answer > svg {
+  background: #19b56b;
+}
+
+.video-call-action:disabled {
+  opacity: .42;
+  cursor: not-allowed;
+}
+
+.private-room-media-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  width: min(72vw, 420px);
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.private-room-media-grid.count-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.private-room-media-tile {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: 120px;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  background: #0b1114;
+  cursor: pointer;
+}
+
+.private-room-media-grid.count-1 .private-room-media-tile {
+  aspect-ratio: auto;
+  max-height: 440px;
+}
+
+.private-room-media-tile img,
+.private-room-media-tile video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  max-height: 440px;
+  object-fit: cover;
+}
+
+.private-room-media-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(0,0,0,.62);
+  color: #fff;
+  font-size: 20px;
+}
+
+.private-room-media-count {
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.62);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.private-room-media-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: rgba(0,0,0,.97);
+  color: #fff;
+}
+
+.private-room-media-viewer-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
+  background: rgba(10,12,14,.96);
+}
+
+.private-room-media-back {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 999px;
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  font-weight: 900;
+}
+
+.private-room-media-position {
+  font-size: 13px;
+  font-weight: 900;
+  color: rgba(255,255,255,.82);
+}
+
+.private-room-media-viewer-stage {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px 52px calc(12px + env(safe-area-inset-bottom));
+  overflow: hidden;
+}
+
+.private-room-media-viewer-content {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.private-room-media-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 60px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255,255,255,.13);
+  color: #fff;
+  font-size: 36px !important;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.private-room-media-nav.is-previous { left: 6px; }
+.private-room-media-nav.is-next { right: 6px; }
+
+@media (max-width: 600px) {
+  .video-call-topbar {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .video-call-support-button {
+    min-height: 36px;
+    padding: 0 14px;
+    font-size: 13px !important;
+  }
+
+  .video-call-controls,
+  .video-call-incoming-actions {
+    gap: 10px;
+    justify-content: space-evenly;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .video-call-action {
+    min-width: 52px;
+    font-size: 10px !important;
+  }
+
+  .video-call-action > svg {
+    width: 52px;
+    height: 52px;
+    padding: 14px;
+  }
+
+  .video-call-local-video {
+    width: 104px;
+    right: 10px;
+    bottom: 10px;
+    border-radius: 14px;
+  }
+
+  .private-room-media-grid {
+    width: min(78vw, 340px);
+  }
+
+  .private-room-media-viewer-stage {
+    padding-left: 46px;
+    padding-right: 46px;
+  }
+}
+

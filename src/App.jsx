@@ -449,6 +449,7 @@ function FullScreenCallOverlay({
   onToggleCamera,
   onSwitchCamera,
   onShareScreen,
+  onOpenSupport,
   muted,
   cameraOff,
   remoteStream,
@@ -457,240 +458,154 @@ function FullScreenCallOverlay({
   if (!visible) return null;
 
   const isVideo = callType === "video";
+  const statusText = incoming
+    ? incoming.callType === "video"
+      ? "Incoming video call"
+      : "Incoming audio call"
+    : inCall
+      ? isVideo
+        ? "Video call connected"
+        : "Audio call connected"
+      : "Calling...";
 
   return (
-    <div
-      className={`video-call-overlay ${isVideo ? "is-video" : "is-audio"}`}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        background: isVideo ? "#000" : "linear-gradient(180deg, #0b3d36, #111)",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <audio
-        ref={remoteAudioRef}
-        autoPlay
-        playsInline
-        style={{ display: "none" }}
-      />
+    <div className={`video-call-overlay ${isVideo ? "is-video" : "is-audio"}`}>
+      <audio ref={remoteAudioRef} autoPlay playsInline className="video-call-remote-audio" />
 
-      <div
-        style={{
-          position: "absolute",
-          top: 18,
-          left: 18,
-          right: 18,
-          zIndex: 3,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          color: "#fff",
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>
-            {remoteName || "Contact"}
-          </div>
-          <div style={{ fontSize: 13, opacity: 0.85 }}>
-            {incoming
-              ? incoming.callType === "video"
-                ? "Incoming video call"
-                : "Incoming audio call"
-              : inCall
-                ? isVideo
-                  ? "Video call connected"
-                  : "Audio call connected"
-                : "Calling..."}
+      <div className="video-call-topbar">
+        <div className="video-call-contact">
+          <div className="video-call-contact-name">{remoteName || "Contact"}</div>
+          <div className="video-call-status">
+            <span className="video-call-status-dot" />
+            {statusText}
           </div>
         </div>
+
+        {onOpenSupport && (
+          <button
+            type="button"
+            className="video-call-support-button"
+            onClick={onOpenSupport}
+          >
+            Support
+          </button>
+        )}
       </div>
 
       {connectionMessage && (
-        <div
-          style={{
-            position: "absolute",
-            top: 78,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "rgba(0,0,0,0.55)",
-            color: "#fff",
-            padding: "8px 14px",
-            borderRadius: 999,
-            fontSize: 13,
-            fontWeight: 600,
-            zIndex: 4,
-          }}
-        >
-          {connectionMessage}
-        </div>
+        <div className="video-call-connection-message">{connectionMessage}</div>
       )}
 
-      {isVideo ? (
-        <>
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              background: "#000",
-            }}
-          />
+      <div className="video-call-stage">
+        {isVideo ? (
+          <>
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              className="video-call-remote-video"
+            />
 
-          <video
-            ref={localVideoRef}
-            autoPlay
-            muted
-            playsInline
-            style={{
-              position: "absolute",
-              right: 16,
-              bottom: 110,
-              width: 130,
-              height: 180,
-              objectFit: "cover",
-              borderRadius: 16,
-              border: "1px solid rgba(255,255,255,0.22)",
-              background: "#111",
-              zIndex: 2,
-              display: cameraOff ? "none" : "block",
-            }}
-          />
-        </>
-      ) : (
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexDirection: "column",
-            color: "#fff",
-            gap: 18,
-          }}
-        >
-          <div
-            style={{
-              width: 120,
-              height: 120,
-              borderRadius: "50%",
-              background: "#1f6d61",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 42,
-              fontWeight: 700,
-            }}
-          >
-            {(remoteName || "C").slice(0, 1).toUpperCase()}
-          </div>
-          <div style={{ fontSize: 14, opacity: 0.8 }}>
-            {remoteStream ? "Connected" : "Connecting..."}
-          </div>
-        </div>
-      )}
+            {!remoteStream && (
+              <div className="video-call-waiting">Connecting video…</div>
+            )}
 
-      {incoming && !inCall && (
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            bottom: 80,
-            transform: "translateX(-50%)",
-            display: "flex",
-            gap: 18,
-            zIndex: 3,
-          }}
-        >
+            <video
+              ref={localVideoRef}
+              autoPlay
+              muted
+              playsInline
+              className={`video-call-local-video ${cameraOff ? "is-hidden" : ""}`}
+            />
+          </>
+        ) : (
+          <div className="video-call-audio-stage">
+            <div className="video-call-avatar">
+              {(remoteName || "C").slice(0, 1).toUpperCase()}
+            </div>
+            <div>{remoteStream ? "Connected" : "Connecting…"}</div>
+          </div>
+        )}
+      </div>
+
+      {incoming && !inCall ? (
+        <div className="video-call-incoming-actions">
           <button
+            type="button"
             onClick={onDecline}
-            style={roundActionButton("#B00020")}
+            className="video-call-action is-danger"
             title="Decline"
+            aria-label="Decline call"
           >
-            <PhoneOff size={22} color="#fff" />
+            <PhoneOff size={24} color="#fff" />
+            <span>Decline</span>
           </button>
           <button
+            type="button"
             onClick={onAnswer}
-            style={roundActionButton("#25D366")}
+            className="video-call-action is-answer"
             title="Answer"
+            aria-label="Answer call"
           >
-            <Phone size={22} color="#fff" />
+            <Phone size={24} color="#fff" />
+            <span>Answer</span>
           </button>
         </div>
-      )}
-
-      {!incoming && (
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            bottom: 34,
-            transform: "translateX(-50%)",
-            display: "flex",
-            gap: 14,
-            zIndex: 3,
-            alignItems: "center",
-          }}
-        >
-          <button
-            onClick={onToggleMute}
-            style={roundActionButton(
-              muted ? "#455A64" : "rgba(255,255,255,0.18)"
-            )}
-            title={muted ? "Unmute" : "Mute"}
-          >
-            {muted ? (
-              <MicOff size={20} color="#fff" />
-            ) : (
-              <Mic size={20} color="#fff" />
-            )}
-          </button>
+      ) : (
+        <div className="video-call-controls" role="toolbar" aria-label="Call controls">
+          {isVideo && (
+            <button
+              type="button"
+              onClick={onSwitchCamera}
+              className="video-call-action"
+              title={facingMode === "environment" ? "Switch to front camera" : "Switch to back camera"}
+              aria-label={facingMode === "environment" ? "Switch to front camera" : "Switch to back camera"}
+              disabled={cameraOff}
+            >
+              <SwitchCamera size={23} color="#fff" />
+              <span>Switch</span>
+            </button>
+          )}
 
           {isVideo && (
-            <>
-              <button
-                onClick={onToggleCamera}
-                style={roundActionButton(
-                  cameraOff ? "#455A64" : "rgba(255,255,255,0.18)"
-                )}
-                title={cameraOff ? "Turn camera on" : "Turn camera off"}
-              >
-                {cameraOff ? (
-                  <CameraOff size={20} color="#fff" />
-                ) : (
-                  <Camera size={20} color="#fff" />
-                )}
-              </button>
-
-              <button
-                onClick={onSwitchCamera}
-                style={roundActionButton("rgba(255,255,255,0.18)")}
-                title={facingMode === "environment" ? "Switch to front camera" : "Switch to back camera"}
-                aria-label={facingMode === "environment" ? "Switch to front camera" : "Switch to back camera"}
-              >
-                <SwitchCamera size={21} color="#fff" />
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={onToggleCamera}
+              className={`video-call-action ${cameraOff ? "is-off" : ""}`}
+              title={cameraOff ? "Turn camera on" : "Turn camera off"}
+              aria-label={cameraOff ? "Turn camera on" : "Turn camera off"}
+            >
+              {cameraOff ? <CameraOff size={23} color="#fff" /> : <Camera size={23} color="#fff" />}
+              <span>Camera</span>
+            </button>
           )}
 
           <button
-            onClick={onHangup}
-            style={roundActionButton("#B00020")}
-            title="Hang up"
+            type="button"
+            onClick={onToggleMute}
+            className={`video-call-action ${muted ? "is-off" : ""}`}
+            title={muted ? "Unmute" : "Mute"}
+            aria-label={muted ? "Unmute microphone" : "Mute microphone"}
           >
-            <PhoneOff size={22} color="#fff" />
+            {muted ? <MicOff size={23} color="#fff" /> : <Mic size={23} color="#fff" />}
+            <span>{muted ? "Unmute" : "Mute"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onHangup}
+            className="video-call-action is-danger"
+            title="End call"
+            aria-label="End call"
+          >
+            <PhoneOff size={25} color="#fff" />
+            <span>End</span>
           </button>
         </div>
       )}
     </div>
   );
 }
-
 
 function SupportModal({
   open,
@@ -1015,6 +930,7 @@ function WebRTCCall({
   myName,
   onExitRoom,
   onOpenSupport,
+  onCallStateChange,
 }) {
   const socketRef = useRef(null);
   const pcRef = useRef(null);
@@ -1563,6 +1479,26 @@ function WebRTCCall({
   const overlayVisible = Boolean(incoming || inCall);
 
   useEffect(() => {
+    onCallStateChange?.({
+      active: overlayVisible,
+      inCall,
+      incoming: Boolean(incoming),
+      callType: incoming?.callType || callType || null,
+    });
+
+    if (overlayVisible && typeof document !== "undefined") {
+      const activeElement = document.activeElement;
+      if (activeElement && typeof activeElement.blur === "function") {
+        activeElement.blur();
+      }
+      window.setTimeout(() => {
+        document.activeElement?.blur?.();
+        window.scrollTo?.(0, 0);
+      }, 60);
+    }
+  }, [overlayVisible, inCall, incoming, callType, onCallStateChange]);
+
+  useEffect(() => {
     callActiveRef.current = inCall;
 
     if (!inCall) {
@@ -1936,6 +1872,7 @@ function WebRTCCall({
         onToggleCamera={toggleCamera}
         onSwitchCamera={switchCamera}
         onShareScreen={shareScreen}
+        onOpenSupport={onOpenSupport}
         muted={muted}
         cameraOff={cameraOff}
         remoteStream={remoteStream}
@@ -2819,7 +2756,9 @@ useEffect(() => {
   const [name, setName] = useState("");
   const [room, setRoom] = useState("");
   const [joining, setJoining] = useState(false);
-  const [previewImage, setPreviewImage] = useState(null);
+  const [mediaPreview, setMediaPreview] = useState(null);
+  const [callUiState, setCallUiState] = useState({ active: false, callType: null });
+  const [readReceiptVersion, setReadReceiptVersion] = useState(0);
   const [accessKey, setAccessKey] = useState("");
   const [authMode, setAuthMode] = useState("login");
   const [loggedUser, setLoggedUser] = useState(null);
@@ -3919,7 +3858,8 @@ alert(err.message || "Join failed - see console");
       setRoom("");
       setLoggedUser(null);
       setJoining(false);
-      setPreviewImage(null);
+      setMediaPreview(null);
+      setCallUiState({ active: false, callType: null });
     }
   };
 
@@ -3959,22 +3899,66 @@ alert(err.message || "Join failed - see console");
     }
   }
 
-  const CustomImage = (props) => {
-    const imageUrl =
-      props?.image_url ||
-      props?.thumb_url ||
-      props?.asset_url ||
-      props?.og?.image_url ||
-      props?.og?.asset_url ||
-      props?.og?.thumb_url;
+  const normaliseMediaAttachment = (attachment) => {
+    if (!attachment) return null;
 
-    if (!imageUrl) return null;
+    const url =
+      attachment.asset_url ||
+      attachment.image_url ||
+      attachment.thumb_url ||
+      attachment.og?.asset_url ||
+      attachment.og?.image_url ||
+      attachment.og?.thumb_url;
+
+    if (!url) return null;
+
+    const mime = String(attachment.mime_type || attachment.file?.mime_type || "").toLowerCase();
+    const declaredType = String(attachment.type || "").toLowerCase();
+    const looksLikeVideo =
+      declaredType === "video" ||
+      mime.startsWith("video/") ||
+      /\.(mp4|mov|m4v|webm|ogg)(?:$|[?#])/i.test(url);
+    const looksLikeImage =
+      declaredType === "image" ||
+      mime.startsWith("image/") ||
+      Boolean(attachment.image_url || attachment.thumb_url) ||
+      /\.(png|jpe?g|gif|webp|heic|avif)(?:$|[?#])/i.test(url);
+
+    if (!looksLikeVideo && !looksLikeImage) return null;
+
+    return {
+      type: looksLikeVideo ? "video" : "image",
+      url,
+      thumb: attachment.thumb_url || attachment.image_url || url,
+      title: attachment.title || attachment.name || attachment.fallback || "Media",
+    };
+  };
+
+  const openMediaPreview = (attachments, startIndex = 0) => {
+    const items = (Array.isArray(attachments) ? attachments : [attachments])
+      .map(normaliseMediaAttachment)
+      .filter(Boolean);
+
+    if (!items.length) return;
+
+    const safeIndex = Math.min(Math.max(Number(startIndex) || 0, 0), items.length - 1);
+    setMediaPreview({ items, index: safeIndex });
+    document.activeElement?.blur?.();
+  };
+
+  const CustomImage = (props) => {
+    const attachment = {
+      ...props,
+      type: "image",
+    };
+    const media = normaliseMediaAttachment(attachment);
+    if (!media) return null;
 
     return (
       <img
-        src={imageUrl}
-        alt="attachment"
-        onClick={() => setPreviewImage(imageUrl)}
+        src={media.url}
+        alt={media.title || "attachment"}
+        onClick={() => openMediaPreview([attachment], 0)}
         style={{
           maxWidth: "100%",
           borderRadius: 12,
@@ -3988,6 +3972,63 @@ alert(err.message || "Join failed - see console");
   const CustomAttachment = (props) => {
     return <Attachment {...props} Image={CustomImage} />;
   };
+
+  const renderMessageAttachments = (attachments) => {
+    const source = Array.isArray(attachments) ? attachments : [];
+    const mediaItems = source.map(normaliseMediaAttachment);
+    const visualItems = mediaItems.filter(Boolean);
+    const otherAttachments = source.filter((_, index) => !mediaItems[index]);
+
+    return (
+      <>
+        {visualItems.length > 0 && (
+          <div className={`private-room-media-grid count-${Math.min(visualItems.length, 4)}`}>
+            {visualItems.map((media, mediaIndex) => (
+              <button
+                type="button"
+                key={`${media.url}-${mediaIndex}`}
+                className="private-room-media-tile"
+                onClick={() => openMediaPreview(source, mediaIndex)}
+                aria-label={`Open ${media.type} ${mediaIndex + 1} of ${visualItems.length}`}
+              >
+                {media.type === "video" ? (
+                  <>
+                    <video src={media.url} preload="metadata" muted playsInline />
+                    <span className="private-room-media-play">▶</span>
+                  </>
+                ) : (
+                  <img src={media.url} alt={media.title || "Shared image"} />
+                )}
+                {visualItems.length > 1 && (
+                  <span className="private-room-media-count">{mediaIndex + 1}/{visualItems.length}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {otherAttachments.length > 0 && (
+          <Attachment attachments={otherAttachments} />
+        )}
+      </>
+    );
+  };
+
+  useEffect(() => {
+    if (!channel) return undefined;
+
+    const bumpReadReceipts = () => setReadReceiptVersion((value) => value + 1);
+    const subscriptions = [
+      channel.on?.("message.read", bumpReadReceipts),
+      channel.on?.("message.new", bumpReadReceipts),
+      channel.on?.("message.updated", bumpReadReceipts),
+    ].filter(Boolean);
+
+    return () => {
+      subscriptions.forEach((subscription) => subscription?.unsubscribe?.());
+    };
+  }, [channel]);
+
 
   const MyMessage = (props) => {
     const context = useMessageContext();
@@ -4029,6 +4070,7 @@ alert(err.message || "Join failed - see console");
     const senderImage = message.user?.image;
     const sentAt = message.created_at || message.updated_at;
     const messageCreatedAt = new Date(message.created_at || message.updated_at || 0).getTime();
+    void readReceiptVersion;
     const readEntries = Object.entries(channel?.state?.read || {});
     const hasBeenSeen = isMine && readEntries.some(([userId, readState]) => {
       if (!userId || userId === client?.userID) return false;
@@ -4227,7 +4269,7 @@ alert(err.message || "Join failed - see console");
 
               {hasAttachments && (
                 <div style={{ marginTop: message.text ? 7 : 0 }}>
-                  <Attachment attachments={message.attachments} />
+                  {renderMessageAttachments(message.attachments)}
                 </div>
               )}
 
@@ -5110,6 +5152,7 @@ alert(err.message || "Join failed - see console");
                   myName={name}
                   onExitRoom={exitRoom}
                   onOpenSupport={openRoomSupport}
+                  onCallStateChange={setCallUiState}
                 />
 
                 <div
@@ -5132,16 +5175,19 @@ alert(err.message || "Join failed - see console");
                   <MessageList />
                 </div>
 
-                <div
-                  style={{
-                    flexShrink: 0,
-                    background: "transparent",
-                    padding: "0 14px 4px",
-                  }}
-                >
-                  <TypingIndicator />
-                </div>
+                {!callUiState.active && (
+                  <div
+                    style={{
+                      flexShrink: 0,
+                      background: "transparent",
+                      padding: "0 14px 4px",
+                    }}
+                  >
+                    <TypingIndicator />
+                  </div>
+                )}
 
+                {!callUiState.active && (
                 <div
                   className="private-room-message-composer"
                   style={{
@@ -5170,7 +5216,6 @@ alert(err.message || "Join failed - see console");
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <MessageInput
-                        focus
                         grow
                         audioRecordingEnabled
                         asyncMessagesMultiSendEnabled
@@ -5182,6 +5227,7 @@ alert(err.message || "Join failed - see console");
                     </div>
                   </div>
                 </div>
+                )}
               </div>
             </Window>
 
@@ -5204,51 +5250,79 @@ alert(err.message || "Join failed - see console");
   onReply={replyToSupportTicket}
 />
 
-        {previewImage && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.92)",
-              zIndex: 2000,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 20,
-              boxSizing: "border-box",
-            }}
-          >
-            <button
-              onClick={() => setPreviewImage(null)}
-              style={{
-                position: "absolute",
-                top: 18,
-                left: 18,
-                border: "none",
-                borderRadius: 999,
-                padding: "10px 16px",
-                background: "rgba(255,255,255,0.16)",
-                color: "#fff",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              ← Back to chat
-            </button>
+        {mediaPreview?.items?.length > 0 && (() => {
+          const currentMedia = mediaPreview.items[mediaPreview.index] || mediaPreview.items[0];
+          const hasMultiple = mediaPreview.items.length > 1;
+          const goPrevious = () =>
+            setMediaPreview((current) => ({
+              ...current,
+              index: (current.index - 1 + current.items.length) % current.items.length,
+            }));
+          const goNext = () =>
+            setMediaPreview((current) => ({
+              ...current,
+              index: (current.index + 1) % current.items.length,
+            }));
 
-            <img
-              src={previewImage}
-              alt="preview"
-              style={{
-                maxWidth: "100%",
-                maxHeight: "100%",
-                objectFit: "contain",
-                borderRadius: 12,
-              }}
-            />
-          </div>
-        )}
+          return (
+            <div className="private-room-media-viewer" role="dialog" aria-modal="true">
+              <div className="private-room-media-viewer-topbar">
+                <button
+                  type="button"
+                  className="private-room-media-back"
+                  onClick={() => setMediaPreview(null)}
+                >
+                  ← Back to chat
+                </button>
+                {hasMultiple && (
+                  <span className="private-room-media-position">
+                    {mediaPreview.index + 1} / {mediaPreview.items.length}
+                  </span>
+                )}
+              </div>
+
+              <div className="private-room-media-viewer-stage">
+                {currentMedia.type === "video" ? (
+                  <video
+                    key={currentMedia.url}
+                    src={currentMedia.url}
+                    controls
+                    autoPlay
+                    playsInline
+                    className="private-room-media-viewer-content"
+                  />
+                ) : (
+                  <img
+                    src={currentMedia.url}
+                    alt={currentMedia.title || "Shared media"}
+                    className="private-room-media-viewer-content"
+                  />
+                )}
+
+                {hasMultiple && (
+                  <>
+                    <button
+                      type="button"
+                      className="private-room-media-nav is-previous"
+                      onClick={goPrevious}
+                      aria-label="Previous media"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      className="private-room-media-nav is-next"
+                      onClick={goNext}
+                      aria-label="Next media"
+                    >
+                      ›
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
