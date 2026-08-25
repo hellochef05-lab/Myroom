@@ -1399,6 +1399,11 @@ body {
   min-height: 100dvh;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 input,
 textarea,
 select,
@@ -1407,6 +1412,12 @@ button {
 }
 
 @media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
   .landing-page,
   .home-page,
   .login-page,
@@ -1730,14 +1741,20 @@ button {
 
   .private-room-chat-page {
     position: fixed !important;
-    inset: var(--private-room-viewport-top, 0px) 0 auto 0 !important;
+    inset: 0 !important;
     width: 100% !important;
-    height: var(--private-room-viewport-height, 100dvh) !important;
+    height: auto !important;
     min-height: 0 !important;
-    max-height: var(--private-room-viewport-height, 100dvh) !important;
+    max-height: none !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: hidden !important;
+  }
+
+  html[data-private-room-keyboard="open"] .private-room-chat-page {
+    inset: var(--private-room-viewport-top, 0px) 0 auto 0 !important;
+    height: var(--private-room-viewport-height) !important;
+    max-height: var(--private-room-viewport-height) !important;
   }
 
   .private-room-chat-shell {

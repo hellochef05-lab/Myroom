@@ -2790,6 +2790,10 @@ const [supportLoading, setSupportLoading] = useState(false);
     const root = document.documentElement;
     let animationFrame = 0;
     let settleTimer = 0;
+    let fullViewportHeight = Math.max(
+      Math.round(window.innerHeight),
+      Math.round(viewport?.height || 0)
+    );
 
     const updateVisibleViewport = () => {
       cancelAnimationFrame(animationFrame);
@@ -2797,16 +2801,42 @@ const [supportLoading, setSupportLoading] = useState(false);
         const layoutHeight = Math.round(window.innerHeight);
         const visualHeight = Math.round(viewport?.height || layoutHeight);
         const visualOffsetTop = Math.round(viewport?.offsetTop || 0);
-        const coveredHeight = Math.max(
-          0,
-          layoutHeight - visualHeight - visualOffsetTop
+        const focusedElement = document.activeElement;
+        const textFieldIsFocused = Boolean(
+          focusedElement?.matches?.(
+            "input:not([type='checkbox']):not([type='radio']):not([type='button']):not([type='submit']), textarea, [contenteditable='true']"
+          )
         );
-        const keyboardIsOpen = coveredHeight > 140;
-        const height = keyboardIsOpen ? visualHeight : layoutHeight;
-        const offsetTop = keyboardIsOpen ? visualOffsetTop : 0;
 
-        root.style.setProperty("--private-room-viewport-height", `${height}px`);
-        root.style.setProperty("--private-room-viewport-top", `${offsetTop}px`);
+        if (!textFieldIsFocused) {
+          fullViewportHeight = Math.max(
+            fullViewportHeight,
+            layoutHeight,
+            visualHeight + visualOffsetTop
+          );
+        }
+
+        const keyboardReduction = Math.max(
+          0,
+          fullViewportHeight - visualHeight - visualOffsetTop
+        );
+        const keyboardIsOpen = textFieldIsFocused && keyboardReduction > 140;
+
+        if (keyboardIsOpen) {
+          root.dataset.privateRoomKeyboard = "open";
+          root.style.setProperty(
+            "--private-room-viewport-height",
+            `${visualHeight}px`
+          );
+          root.style.setProperty(
+            "--private-room-viewport-top",
+            `${visualOffsetTop}px`
+          );
+        } else {
+          delete root.dataset.privateRoomKeyboard;
+          root.style.removeProperty("--private-room-viewport-height");
+          root.style.removeProperty("--private-room-viewport-top");
+        }
       });
     };
 
@@ -2833,6 +2863,7 @@ const [supportLoading, setSupportLoading] = useState(false);
       document.removeEventListener("focusout", settleVisibleViewport);
       viewport?.removeEventListener("resize", updateVisibleViewport);
       viewport?.removeEventListener("scroll", updateVisibleViewport);
+      delete root.dataset.privateRoomKeyboard;
       root.style.removeProperty("--private-room-viewport-height");
       root.style.removeProperty("--private-room-viewport-top");
     };
