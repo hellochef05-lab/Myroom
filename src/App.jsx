@@ -9,8 +9,10 @@ import {
   Thread,
   Window,
   MessageSimple,
+  useMessageComposer,
   useMessageContext,
 } from "stream-chat-react";
+import { createPortal } from "react-dom";
 import "stream-chat-react/dist/css/v2/index.css";
 import "./App.css";
 
@@ -4075,8 +4077,28 @@ alert(err.message || "Join failed - see console");
 
   const MyMessage = (props) => {
     const context = useMessageContext();
+    const messageComposer = useMessageComposer();
     const message = context?.message || props?.message;
     const contextGroupStyles = context?.groupStyles || props?.groupStyles || [];
+    const [actionsOpen, setActionsOpen] = useState(false);
+    const longPressTimerRef = useRef(0);
+    const longPressTriggeredRef = useRef(false);
+
+    useEffect(() => {
+      if (!actionsOpen) return undefined;
+
+      const closeOnEscape = (event) => {
+        if (event.key === "Escape") setActionsOpen(false);
+      };
+
+      document.addEventListener("keydown", closeOnEscape);
+      return () => document.removeEventListener("keydown", closeOnEscape);
+    }, [actionsOpen]);
+
+    useEffect(
+      () => () => window.clearTimeout(longPressTimerRef.current),
+      []
+    );
 
     if (!message) return null;
 
@@ -4134,6 +4156,73 @@ alert(err.message || "Join failed - see console");
     const isMiddle = groupStyle === "middle";
     const hasAttachments =
       Array.isArray(message.attachments) && message.attachments.length > 0;
+    const allowedActions = context?.getMessageActions?.() || [];
+    const canUseAction = (action) => allowedActions.includes(action);
+    const reactionOptions = [
+      { type: "love", emoji: "❤️", label: "Love" },
+      { type: "like", emoji: "👍", label: "Like" },
+      { type: "haha", emoji: "😂", label: "Laugh" },
+      { type: "wow", emoji: "😮", label: "Wow" },
+      { type: "sad", emoji: "😢", label: "Sad" },
+      { type: "angry", emoji: "😡", label: "Angry" },
+    ];
+    const visibleReactions = reactionOptions
+      .map((reaction) => ({
+        ...reaction,
+        count:
+          message.reaction_counts?.[reaction.type] ||
+          message.reaction_groups?.[reaction.type]?.count ||
+          0,
+        mine: Boolean(
+          message.own_reactions?.some(
+            (ownReaction) => ownReaction.type === reaction.type
+          )
+        ),
+      }))
+      .filter((reaction) => reaction.count > 0);
+
+    const clearLongPress = () => {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = 0;
+    };
+
+    const openActions = () => {
+      longPressTriggeredRef.current = true;
+      setActionsOpen(true);
+      window.navigator.vibrate?.(15);
+    };
+
+    const startLongPress = (event) => {
+      if (event.pointerType === "mouse") return;
+      clearLongPress();
+      longPressTriggeredRef.current = false;
+      longPressTimerRef.current = window.setTimeout(openActions, 450);
+    };
+
+    const quoteMessage = () => {
+      messageComposer.setQuotedMessage(message);
+      setActionsOpen(false);
+      window.setTimeout(() => {
+        const textarea = document.querySelector(
+          ".private-room-chat-shell .str-chat__textarea__textarea"
+        );
+        textarea?.focus();
+      }, 0);
+    };
+
+    const addReaction = async (reactionType, event) => {
+      try {
+        await context?.handleReaction?.(reactionType, event);
+      } finally {
+        setActionsOpen(false);
+      }
+    };
+
+    const deleteSelectedMessage = async (event) => {
+      if (!window.confirm("Delete this message?")) return;
+      setActionsOpen(false);
+      await context?.handleDelete?.(event);
+    };
 
     const receivedRadius =
       groupStyle === "single"
@@ -4154,6 +4243,7 @@ alert(err.message || "Join failed - see console");
             : "18px 7px 18px 18px";
 
     return (
+      <>
       <div
         style={{
           display: "flex",
@@ -4176,6 +4266,24 @@ alert(err.message || "Join failed - see console");
         >
           {!isMine && (
             <div
+              className="private-room-message-bubble"
+              onPointerDown={startLongPress}
+              onPointerUp={clearLongPress}
+              onPointerCancel={clearLongPress}
+              onPointerMove={clearLongPress}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                clearLongPress();
+                longPressTriggeredRef.current = false;
+                setActionsOpen(true);
+              }}
+              onClickCapture={(event) => {
+                if (!longPressTriggeredRef.current) return;
+                event.preventDefault();
+                event.stopPropagation();
+                longPressTriggeredRef.current = false;
+              }}
+              aria-label="Message. Hold for reply, reactions, and more options."
               style={{
                 width: 34,
                 minWidth: 34,
@@ -4293,8 +4401,25 @@ alert(err.message || "Join failed - see console");
                       (message.quoted_message.attachments?.length
                         ? "Attachment"
                         : "Message")}
-                  </div>
-                </div>
+            </div>
+
+            {visibleReactions.length > 0 && (
+              <div className="private-room-message-reactions">
+                {visibleReactions.map((reaction) => (
+                  <button
+                    type="button"
+                    key={reaction.type}
+                    className={reaction.mine ? "is-mine" : ""}
+                    onClick={(event) => addReaction(reaction.type, event)}
+                    aria-label={`${reaction.label}: ${reaction.count}`}
+                  >
+                    <span>{reaction.emoji}</span>
+                    <b>{reaction.count}</b>
+                  </button>
+                ))}
+              </div>
+            )}
+            </div>
               )}
 
               {message.text && (
@@ -4350,6 +4475,89 @@ alert(err.message || "Join failed - see console");
           </div>
         </div>
       </div>
+      {actionsOpen &&
+        createPortal(
+          <div
+            className="private-room-message-actions-backdrop"
+            role="presentation"
+            onPointerDown={() => setActionsOpen(false)}
+          >
+            <div
+              className="private-room-message-actions-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Message options"
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <div className="private-room-reaction-picker" aria-label="React to message">
+                {reactionOptions.map((reaction) => (
+                  <button
+                    type="button"
+                    key={reaction.type}
+                    onClick={(event) => addReaction(reaction.type, event)}
+                    aria-label={reaction.label}
+                  >
+                    {reaction.emoji}
+                  </button>
+                ))}
+              </div>
+
+              <div className="private-room-message-action-list">
+                <button type="button" onClick={quoteMessage}>
+                  <span>↩</span>
+                  Reply
+                </button>
+
+                {canUseAction("pin") && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      setActionsOpen(false);
+                      context?.handlePin?.(event);
+                    }}
+                  >
+                    <span>📌</span>
+                    {message.pinned ? "Unpin" : "Pin message"}
+                  </button>
+                )}
+
+                {canUseAction("markUnread") && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      setActionsOpen(false);
+                      context?.handleMarkUnread?.(event);
+                    }}
+                  >
+                    <span>●</span>
+                    Mark as unread
+                  </button>
+                )}
+
+                {isMine && canUseAction("delete") && (
+                  <button
+                    type="button"
+                    className="is-destructive"
+                    onClick={deleteSelectedMessage}
+                  >
+                    <span>⌫</span>
+                    Delete message
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                className="private-room-message-actions-cancel"
+                onClick={() => setActionsOpen(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
+      </>
     );
   };
 

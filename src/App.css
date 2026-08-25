@@ -1866,6 +1866,175 @@ button {
   }
 }
 
+.private-room-message-bubble {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.private-room-message-bubble > div,
+.private-room-message-bubble .str-chat__attachment {
+  user-select: text;
+}
+
+.private-room-message-reactions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin: -5px 7px 2px;
+  padding: 2px 5px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.1);
+  z-index: 2;
+}
+
+.private-room-message-reactions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  height: 24px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #52606d;
+  cursor: pointer;
+}
+
+.private-room-message-reactions button.is-mine {
+  background: #e0f7f0;
+  color: #087f68;
+}
+
+.private-room-message-reactions button span {
+  font-size: 14px;
+}
+
+.private-room-message-reactions button b {
+  font-size: 10px;
+}
+
+.private-room-message-actions-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.36);
+  backdrop-filter: blur(2px);
+  z-index: 30000;
+}
+
+.private-room-message-actions-sheet {
+  width: min(100%, 430px);
+  padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+  border-radius: 24px;
+  background: #f8fafc;
+  box-shadow: 0 22px 70px rgba(15, 23, 42, 0.3);
+  animation: private-room-actions-in 160ms ease-out;
+}
+
+.private-room-reaction-picker {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin-bottom: 9px;
+  padding: 7px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.private-room-reaction-picker button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  font-size: 26px;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.private-room-reaction-picker button:active {
+  background: #edf7f4;
+  transform: scale(1.16);
+}
+
+.private-room-message-action-list {
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.private-room-message-action-list button,
+.private-room-message-actions-cancel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 50px;
+  padding: 10px 16px;
+  border: 0;
+  background: #fff;
+  color: #17212b;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.private-room-message-action-list button + button {
+  border-top: 1px solid #eef2f5;
+}
+
+.private-room-message-action-list button span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  color: #087f68;
+  font-size: 20px;
+}
+
+.private-room-message-action-list button.is-destructive,
+.private-room-message-action-list button.is-destructive span {
+  color: #dc2626;
+}
+
+.private-room-message-actions-cancel {
+  justify-content: center;
+  margin-top: 9px;
+  border-radius: 16px;
+  color: #087f68;
+  text-align: center;
+}
+
+@keyframes private-room-actions-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (min-width: 768px) {
+  .private-room-message-actions-backdrop {
+    align-items: center;
+  }
+}
+
 
 /* =========================================================
    VIDEO CALL UI - safe mobile/desktop overrides
