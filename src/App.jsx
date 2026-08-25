@@ -6,7 +6,6 @@ import {
   Channel,
   MessageInput,
   MessageList,
-  SendButton,
   Thread,
   Window,
   MessageSimple,
@@ -20,26 +19,11 @@ import {
   CameraOff,
   Mic,
   MicOff,
-  Paperclip,
   Phone,
   PhoneOff,
   Video,
   SwitchCamera,
 } from "lucide-react";
-
-function KeepKeyboardOpenSendButton(props) {
-  const preserveTextareaFocus = (event) => {
-    event.preventDefault();
-  };
-
-  return (
-    <SendButton
-      {...props}
-      onMouseDown={preserveTextareaFocus}
-      onPointerDown={preserveTextareaFocus}
-    />
-  );
-}
 import { io } from "socket.io-client";
 const isMobile =
   typeof window !== "undefined" && window.innerWidth <= 768;
@@ -2783,92 +2767,6 @@ useEffect(() => {
 const [supportLoading, setSupportLoading] = useState(false);
   const [supportReplyText, setSupportReplyText] = useState("");
 
-  useEffect(() => {
-    if (!channel || typeof window === "undefined") return undefined;
-
-    const viewport = window.visualViewport;
-    const root = document.documentElement;
-    let animationFrame = 0;
-    let settleTimer = 0;
-    let fullViewportHeight = Math.max(
-      Math.round(window.innerHeight),
-      Math.round(viewport?.height || 0)
-    );
-
-    const updateVisibleViewport = () => {
-      cancelAnimationFrame(animationFrame);
-      animationFrame = requestAnimationFrame(() => {
-        const layoutHeight = Math.round(window.innerHeight);
-        const visualHeight = Math.round(viewport?.height || layoutHeight);
-        const visualOffsetTop = Math.round(viewport?.offsetTop || 0);
-        const focusedElement = document.activeElement;
-        const textFieldIsFocused = Boolean(
-          focusedElement?.matches?.(
-            "input:not([type='checkbox']):not([type='radio']):not([type='button']):not([type='submit']), textarea, [contenteditable='true']"
-          )
-        );
-
-        if (!textFieldIsFocused) {
-          fullViewportHeight = Math.max(
-            fullViewportHeight,
-            layoutHeight,
-            visualHeight + visualOffsetTop
-          );
-        }
-
-        const keyboardReduction = Math.max(
-          0,
-          fullViewportHeight - visualHeight - visualOffsetTop
-        );
-        const keyboardIsOpen = textFieldIsFocused && keyboardReduction > 140;
-
-        if (keyboardIsOpen) {
-          root.dataset.privateRoomKeyboard = "open";
-          root.style.setProperty(
-            "--private-room-viewport-height",
-            `${visualHeight}px`
-          );
-          root.style.setProperty(
-            "--private-room-viewport-top",
-            `${visualOffsetTop}px`
-          );
-        } else {
-          delete root.dataset.privateRoomKeyboard;
-          root.style.removeProperty("--private-room-viewport-height");
-          root.style.removeProperty("--private-room-viewport-top");
-        }
-      });
-    };
-
-    const settleVisibleViewport = () => {
-      updateVisibleViewport();
-      clearTimeout(settleTimer);
-      settleTimer = window.setTimeout(updateVisibleViewport, 350);
-    };
-
-    updateVisibleViewport();
-    window.addEventListener("resize", updateVisibleViewport);
-    window.addEventListener("orientationchange", settleVisibleViewport);
-    document.addEventListener("focusin", settleVisibleViewport);
-    document.addEventListener("focusout", settleVisibleViewport);
-    viewport?.addEventListener("resize", updateVisibleViewport);
-    viewport?.addEventListener("scroll", updateVisibleViewport);
-
-    return () => {
-      cancelAnimationFrame(animationFrame);
-      clearTimeout(settleTimer);
-      window.removeEventListener("resize", updateVisibleViewport);
-      window.removeEventListener("orientationchange", settleVisibleViewport);
-      document.removeEventListener("focusin", settleVisibleViewport);
-      document.removeEventListener("focusout", settleVisibleViewport);
-      viewport?.removeEventListener("resize", updateVisibleViewport);
-      viewport?.removeEventListener("scroll", updateVisibleViewport);
-      delete root.dataset.privateRoomKeyboard;
-      root.style.removeProperty("--private-room-viewport-height");
-      root.style.removeProperty("--private-room-viewport-top");
-    };
-  }, [channel]);
-
   const [subscribeOpen, setSubscribeOpen] = useState(false);
   const [subscribePlan, setSubscribePlan] = useState(null);
   const [subscribeName, setSubscribeName] = useState("");
@@ -5220,7 +5118,6 @@ alert(err.message || "Join failed - see console");
             channel={channel}
             Attachment={CustomAttachment}
             Message={MyMessage}
-            SendButton={KeepKeyboardOpenSendButton}
           >
             <Window>
               <div
@@ -5266,39 +5163,23 @@ alert(err.message || "Join failed - see console");
                   className="private-room-message-composer"
                   style={{
                     flexShrink: 0,
-                    padding: "6px 10px calc(6px + env(safe-area-inset-bottom))",
+                    padding: "6px 9px max(6px, env(safe-area-inset-bottom))",
                     background: "rgba(248,250,252,0.96)",
                     backdropFilter: "blur(10px)",
                     borderTop: "1px solid rgba(0,0,0,0.05)",
-                    position: "sticky",
-                    bottom: 0,
                     zIndex: 90,
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      background: "#fff",
-                      borderRadius: 999,
-                      padding: "10px 12px",
-                      boxShadow: "0 6px 20px rgba(0,0,0,0.08)",
-                    }}
-                  >
-                    <Paperclip size={18} color="#667781" />
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <MessageInput
-                        grow
-                        audioRecordingEnabled
-                        asyncMessagesMultiSendEnabled
-                        audioRecordingConfig={audioRecordingConfig}
-                        additionalTextareaProps={{
-                          placeholder: "Type a message",
-                        }}
-                      />
-                    </div>
+                  <div style={{ width: "100%", minWidth: 0 }}>
+                    <MessageInput
+                      grow
+                      audioRecordingEnabled
+                      asyncMessagesMultiSendEnabled
+                      audioRecordingConfig={audioRecordingConfig}
+                      additionalTextareaProps={{
+                        placeholder: "Type a message",
+                      }}
+                    />
                   </div>
                 </div>
                 )}
