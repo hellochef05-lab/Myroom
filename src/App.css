@@ -1598,10 +1598,10 @@ button {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  overflow-y: auto;
+  min-height: 0;
+  overflow-y: hidden;
   overflow-x: hidden;
   padding-bottom: 6px !important;
-  -webkit-overflow-scrolling: touch;
 }
 
 .private-room-message-composer {
@@ -1788,10 +1788,8 @@ button {
     width: 100% !important;
     min-height: 0 !important;
     max-height: none !important;
-    overflow-y: auto !important;
+    overflow-y: hidden !important;
     overflow-x: hidden !important;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
   }
 
   .private-room-chat-shell .str-chat,
@@ -1804,11 +1802,17 @@ button {
     overflow: hidden !important;
   }
 
-  .private-room-chat-shell .str-chat__list,
-  .private-room-chat-shell .str-chat__message-list {
+  .private-room-chat-shell .str-chat__list {
     min-height: 0 !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .private-room-chat-shell .str-chat__message-list {
+    min-height: 0 !important;
+    overflow: hidden !important;
   }
 
   .private-room-message-composer {
@@ -2271,4 +2275,3 @@ button {
     padding-right: 46px;
   }
 }
-

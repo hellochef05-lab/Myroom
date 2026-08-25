@@ -9,7 +9,6 @@ import {
   Thread,
   Window,
   MessageSimple,
-  TypingIndicator,
   useMessageContext,
 } from "stream-chat-react";
 import "stream-chat-react/dist/css/v2/index.css";
@@ -5160,8 +5159,7 @@ alert(err.message || "Join failed - see console");
                   style={{
                     flex: 1,
                     minHeight: 0,
-                    overflowY: "auto",
-                    WebkitOverflowScrolling: "touch",
+                    overflowY: "hidden",
                     padding: isMobile ? "12px 0 8px" : "18px 18px 12px",
                     backgroundColor: "#f7faf9",
                     backgroundImage: `
@@ -5174,18 +5172,6 @@ alert(err.message || "Join failed - see console");
                 >
                   <MessageList />
                 </div>
-
-                {!callUiState.active && (
-                  <div
-                    style={{
-                      flexShrink: 0,
-                      background: "transparent",
-                      padding: "0 14px 4px",
-                    }}
-                  >
-                    <TypingIndicator />
-                  </div>
-                )}
 
                 {!callUiState.active && (
                 <div
