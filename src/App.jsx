@@ -2783,18 +2783,12 @@ const [supportLoading, setSupportLoading] = useState(false);
       animationFrame = requestAnimationFrame(() => {
         const visibleHeight = Math.round(viewport.height);
         const visibleTop = Math.max(0, Math.round(viewport.offsetTop));
-        const layoutHeight = Math.max(
-          document.documentElement.clientHeight,
-          window.innerHeight
-        );
         const focusedElement = document.activeElement;
         const messageFieldIsFocused = Boolean(
           focusedElement?.matches?.(
             "input:not([type='checkbox']):not([type='radio']):not([type='button']):not([type='submit']), textarea, [contenteditable='true']"
           )
         );
-        const keyboardIsOpen =
-          messageFieldIsFocused && layoutHeight - visibleHeight > 100;
 
         root.style.setProperty(
           "--private-room-visible-height",
@@ -2806,7 +2800,9 @@ const [supportLoading, setSupportLoading] = useState(false);
         );
         root.style.setProperty(
           "--private-room-composer-bottom",
-          keyboardIsOpen ? "4px" : "max(7px, env(safe-area-inset-bottom))"
+          messageFieldIsFocused
+            ? "0px"
+            : "max(7px, env(safe-area-inset-bottom))"
         );
       });
     };
@@ -5448,6 +5444,9 @@ alert(err.message || "Join failed - see console");
                       audioRecordingConfig={audioRecordingConfig}
                       additionalTextareaProps={{
                         placeholder: "Type a message",
+                        enterKeyHint: "send",
+                        autoCapitalize: "sentences",
+                        autoCorrect: "on",
                       }}
                     />
                   </div>
