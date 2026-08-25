@@ -2767,6 +2767,68 @@ useEffect(() => {
 const [supportLoading, setSupportLoading] = useState(false);
   const [supportReplyText, setSupportReplyText] = useState("");
 
+  useEffect(() => {
+    if (!channel || typeof window === "undefined" || !window.visualViewport) {
+      return undefined;
+    }
+
+    const root = document.documentElement;
+    const viewport = window.visualViewport;
+    let animationFrame = 0;
+
+    const syncChatViewport = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(() => {
+        const visibleHeight = Math.round(viewport.height);
+        const visibleTop = Math.max(0, Math.round(viewport.offsetTop));
+        const layoutHeight = Math.max(
+          document.documentElement.clientHeight,
+          window.innerHeight
+        );
+        const focusedElement = document.activeElement;
+        const messageFieldIsFocused = Boolean(
+          focusedElement?.matches?.(
+            "input:not([type='checkbox']):not([type='radio']):not([type='button']):not([type='submit']), textarea, [contenteditable='true']"
+          )
+        );
+        const keyboardIsOpen =
+          messageFieldIsFocused && layoutHeight - visibleHeight > 100;
+
+        root.style.setProperty(
+          "--private-room-visible-height",
+          `${visibleHeight}px`
+        );
+        root.style.setProperty(
+          "--private-room-visible-top",
+          `${visibleTop}px`
+        );
+        root.style.setProperty(
+          "--private-room-composer-bottom",
+          keyboardIsOpen ? "4px" : "max(7px, env(safe-area-inset-bottom))"
+        );
+      });
+    };
+
+    syncChatViewport();
+    viewport.addEventListener("resize", syncChatViewport);
+    viewport.addEventListener("scroll", syncChatViewport);
+    window.addEventListener("orientationchange", syncChatViewport);
+    document.addEventListener("focusin", syncChatViewport);
+    document.addEventListener("focusout", syncChatViewport);
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      viewport.removeEventListener("resize", syncChatViewport);
+      viewport.removeEventListener("scroll", syncChatViewport);
+      window.removeEventListener("orientationchange", syncChatViewport);
+      document.removeEventListener("focusin", syncChatViewport);
+      document.removeEventListener("focusout", syncChatViewport);
+      root.style.removeProperty("--private-room-visible-height");
+      root.style.removeProperty("--private-room-visible-top");
+      root.style.removeProperty("--private-room-composer-bottom");
+    };
+  }, [channel]);
+
   const [subscribeOpen, setSubscribeOpen] = useState(false);
   const [subscribePlan, setSubscribePlan] = useState(null);
   const [subscribeName, setSubscribeName] = useState("");

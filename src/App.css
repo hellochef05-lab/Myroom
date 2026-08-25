@@ -1624,7 +1624,7 @@ button {
   left: auto !important;
   right: auto !important;
   bottom: auto !important;
-  padding: 7px 9px max(7px, env(safe-area-inset-bottom)) !important;
+  padding: 7px 9px var(--private-room-composer-bottom, max(7px, env(safe-area-inset-bottom))) !important;
   background: rgba(255, 255, 255, 0.98);
   z-index: 400;
 }
@@ -1744,11 +1744,14 @@ button {
 
   .private-room-chat-page {
     position: fixed !important;
-    inset: 0 !important;
+    top: var(--private-room-visible-top, 0px) !important;
+    right: 0 !important;
+    bottom: auto !important;
+    left: 0 !important;
     width: 100% !important;
-    height: auto !important;
+    height: var(--private-room-visible-height, 100dvh) !important;
     min-height: 0 !important;
-    max-height: none !important;
+    max-height: var(--private-room-visible-height, 100dvh) !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: hidden !important;
@@ -1841,7 +1844,7 @@ button {
     padding:
       7px
       9px
-      max(7px, env(safe-area-inset-bottom)) !important;
+      var(--private-room-composer-bottom, max(7px, env(safe-area-inset-bottom))) !important;
     background: #fff !important;
     z-index: 9000 !important;
   }
