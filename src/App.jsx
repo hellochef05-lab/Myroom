@@ -4080,6 +4080,8 @@ alert(err.message || "Join failed - see console");
     const message = context?.message || props?.message;
     const contextGroupStyles = context?.groupStyles || props?.groupStyles || [];
     const [actionsOpen, setActionsOpen] = useState(false);
+    const [actionMenuPosition, setActionMenuPosition] = useState(null);
+    const messageBubbleRef = useRef(null);
     const longPressTimerRef = useRef(0);
     const longPressTriggeredRef = useRef(false);
     const longPressStartRef = useRef(null);
@@ -4189,6 +4191,27 @@ alert(err.message || "Join failed - see console");
 
     const openActions = () => {
       clearLongPress();
+      const bubbleRect = messageBubbleRef.current?.getBoundingClientRect();
+      const menuWidth = Math.min(300, window.innerWidth - 24);
+      const estimatedMenuHeight = 315;
+      const preferredLeft = isMine
+        ? (bubbleRect?.right || window.innerWidth - 12) - menuWidth
+        : bubbleRect?.left || 12;
+
+      setActionMenuPosition({
+        left: Math.max(
+          12,
+          Math.min(preferredLeft, window.innerWidth - menuWidth - 12)
+        ),
+        top: Math.max(
+          12,
+          Math.min(
+            (bubbleRect?.top || 76) - 62,
+            window.innerHeight - estimatedMenuHeight - 12
+          )
+        ),
+        width: menuWidth,
+      });
       longPressTriggeredRef.current = true;
       setActionsOpen(true);
       window.navigator.vibrate?.(15);
@@ -4244,6 +4267,26 @@ alert(err.message || "Join failed - see console");
       await context?.handleDelete?.(event);
     };
 
+    const copySelectedMessage = async () => {
+      const copyText =
+        message.text ||
+        (message.attachments?.length ? "Attachment" : "Message");
+
+      try {
+        await navigator.clipboard.writeText(copyText);
+      } catch {
+        const copyArea = document.createElement("textarea");
+        copyArea.value = copyText;
+        copyArea.style.position = "fixed";
+        copyArea.style.opacity = "0";
+        document.body.appendChild(copyArea);
+        copyArea.select();
+        document.execCommand("copy");
+        copyArea.remove();
+      }
+      setActionsOpen(false);
+    };
+
     const receivedRadius =
       groupStyle === "single"
         ? "7px 18px 18px 18px"
@@ -4286,6 +4329,7 @@ alert(err.message || "Join failed - see console");
         >
           {!isMine && (
             <div
+              ref={messageBubbleRef}
               className="private-room-message-bubble"
               onPointerDown={startLongPress}
               onPointerUp={clearLongPress}
@@ -4293,9 +4337,8 @@ alert(err.message || "Join failed - see console");
               onPointerMove={trackLongPressMovement}
               onContextMenu={(event) => {
                 event.preventDefault();
-                clearLongPress();
+                openActions();
                 longPressTriggeredRef.current = false;
-                setActionsOpen(true);
               }}
               onClickCapture={(event) => {
                 if (!longPressTriggeredRef.current) return;
@@ -4508,6 +4551,11 @@ alert(err.message || "Join failed - see console");
               aria-modal="true"
               aria-label="Message options"
               onPointerDown={(event) => event.stopPropagation()}
+              style={{
+                left: actionMenuPosition?.left ?? 12,
+                top: actionMenuPosition?.top ?? 12,
+                width: actionMenuPosition?.width ?? "calc(100% - 24px)",
+              }}
             >
               <div className="private-room-reaction-picker" aria-label="React to message">
                 {reactionOptions.map((reaction) => (
@@ -4526,6 +4574,11 @@ alert(err.message || "Join failed - see console");
                 <button type="button" onClick={quoteMessage}>
                   <span>↩</span>
                   Reply
+                </button>
+
+                <button type="button" onClick={copySelectedMessage}>
+                  <span>▣</span>
+                  Copy
                 </button>
 
                 {canUseAction("pin") && (
@@ -4566,13 +4619,6 @@ alert(err.message || "Join failed - see console");
                 )}
               </div>
 
-              <button
-                type="button"
-                className="private-room-message-actions-cancel"
-                onClick={() => setActionsOpen(false)}
-              >
-                Cancel
-              </button>
             </div>
           </div>,
           document.body
