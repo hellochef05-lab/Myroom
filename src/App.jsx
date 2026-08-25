@@ -10,6 +10,7 @@ import {
   Thread,
   Window,
   MessageSimple,
+  useChannelActionContext,
   useMessageComposer,
   useMessageContext,
 } from "stream-chat-react";
@@ -33,6 +34,66 @@ const isMobile =
 
 const apiKey = import.meta.env.VITE_STREAM_API_KEY;
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+
+function OpenChatAtLatestMessage({ channelId }) {
+  const { jumpToLatestMessage } = useChannelActionContext();
+  const jumpToLatestRef = useRef(jumpToLatestMessage);
+
+  jumpToLatestRef.current = jumpToLatestMessage;
+
+  useEffect(() => {
+    let cancelled = false;
+    const frameIds = [];
+    const timerIds = [];
+
+    const scrollToLatest = () => {
+      if (cancelled) return;
+
+      const messageList = document.querySelector(
+        ".private-room-chat-shell .str-chat__list",
+      );
+
+      if (messageList) {
+        messageList.scrollTo({
+          top: messageList.scrollHeight,
+          behavior: "auto",
+        });
+      }
+    };
+
+    const openAtLatest = async () => {
+      try {
+        await jumpToLatestRef.current?.();
+      } catch {
+        // The direct scroll below still positions locally loaded messages.
+      }
+
+      if (cancelled) return;
+
+      frameIds.push(
+        window.requestAnimationFrame(() => {
+          scrollToLatest();
+          frameIds.push(window.requestAnimationFrame(scrollToLatest));
+        }),
+      );
+
+      // Let message media and Stream's list measurements settle before the
+      // final positioning pass, without keeping the user pinned afterward.
+      timerIds.push(window.setTimeout(scrollToLatest, 150));
+      timerIds.push(window.setTimeout(scrollToLatest, 500));
+    };
+
+    openAtLatest();
+
+    return () => {
+      cancelled = true;
+      frameIds.forEach((frameId) => window.cancelAnimationFrame(frameId));
+      timerIds.forEach((timerId) => window.clearTimeout(timerId));
+    };
+  }, [channelId]);
+
+  return null;
+}
 
 function normaliseIdentifier(value, fallback = "item") {
   const cleaned = String(value || "")
@@ -5446,6 +5507,7 @@ alert(err.message || "Join failed - see console");
             Attachment={CustomAttachment}
             Message={MyMessage}
           >
+            <OpenChatAtLatestMessage channelId={channel.cid} />
             <Window>
               <div
                 style={{
