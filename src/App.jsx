@@ -6,6 +6,7 @@ import {
   Channel,
   MessageInput,
   MessageList,
+  SimpleReactionsList,
   Thread,
   Window,
   MessageSimple,
@@ -2961,36 +2962,6 @@ useEffect(() => {
 
   const privateRoomId = createPrivateRoomId(accessKey, room);
 
-  useEffect(() => {
-    if (!client || !room || !accessKey) return;
-    let cancelled = false;
-
-    const init = async () => {
-      try {
-        const ch = client.channel("messaging", privateRoomId, {
-          name: `Room ${room}`,
-          accessKey,
-          roomCode: room,
-        });
-
-        await ch.watch();
-
-        if (!cancelled) {
-          setChannel(ch);
-        }
-      } catch (err) {
-        console.error("channel init error", err);
-        if (!cancelled) setChannel(null);
-      }
-    };
-
-    init();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [client, room, accessKey, privateRoomId]);
-
   function updateSupportForm(nextValues) {
     setSupportForm((current) => ({
       ...current,
@@ -3894,6 +3865,13 @@ if (!tokenRes.ok) {
   },
   tokenData.token
 );
+      const roomChannel = chatClient.channel("messaging", privateRoomIdForLogin, {
+        name: `Room ${room}`,
+        accessKey,
+        roomCode: room,
+      });
+      await roomChannel.watch();
+      setChannel(roomChannel);
       setClient(chatClient);
     } catch (err) {
       console.error("joinRoom error", err);
@@ -4167,21 +4145,6 @@ alert(err.message || "Join failed - see console");
       { type: "wow", emoji: "😮", label: "Wow" },
       { type: "sad", emoji: "😢", label: "Sad" },
     ];
-    const visibleReactions = reactionOptions
-      .map((reaction) => ({
-        ...reaction,
-        count:
-          message.reaction_counts?.[reaction.type] ||
-          message.reaction_groups?.[reaction.type]?.count ||
-          0,
-        mine: Boolean(
-          message.own_reactions?.some(
-            (ownReaction) => ownReaction.type === reaction.type
-          )
-        ),
-      }))
-      .filter((reaction) => reaction.count > 0);
-
     const clearLongPress = () => {
       window.clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = 0;
@@ -4506,22 +4469,6 @@ alert(err.message || "Join failed - see console");
                         : "Message")}
             </div>
 
-            {visibleReactions.length > 0 && (
-              <div className="private-room-message-reactions">
-                {visibleReactions.map((reaction) => (
-                  <button
-                    type="button"
-                    key={reaction.type}
-                    className={reaction.mine ? "is-mine" : ""}
-                    onClick={(event) => addReaction(reaction.type, event)}
-                    aria-label={`${reaction.label}: ${reaction.count}`}
-                  >
-                    <span>{reaction.emoji}</span>
-                    <b>{reaction.count}</b>
-                  </button>
-                ))}
-              </div>
-            )}
             </div>
               )}
 
@@ -4570,6 +4517,10 @@ alert(err.message || "Join failed - see console");
                   )}
                 </div>
               )}
+            </div>
+
+            <div className="private-room-live-reactions">
+              <SimpleReactionsList />
             </div>
 
             {endsGroup && !isMiddle && (
