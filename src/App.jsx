@@ -6,6 +6,7 @@ import {
   Channel,
   MessageInput,
   MessageList,
+  SendButton,
   Thread,
   Window,
   MessageSimple,
@@ -25,6 +26,20 @@ import {
   Video,
   SwitchCamera,
 } from "lucide-react";
+
+function KeepKeyboardOpenSendButton(props) {
+  const preserveTextareaFocus = (event) => {
+    event.preventDefault();
+  };
+
+  return (
+    <SendButton
+      {...props}
+      onMouseDown={preserveTextareaFocus}
+      onPointerDown={preserveTextareaFocus}
+    />
+  );
+}
 import { io } from "socket.io-client";
 const isMobile =
   typeof window !== "undefined" && window.innerWidth <= 768;
@@ -2757,7 +2772,6 @@ useEffect(() => {
   const [joining, setJoining] = useState(false);
   const [mediaPreview, setMediaPreview] = useState(null);
   const [callUiState, setCallUiState] = useState({ active: false, callType: null });
-  const [readReceiptVersion, setReadReceiptVersion] = useState(0);
   const [accessKey, setAccessKey] = useState("");
   const [authMode, setAuthMode] = useState("login");
   const [loggedUser, setLoggedUser] = useState(null);
@@ -4046,22 +4060,6 @@ alert(err.message || "Join failed - see console");
     );
   };
 
-  useEffect(() => {
-    if (!channel) return undefined;
-
-    const bumpReadReceipts = () => setReadReceiptVersion((value) => value + 1);
-    const subscriptions = [
-      channel.on?.("message.read", bumpReadReceipts),
-      channel.on?.("message.new", bumpReadReceipts),
-      channel.on?.("message.updated", bumpReadReceipts),
-    ].filter(Boolean);
-
-    return () => {
-      subscriptions.forEach((subscription) => subscription?.unsubscribe?.());
-    };
-  }, [channel]);
-
-
   const MyMessage = (props) => {
     const context = useMessageContext();
     const message = context?.message || props?.message;
@@ -4102,7 +4100,6 @@ alert(err.message || "Join failed - see console");
     const senderImage = message.user?.image;
     const sentAt = message.created_at || message.updated_at;
     const messageCreatedAt = new Date(message.created_at || message.updated_at || 0).getTime();
-    void readReceiptVersion;
     const readEntries = Object.entries(channel?.state?.read || {});
     const hasBeenSeen = isMine && readEntries.some(([userId, readState]) => {
       if (!userId || userId === client?.userID) return false;
@@ -5166,7 +5163,12 @@ alert(err.message || "Join failed - see console");
         `}</style>
 
         <Chat client={client} theme="messaging light">
-          <Channel channel={channel} Attachment={CustomAttachment} Message={MyMessage}>
+          <Channel
+            channel={channel}
+            Attachment={CustomAttachment}
+            Message={MyMessage}
+            SendButton={KeepKeyboardOpenSendButton}
+          >
             <Window>
               <div
                 style={{
