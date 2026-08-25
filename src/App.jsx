@@ -2789,26 +2789,48 @@ const [supportLoading, setSupportLoading] = useState(false);
     const viewport = window.visualViewport;
     const root = document.documentElement;
     let animationFrame = 0;
+    let settleTimer = 0;
 
     const updateVisibleViewport = () => {
       cancelAnimationFrame(animationFrame);
       animationFrame = requestAnimationFrame(() => {
-        const height = Math.round(viewport?.height || window.innerHeight);
-        const offsetTop = Math.round(viewport?.offsetTop || 0);
+        const layoutHeight = Math.round(window.innerHeight);
+        const visualHeight = Math.round(viewport?.height || layoutHeight);
+        const visualOffsetTop = Math.round(viewport?.offsetTop || 0);
+        const coveredHeight = Math.max(
+          0,
+          layoutHeight - visualHeight - visualOffsetTop
+        );
+        const keyboardIsOpen = coveredHeight > 140;
+        const height = keyboardIsOpen ? visualHeight : layoutHeight;
+        const offsetTop = keyboardIsOpen ? visualOffsetTop : 0;
 
         root.style.setProperty("--private-room-viewport-height", `${height}px`);
         root.style.setProperty("--private-room-viewport-top", `${offsetTop}px`);
       });
     };
 
+    const settleVisibleViewport = () => {
+      updateVisibleViewport();
+      clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(updateVisibleViewport, 350);
+    };
+
     updateVisibleViewport();
     window.addEventListener("resize", updateVisibleViewport);
+    window.addEventListener("orientationchange", settleVisibleViewport);
+    document.addEventListener("focusin", settleVisibleViewport);
+    document.addEventListener("focusout", settleVisibleViewport);
     viewport?.addEventListener("resize", updateVisibleViewport);
     viewport?.addEventListener("scroll", updateVisibleViewport);
 
     return () => {
       cancelAnimationFrame(animationFrame);
+      clearTimeout(settleTimer);
       window.removeEventListener("resize", updateVisibleViewport);
+      window.removeEventListener("orientationchange", settleVisibleViewport);
+      document.removeEventListener("focusin", settleVisibleViewport);
+      document.removeEventListener("focusout", settleVisibleViewport);
       viewport?.removeEventListener("resize", updateVisibleViewport);
       viewport?.removeEventListener("scroll", updateVisibleViewport);
       root.style.removeProperty("--private-room-viewport-height");
