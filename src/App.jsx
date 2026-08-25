@@ -2767,7 +2767,40 @@ useEffect(() => {
   const [supportSending, setSupportSending] = useState(false);
   const [supportTickets, setSupportTickets] = useState([]);
 const [supportLoading, setSupportLoading] = useState(false);
-const [supportReplyText, setSupportReplyText] = useState("");
+  const [supportReplyText, setSupportReplyText] = useState("");
+
+  useEffect(() => {
+    if (!channel || typeof window === "undefined") return undefined;
+
+    const viewport = window.visualViewport;
+    const root = document.documentElement;
+    let animationFrame = 0;
+
+    const updateVisibleViewport = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(() => {
+        const height = Math.round(viewport?.height || window.innerHeight);
+        const offsetTop = Math.round(viewport?.offsetTop || 0);
+
+        root.style.setProperty("--private-room-viewport-height", `${height}px`);
+        root.style.setProperty("--private-room-viewport-top", `${offsetTop}px`);
+      });
+    };
+
+    updateVisibleViewport();
+    window.addEventListener("resize", updateVisibleViewport);
+    viewport?.addEventListener("resize", updateVisibleViewport);
+    viewport?.addEventListener("scroll", updateVisibleViewport);
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", updateVisibleViewport);
+      viewport?.removeEventListener("resize", updateVisibleViewport);
+      viewport?.removeEventListener("scroll", updateVisibleViewport);
+      root.style.removeProperty("--private-room-viewport-height");
+      root.style.removeProperty("--private-room-viewport-top");
+    };
+  }, [channel]);
 
   const [subscribeOpen, setSubscribeOpen] = useState(false);
   const [subscribePlan, setSubscribePlan] = useState(null);

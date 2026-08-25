@@ -1730,10 +1730,11 @@ button {
 
   .private-room-chat-page {
     position: fixed !important;
-    inset: 0 !important;
+    inset: var(--private-room-viewport-top, 0px) 0 auto 0 !important;
     width: 100% !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
+    height: var(--private-room-viewport-height, 100dvh) !important;
+    min-height: 0 !important;
+    max-height: var(--private-room-viewport-height, 100dvh) !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: hidden !important;
