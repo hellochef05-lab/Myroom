@@ -4332,6 +4332,36 @@ alert(err.message || "Join failed - see console");
             ? "18px 7px 7px 18px"
             : "18px 7px 18px 18px";
 
+    const messageGestureProps = {
+      ref: messageBubbleRef,
+      className: "private-room-message-bubble",
+      onPointerDown: startLongPress,
+      onPointerUp: clearLongPress,
+      onPointerCancel: clearLongPress,
+      onPointerMove: trackLongPressMovement,
+      onTouchStart: startTouchLongPress,
+      onTouchMove: trackTouchLongPressMovement,
+      onTouchEnd: clearLongPress,
+      onTouchCancel: clearLongPress,
+      onDragStart: (event) => event.preventDefault(),
+      onSelect: (event) => {
+        event.preventDefault();
+        window.getSelection?.()?.removeAllRanges();
+      },
+      onContextMenu: (event) => {
+        event.preventDefault();
+        openActions();
+        longPressTriggeredRef.current = false;
+      },
+      onClickCapture: (event) => {
+        if (!longPressTriggeredRef.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        longPressTriggeredRef.current = false;
+      },
+      "aria-label": "Message. Hold for reply, reactions, and more options.",
+    };
+
     return (
       <>
       <div
@@ -4356,33 +4386,6 @@ alert(err.message || "Join failed - see console");
         >
           {!isMine && (
             <div
-              ref={messageBubbleRef}
-              className="private-room-message-bubble"
-              onPointerDown={startLongPress}
-              onPointerUp={clearLongPress}
-              onPointerCancel={clearLongPress}
-              onPointerMove={trackLongPressMovement}
-              onTouchStart={startTouchLongPress}
-              onTouchMove={trackTouchLongPressMovement}
-              onTouchEnd={clearLongPress}
-              onTouchCancel={clearLongPress}
-              onDragStart={(event) => event.preventDefault()}
-              onSelect={(event) => {
-                event.preventDefault();
-                window.getSelection?.()?.removeAllRanges();
-              }}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                openActions();
-                longPressTriggeredRef.current = false;
-              }}
-              onClickCapture={(event) => {
-                if (!longPressTriggeredRef.current) return;
-                event.preventDefault();
-                event.stopPropagation();
-                longPressTriggeredRef.current = false;
-              }}
-              aria-label="Message. Hold for reply, reactions, and more options."
               style={{
                 width: 34,
                 minWidth: 34,
@@ -4457,6 +4460,7 @@ alert(err.message || "Join failed - see console");
             )}
 
             <div
+              {...messageGestureProps}
               style={{
                 width: "fit-content",
                 minWidth: 64,
