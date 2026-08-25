@@ -2781,8 +2781,11 @@ const [supportLoading, setSupportLoading] = useState(false);
     const syncChatViewport = () => {
       cancelAnimationFrame(animationFrame);
       animationFrame = requestAnimationFrame(() => {
-        const visibleHeight = Math.round(viewport.height);
-        const visibleTop = Math.max(0, Math.round(viewport.offsetTop));
+        const visibleHeight = Math.round(viewport.height * 100) / 100;
+        const visibleTop = Math.max(
+          0,
+          Math.round(viewport.offsetTop * 100) / 100
+        );
         const focusedElement = document.activeElement;
         const messageFieldIsFocused = Boolean(
           focusedElement?.matches?.(
@@ -2808,8 +2811,8 @@ const [supportLoading, setSupportLoading] = useState(false);
     };
 
     syncChatViewport();
-    viewport.addEventListener("resize", syncChatViewport);
-    viewport.addEventListener("scroll", syncChatViewport);
+    viewport.addEventListener("resize", syncChatViewport, { passive: true });
+    viewport.addEventListener("scroll", syncChatViewport, { passive: true });
     window.addEventListener("orientationchange", syncChatViewport);
     document.addEventListener("focusin", syncChatViewport);
     document.addEventListener("focusout", syncChatViewport);
@@ -4079,6 +4082,7 @@ alert(err.message || "Join failed - see console");
     const [actionsOpen, setActionsOpen] = useState(false);
     const longPressTimerRef = useRef(0);
     const longPressTriggeredRef = useRef(false);
+    const longPressStartRef = useRef(null);
 
     useEffect(() => {
       if (!actionsOpen) return undefined;
@@ -4180,9 +4184,11 @@ alert(err.message || "Join failed - see console");
     const clearLongPress = () => {
       window.clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = 0;
+      longPressStartRef.current = null;
     };
 
     const openActions = () => {
+      clearLongPress();
       longPressTriggeredRef.current = true;
       setActionsOpen(true);
       window.navigator.vibrate?.(15);
@@ -4192,23 +4198,41 @@ alert(err.message || "Join failed - see console");
       if (event.pointerType === "mouse") return;
       clearLongPress();
       longPressTriggeredRef.current = false;
+      longPressStartRef.current = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+      };
       longPressTimerRef.current = window.setTimeout(openActions, 450);
+    };
+
+    const trackLongPressMovement = (event) => {
+      const start = longPressStartRef.current;
+      if (!start || start.pointerId !== event.pointerId) return;
+      const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+      if (moved > 14) clearLongPress();
     };
 
     const quoteMessage = () => {
       messageComposer.setQuotedMessage(message);
       setActionsOpen(false);
-      window.setTimeout(() => {
+      requestAnimationFrame(() => {
         const textarea = document.querySelector(
           ".private-room-chat-shell .str-chat__textarea__textarea"
         );
         textarea?.focus();
-      }, 0);
+      });
     };
 
     const addReaction = async (reactionType, event) => {
       try {
-        await context?.handleReaction?.(reactionType, event);
+        if (context?.handleReaction) {
+          await context.handleReaction(reactionType, event);
+        } else {
+          await channel?.sendReaction(message.id, { type: reactionType });
+        }
+      } catch (error) {
+        console.error("Could not update reaction", error);
       } finally {
         setActionsOpen(false);
       }
@@ -4266,7 +4290,7 @@ alert(err.message || "Join failed - see console");
               onPointerDown={startLongPress}
               onPointerUp={clearLongPress}
               onPointerCancel={clearLongPress}
-              onPointerMove={clearLongPress}
+              onPointerMove={trackLongPressMovement}
               onContextMenu={(event) => {
                 event.preventDefault();
                 clearLongPress();
