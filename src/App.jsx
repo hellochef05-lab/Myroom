@@ -4166,7 +4166,6 @@ alert(err.message || "Join failed - see console");
       { type: "haha", emoji: "😂", label: "Laugh" },
       { type: "wow", emoji: "😮", label: "Wow" },
       { type: "sad", emoji: "😢", label: "Sad" },
-      { type: "angry", emoji: "😡", label: "Angry" },
     ];
     const visibleReactions = reactionOptions
       .map((reaction) => ({
@@ -4218,7 +4217,7 @@ alert(err.message || "Join failed - see console");
     };
 
     const startLongPress = (event) => {
-      if (event.pointerType === "mouse") return;
+      if (event.pointerType === "mouse" || event.pointerType === "touch") return;
       clearLongPress();
       longPressTriggeredRef.current = false;
       longPressStartRef.current = {
@@ -4236,14 +4235,42 @@ alert(err.message || "Join failed - see console");
       if (moved > 14) clearLongPress();
     };
 
+    const startTouchLongPress = (event) => {
+      const touch = event.touches?.[0];
+      if (!touch) return;
+      clearLongPress();
+      longPressTriggeredRef.current = false;
+      longPressStartRef.current = {
+        pointerId: "touch",
+        x: touch.clientX,
+        y: touch.clientY,
+      };
+      longPressTimerRef.current = window.setTimeout(openActions, 420);
+    };
+
+    const trackTouchLongPressMovement = (event) => {
+      const start = longPressStartRef.current;
+      const touch = event.touches?.[0];
+      if (!start || start.pointerId !== "touch" || !touch) return;
+      const moved = Math.hypot(touch.clientX - start.x, touch.clientY - start.y);
+      if (moved > 14) clearLongPress();
+    };
+
     const quoteMessage = () => {
       messageComposer.setQuotedMessage(message);
       setActionsOpen(false);
       requestAnimationFrame(() => {
-        const textarea = document.querySelector(
-          ".private-room-chat-shell .str-chat__textarea__textarea"
-        );
-        textarea?.focus();
+        requestAnimationFrame(() => {
+          const textarea = document.querySelector(
+            ".private-room-chat-shell .str-chat__textarea__textarea"
+          );
+          if (!textarea) return;
+          try {
+            textarea.focus({ preventScroll: true });
+          } catch {
+            textarea.focus();
+          }
+        });
       });
     };
 
@@ -4335,6 +4362,15 @@ alert(err.message || "Join failed - see console");
               onPointerUp={clearLongPress}
               onPointerCancel={clearLongPress}
               onPointerMove={trackLongPressMovement}
+              onTouchStart={startTouchLongPress}
+              onTouchMove={trackTouchLongPressMovement}
+              onTouchEnd={clearLongPress}
+              onTouchCancel={clearLongPress}
+              onDragStart={(event) => event.preventDefault()}
+              onSelect={(event) => {
+                event.preventDefault();
+                window.getSelection?.()?.removeAllRanges();
+              }}
               onContextMenu={(event) => {
                 event.preventDefault();
                 openActions();
