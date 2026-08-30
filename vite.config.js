@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   plugins: [
@@ -71,9 +72,31 @@ export default defineConfig({
         ],
       },
 
-      devOptions: {
+devOptions: {
   enabled: false,
 },
     }),
+    {
+      name: "admin-manifest-isolation",
+      enforce: "post",
+      transformIndexHtml: {
+        order: "post",
+        handler(html, context) {
+          if (!context.filename?.endsWith("/admin/index.html")) return html;
+          return html.replace(
+            '<link rel="manifest" href="/manifest.webmanifest">',
+            ""
+          );
+        },
+      },
+    },
   ],
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        admin: fileURLToPath(new URL("./admin/index.html", import.meta.url)),
+      },
+    },
+  },
 });

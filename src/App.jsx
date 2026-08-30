@@ -4724,7 +4724,8 @@ alert(err.message || "Join failed - see console");
     );
   };
 
-  const isAdminPage = window.location.pathname === "/admin";
+  const isAdminPage =
+    window.location.pathname.replace(/\/+$/, "") === "/admin";
 
   if (isAdminPage) {
     return (

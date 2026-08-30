@@ -3,7 +3,8 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
 
-const isAdminRoute = window.location.pathname === "/admin";
+const isAdminRoute =
+  window.location.pathname.replace(/\/+$/, "") === "/admin";
 
 if (isAdminRoute) {
   document.documentElement.classList.add("private-room-admin-active");

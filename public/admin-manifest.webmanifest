@@ -4,7 +4,7 @@
   "short_name": "Room Admin",
   "description": "Private Room administration dashboard.",
   "start_url": "/admin",
-  "scope": "/",
+  "scope": "/admin",
   "display": "standalone",
   "orientation": "any",
   "theme_color": "#0f766e",
