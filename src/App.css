@@ -2052,6 +2052,287 @@ button {
   }
 }
 
+/* Premium in-room theme. Intentionally scoped so the login and admin UI stay unchanged. */
+.private-room-chat-page {
+  --room-ink: #e8f7f5;
+  --room-muted: #93b7b4;
+  --room-line: rgba(94, 234, 212, 0.13);
+  --room-panel: #08282b;
+  --room-panel-strong: #0a3235;
+  --room-accent: #20c7b0;
+}
+
+.private-room-chat-page .private-room-call-header {
+  background: linear-gradient(180deg, #06373b 0%, #052c30 100%) !important;
+  border-bottom: 1px solid var(--room-line) !important;
+  box-shadow: 0 10px 34px rgba(0, 10, 12, 0.34) !important;
+  color: var(--room-ink) !important;
+}
+
+.private-room-chat-page .private-room-support-button {
+  gap: 7px !important;
+  border: 1px solid rgba(45, 212, 191, 0.55) !important;
+  background: rgba(6, 48, 51, 0.88) !important;
+  color: #eafffb !important;
+  box-shadow: 0 8px 24px rgba(0, 14, 16, 0.22) !important;
+}
+
+.private-room-chat-page .private-room-message-area,
+.private-room-chat-page .str-chat,
+.private-room-chat-page .str-chat__channel,
+.private-room-chat-page .str-chat__main-panel,
+.private-room-chat-page .str-chat__window,
+.private-room-chat-page .str-chat__message-list,
+.private-room-chat-page .str-chat__list,
+.private-room-chat-page .str-chat__message-list-scroll {
+  background-color: transparent !important;
+  color: var(--room-ink) !important;
+}
+
+.private-room-chat-page .str-chat__date-separator-line {
+  background: rgba(148, 184, 180, 0.16) !important;
+}
+
+.private-room-chat-page .str-chat__date-separator-date,
+.private-room-chat-page .str-chat__date-separator > div:last-child {
+  border: 1px solid rgba(94, 234, 212, 0.10) !important;
+  border-radius: 999px !important;
+  background: rgba(6, 38, 41, 0.88) !important;
+  color: #b8d4d1 !important;
+  box-shadow: 0 5px 18px rgba(0, 8, 10, 0.18) !important;
+}
+
+.private-room-chat-page .private-room-system-message {
+  border-color: var(--room-line) !important;
+  background: rgba(7, 43, 46, 0.92) !important;
+  color: var(--room-muted) !important;
+  box-shadow: 0 5px 16px rgba(0, 8, 10, 0.22) !important;
+}
+
+.private-room-chat-page .private-room-message-bubble {
+  border: 1px solid rgba(148, 209, 202, 0.10) !important;
+  color: #effcf9 !important;
+  box-shadow: 0 5px 18px rgba(0, 9, 11, 0.26) !important;
+}
+
+.private-room-chat-page .private-room-message-bubble.is-other {
+  background: linear-gradient(145deg, #0a3538 0%, #082b2e 100%) !important;
+}
+
+.private-room-chat-page .private-room-message-bubble.is-own {
+  border-color: rgba(94, 234, 212, 0.16) !important;
+  background: linear-gradient(145deg, #0b5a55 0%, #094a48 100%) !important;
+}
+
+.private-room-chat-page .private-room-message-sender {
+  color: #54e2c8 !important;
+}
+
+.private-room-chat-page .private-room-message-quote {
+  border-left-color: #35d6bb !important;
+  background: rgba(1, 19, 21, 0.30) !important;
+  color: #b8d4d1 !important;
+}
+
+.private-room-chat-page .private-room-message-meta {
+  color: #90aaa8 !important;
+}
+
+.private-room-chat-page .private-room-message-bubble.is-own .private-room-message-meta span:last-child {
+  color: #64e7d1 !important;
+}
+
+.private-room-chat-page .private-room-message-composer {
+  border-top: 1px solid var(--room-line) !important;
+  background: rgba(4, 27, 30, 0.98) !important;
+  box-shadow: 0 -12px 32px rgba(0, 10, 12, 0.20) !important;
+}
+
+.private-room-chat-page .str-chat__message-input-inner {
+  border: 1px solid rgba(94, 234, 212, 0.17) !important;
+  background: #092e31 !important;
+  box-shadow: 0 8px 24px rgba(0, 8, 10, 0.26) !important;
+}
+
+.private-room-chat-page .str-chat__textarea,
+.private-room-chat-page .str-chat__textarea textarea,
+.private-room-chat-page .str-chat__textarea__textarea {
+  background: transparent !important;
+  color: #effcf9 !important;
+  caret-color: #42dfc5 !important;
+}
+
+.private-room-chat-page .str-chat__textarea textarea::placeholder,
+.private-room-chat-page .str-chat__textarea__textarea::placeholder {
+  color: #789b98 !important;
+  opacity: 1 !important;
+}
+
+.private-room-chat-page .str-chat__message-input svg,
+.private-room-chat-page .str-chat__message-input button {
+  color: #9bc0bc !important;
+}
+
+.private-room-chat-page .str-chat__send-button {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 999px !important;
+  background: linear-gradient(145deg, #2dd4bf, #0f9f91) !important;
+  color: #032321 !important;
+  box-shadow: 0 7px 18px rgba(13, 148, 136, 0.30) !important;
+}
+
+.private-room-chat-page .str-chat__quoted-message-preview,
+.private-room-chat-page .str-chat__edit-message-form-options {
+  border-color: var(--room-line) !important;
+  background: #08282b !important;
+  color: var(--room-ink) !important;
+}
+
+.private-room-chat-page .str-chat__typing-indicator,
+.private-room-chat-page .str-chat__typing-indicator__dots,
+.private-room-chat-page .str-chat__typing-indicator__text {
+  color: #76aaa4 !important;
+}
+
+.private-room-chat-page .private-room-live-reactions .str-chat__simple-reactions-list {
+  border-color: rgba(94, 234, 212, 0.18) !important;
+  background: rgba(5, 38, 41, 0.96) !important;
+  box-shadow: 0 6px 18px rgba(0, 8, 10, 0.30) !important;
+}
+
+.private-room-chat-page .private-room-live-reactions .str-chat__message-reaction-own {
+  background: rgba(45, 212, 191, 0.14) !important;
+  outline-color: rgba(45, 212, 191, 0.28) !important;
+}
+
+.private-room-chat-page .private-room-live-reactions .str-chat__simple-reactions-list-item--last-number {
+  color: #c2dfdc !important;
+}
+
+.private-room-message-actions-backdrop {
+  background: rgba(0, 12, 14, 0.56) !important;
+  -webkit-backdrop-filter: blur(9px) saturate(0.78) !important;
+  backdrop-filter: blur(9px) saturate(0.78) !important;
+}
+
+.private-room-message-actions-sheet {
+  filter: drop-shadow(0 24px 48px rgba(0, 5, 6, 0.52)) !important;
+}
+
+.private-room-reaction-picker {
+  grid-template-columns: repeat(6, 1fr) !important;
+  border-color: rgba(94, 234, 212, 0.16) !important;
+  background: rgba(8, 40, 43, 0.98) !important;
+}
+
+.private-room-reaction-picker button:active {
+  background: rgba(45, 212, 191, 0.14) !important;
+}
+
+.private-room-message-action-list {
+  border-color: rgba(94, 234, 212, 0.14) !important;
+  background: #08282b !important;
+  box-shadow: 0 18px 42px rgba(0, 5, 6, 0.42) !important;
+}
+
+.private-room-message-action-list button,
+.private-room-message-actions-cancel {
+  background: #08282b !important;
+  color: #e7f7f4 !important;
+}
+
+.private-room-message-action-list button + button {
+  border-top-color: rgba(148, 184, 180, 0.10) !important;
+}
+
+.private-room-message-action-list button span {
+  color: #4adeca !important;
+}
+
+.private-room-message-action-list button.is-destructive,
+.private-room-message-action-list button.is-destructive span {
+  color: #ff6b6b !important;
+}
+
+@media (max-width: 767px) {
+  .private-room-chat-page .private-room-call-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-rows: auto 42px !important;
+    gap: 5px 8px !important;
+    min-height: calc(111px + env(safe-area-inset-top)) !important;
+    padding:
+      calc(7px + env(safe-area-inset-top))
+      12px
+      7px !important;
+  }
+
+  .private-room-chat-page .private-room-header-user {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  .private-room-chat-page .private-room-support-button {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    min-width: 94px !important;
+    max-width: none !important;
+    height: 36px !important;
+    padding: 0 13px !important;
+    font-size: 12px !important;
+  }
+
+  .private-room-chat-page .private-room-header-actions {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    width: 100% !important;
+    gap: 0 !important;
+  }
+
+  .private-room-chat-page .private-room-header-actions > div {
+    flex-direction: row !important;
+    gap: 7px !important;
+  }
+
+  .private-room-chat-page .private-room-header-action {
+    width: 28px !important;
+    height: 28px !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .private-room-chat-page .private-room-header-action svg {
+    width: 17px !important;
+    height: 17px !important;
+    color: #d7efec !important;
+  }
+
+  .private-room-chat-page .private-room-header-action-exit svg,
+  .private-room-chat-page .private-room-header-action-exit + span {
+    color: #ff6868 !important;
+  }
+
+  .private-room-chat-page .private-room-header-actions > div > span {
+    color: #c4ddda !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    text-shadow: none !important;
+  }
+
+  .private-room-chat-page .private-room-message-composer {
+    background: rgba(4, 27, 30, 0.99) !important;
+  }
+
+  .private-room-chat-page .private-room-chat-shell .str-chat__message-input-inner {
+    min-height: 45px !important;
+    border-radius: 24px !important;
+  }
+}
+
 
 /* =========================================================
    VIDEO CALL UI - safe mobile/desktop overrides

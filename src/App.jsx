@@ -21,10 +21,16 @@ import "./App.css";
 import {
   Camera,
   CameraOff,
+  CircleDot,
+  Copy,
+  Headphones,
   Mic,
   MicOff,
+  Pin,
   Phone,
   PhoneOff,
+  Reply,
+  Trash2,
   Video,
   SwitchCamera,
 } from "lucide-react";
@@ -413,6 +419,7 @@ function CallHeader({
         title="Open room support"
         aria-label="Open room support"
       >
+        <Headphones size={15} aria-hidden="true" />
         Support
       </button>
 
@@ -441,6 +448,7 @@ function CallHeader({
           >
             <button
               type="button"
+              className={`private-room-header-action private-room-header-action-${action.label.toLowerCase()}`}
               onClick={action.onClick}
               title={action.title}
               aria-label={action.title}
@@ -4162,6 +4170,7 @@ alert(err.message || "Join failed - see console");
     if (message.type === "system") {
       return (
         <div
+          className="private-room-system-message"
           style={{
             margin: "12px auto",
             width: "fit-content",
@@ -4221,6 +4230,7 @@ alert(err.message || "Join failed - see console");
       { type: "haha", emoji: "😂", label: "Laugh" },
       { type: "wow", emoji: "😮", label: "Wow" },
       { type: "sad", emoji: "😢", label: "Sad" },
+      { type: "pray", emoji: "🙏", label: "Thank you" },
     ];
     const clearLongPress = () => {
       window.clearTimeout(longPressTimerRef.current);
@@ -4374,7 +4384,7 @@ alert(err.message || "Join failed - see console");
 
     const messageGestureProps = {
       ref: messageBubbleRef,
-      className: "private-room-message-bubble",
+      className: `private-room-message-bubble ${isMine ? "is-own" : "is-other"}`,
       onPointerDown: startLongPress,
       onPointerUp: clearLongPress,
       onPointerCancel: clearLongPress,
@@ -4483,6 +4493,7 @@ alert(err.message || "Join failed - see console");
           >
             {!isMine && beginsGroup && (
               <div
+                className="private-room-message-sender"
                 style={{
                   margin: "0 0 5px 9px",
                   color: "#07866f",
@@ -4524,6 +4535,7 @@ alert(err.message || "Join failed - see console");
             >
               {message.quoted_message && (
                 <div
+                  className="private-room-message-quote"
                   style={{
                     marginBottom: 7,
                     padding: "7px 9px",
@@ -4569,6 +4581,7 @@ alert(err.message || "Join failed - see console");
 
               {endsGroup && (
                 <div
+                  className="private-room-message-meta"
                   style={{
                     position: "absolute",
                     right: 8,
@@ -4640,12 +4653,12 @@ alert(err.message || "Join failed - see console");
 
               <div className="private-room-message-action-list">
                 <button type="button" onClick={quoteMessage}>
-                  <span>↩</span>
+                  <span><Reply size={19} /></span>
                   Reply
                 </button>
 
                 <button type="button" onClick={copySelectedMessage}>
-                  <span>▣</span>
+                  <span><Copy size={19} /></span>
                   Copy
                 </button>
 
@@ -4657,7 +4670,7 @@ alert(err.message || "Join failed - see console");
                       context?.handlePin?.(event);
                     }}
                   >
-                    <span>📌</span>
+                    <span><Pin size={19} /></span>
                     {message.pinned ? "Unpin" : "Pin message"}
                   </button>
                 )}
@@ -4670,7 +4683,7 @@ alert(err.message || "Join failed - see console");
                       context?.handleMarkUnread?.(event);
                     }}
                   >
-                    <span>●</span>
+                    <span><CircleDot size={19} /></span>
                     Mark as unread
                   </button>
                 )}
@@ -4681,7 +4694,7 @@ alert(err.message || "Join failed - see console");
                     className="is-destructive"
                     onClick={deleteSelectedMessage}
                   >
-                    <span>⌫</span>
+                    <span><Trash2 size={19} /></span>
                     Delete message
                   </button>
                 )}
@@ -5417,7 +5430,7 @@ alert(err.message || "Join failed - see console");
       className="private-room-chat-page"
       style={{
         minHeight: "100dvh",
-        background: "linear-gradient(135deg, #dcebe7 0%, #f4f0ea 100%)",
+        background: "linear-gradient(145deg, #061f22 0%, #0a3437 52%, #07191c 100%)",
         display: "flex",
         justifyContent: "center",
         alignItems: "stretch",
@@ -5433,8 +5446,8 @@ alert(err.message || "Join failed - see console");
           height: isMobile ? "100dvh" : "calc(100dvh - 32px)",
           margin: "0 auto",
           borderRadius: isMobile ? 0 : 24,
-          background: "#efeae2",
-          boxShadow: isMobile ? "none" : "0 22px 70px rgba(15, 76, 70, 0.18)",
+          background: "#061f22",
+          boxShadow: isMobile ? "none" : "0 28px 90px rgba(0, 12, 14, 0.48)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -5517,7 +5530,7 @@ alert(err.message || "Join failed - see console");
           }
         `}</style>
 
-        <Chat client={client} theme="messaging light">
+        <Chat client={client} theme="messaging dark">
           <Channel
             channel={channel}
             Attachment={CustomAttachment}
@@ -5532,7 +5545,7 @@ alert(err.message || "Join failed - see console");
                   display: "flex",
                   flexDirection: "column",
                   overflow: "hidden",
-                  background: "#efeae2",
+                  background: "#061f22",
                 }}
               >
                 <WebRTCCall
@@ -5551,13 +5564,14 @@ alert(err.message || "Join failed - see console");
                     minHeight: 0,
                     overflowY: "hidden",
                     padding: isMobile ? "12px 0 8px" : "18px 18px 12px",
-                    backgroundColor: "#f7faf9",
+                    backgroundColor: "#061f22",
                     backgroundImage: `
-                      radial-gradient(rgba(16,185,129,0.045) 1px, transparent 1px),
-                      radial-gradient(rgba(15,23,42,0.018) 1px, transparent 1px)
+                      radial-gradient(circle at 18% 12%, rgba(20,184,166,0.08), transparent 26%),
+                      radial-gradient(circle at 82% 78%, rgba(16,185,129,0.055), transparent 24%),
+                      radial-gradient(rgba(94,234,212,0.08) 0.7px, transparent 0.8px)
                     `,
-                    backgroundSize: "18px 18px, 32px 32px",
-                    backgroundPosition: "0 0, 8px 8px",
+                    backgroundSize: "auto, auto, 22px 22px",
+                    backgroundPosition: "0 0, 0 0, 0 0",
                   }}
                 >
                   <MessageList />
@@ -5569,9 +5583,9 @@ alert(err.message || "Join failed - see console");
                   style={{
                     flexShrink: 0,
                     padding: "6px 9px max(6px, env(safe-area-inset-bottom))",
-                    background: "rgba(248,250,252,0.96)",
+                    background: "rgba(4,27,30,0.98)",
                     backdropFilter: "blur(10px)",
-                    borderTop: "1px solid rgba(0,0,0,0.05)",
+                    borderTop: "1px solid rgba(94,234,212,0.10)",
                     zIndex: 90,
                   }}
                 >
