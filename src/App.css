@@ -1830,8 +1830,8 @@ button {
     overflow-x: hidden !important;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    overflow-anchor: auto;
-    scroll-behavior: smooth;
+    overflow-anchor: none;
+    scroll-behavior: auto !important;
     touch-action: pan-y;
   }
 
@@ -1854,7 +1854,7 @@ button {
       var(--private-room-composer-bottom, max(7px, env(safe-area-inset-bottom))) !important;
     background: #fff !important;
     z-index: 9000 !important;
-    transition: padding-bottom 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition: none !important;
   }
 
   .private-room-chat-shell .str-chat__message-input {

@@ -43,8 +43,7 @@ function OpenChatAtLatestMessage({ channelId }) {
 
   useEffect(() => {
     let cancelled = false;
-    const frameIds = [];
-    const timerIds = [];
+    let frameId = 0;
 
     const scrollToLatest = () => {
       if (cancelled) return;
@@ -70,25 +69,16 @@ function OpenChatAtLatestMessage({ channelId }) {
 
       if (cancelled) return;
 
-      frameIds.push(
-        window.requestAnimationFrame(() => {
-          scrollToLatest();
-          frameIds.push(window.requestAnimationFrame(scrollToLatest));
-        }),
-      );
-
-      // Let message media and Stream's list measurements settle before the
-      // final positioning pass, without keeping the user pinned afterward.
-      timerIds.push(window.setTimeout(scrollToLatest, 150));
-      timerIds.push(window.setTimeout(scrollToLatest, 500));
+      // Position the room once after the latest message set has rendered.
+      // Keyboard, focus and viewport changes must not trigger this again.
+      frameId = window.requestAnimationFrame(scrollToLatest);
     };
 
     openAtLatest();
 
     return () => {
       cancelled = true;
-      frameIds.forEach((frameId) => window.cancelAnimationFrame(frameId));
-      timerIds.forEach((timerId) => window.clearTimeout(timerId));
+      window.cancelAnimationFrame(frameId);
     };
   }, [channelId]);
 
@@ -2839,10 +2829,21 @@ const [supportLoading, setSupportLoading] = useState(false);
     const root = document.documentElement;
     const viewport = window.visualViewport;
     let animationFrame = 0;
+    let restoreFrame = 0;
 
     const syncChatViewport = () => {
       cancelAnimationFrame(animationFrame);
       animationFrame = requestAnimationFrame(() => {
+        const messageList = document.querySelector(
+          ".private-room-chat-shell .str-chat__list"
+        );
+        const previousScrollTop = messageList?.scrollTop ?? 0;
+        const distanceFromBottom = messageList
+          ? messageList.scrollHeight -
+            messageList.clientHeight -
+            messageList.scrollTop
+          : 0;
+        const wasAtBottom = distanceFromBottom <= 48;
         const visibleHeight = Math.round(viewport.height * 100) / 100;
         const visibleTop = Math.max(
           0,
@@ -2869,6 +2870,20 @@ const [supportLoading, setSupportLoading] = useState(false);
             ? "0px"
             : "max(7px, env(safe-area-inset-bottom))"
         );
+
+        cancelAnimationFrame(restoreFrame);
+        restoreFrame = requestAnimationFrame(() => {
+          const currentMessageList = document.querySelector(
+            ".private-room-chat-shell .str-chat__list"
+          );
+          if (!currentMessageList) return;
+
+          const nextScrollTop = wasAtBottom
+            ? currentMessageList.scrollHeight - currentMessageList.clientHeight
+            : previousScrollTop;
+
+          currentMessageList.scrollTop = Math.max(0, nextScrollTop);
+        });
       });
     };
 
@@ -2881,6 +2896,7 @@ const [supportLoading, setSupportLoading] = useState(false);
 
     return () => {
       cancelAnimationFrame(animationFrame);
+      cancelAnimationFrame(restoreFrame);
       viewport.removeEventListener("resize", syncChatViewport);
       viewport.removeEventListener("scroll", syncChatViewport);
       window.removeEventListener("orientationchange", syncChatViewport);
