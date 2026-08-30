@@ -1731,9 +1731,9 @@ button {
    ========================================================= */
 
 @media (max-width: 767px) {
-  html,
-  body,
-  #root {
+  html.private-room-chat-active,
+  html.private-room-chat-active body,
+  html.private-room-chat-active #root {
     width: 100%;
     height: 100%;
     max-height: 100%;
@@ -2758,5 +2758,106 @@ button {
   .private-room-media-viewer-stage {
     padding-left: 46px;
     padding-right: 46px;
+  }
+}
+
+/* Admin is a document-style screen: allow native iPhone scrolling in every orientation. */
+html.private-room-admin-active,
+html.private-room-admin-active body,
+html.private-room-admin-active #root {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 100% !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  position: static !important;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+html.private-room-admin-active body {
+  touch-action: pan-x pan-y;
+  background: #edf3f7;
+}
+
+html.private-room-admin-active .admin-page-shell {
+  position: relative !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 100vh !important;
+  min-height: 100svh !important;
+  max-height: none !important;
+  overflow: visible !important;
+  padding:
+    max(14px, env(safe-area-inset-top))
+    max(14px, env(safe-area-inset-right))
+    max(22px, env(safe-area-inset-bottom))
+    max(14px, env(safe-area-inset-left)) !important;
+  touch-action: pan-x pan-y;
+}
+
+html.private-room-admin-active .admin-dashboard {
+  min-width: 0;
+  overflow: visible !important;
+}
+
+html.private-room-admin-active .admin-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+}
+
+html.private-room-admin-active .admin-login-panel input,
+html.private-room-admin-active .admin-field,
+html.private-room-admin-active select,
+html.private-room-admin-active textarea {
+  font-size: 16px !important;
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  html.private-room-admin-active .admin-page-shell {
+    padding:
+      max(8px, env(safe-area-inset-top))
+      max(14px, env(safe-area-inset-right))
+      max(14px, env(safe-area-inset-bottom))
+      max(14px, env(safe-area-inset-left)) !important;
+  }
+
+  html.private-room-admin-active .admin-topbar {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 10px;
+  }
+
+  html.private-room-admin-active .admin-topbar h1 {
+    font-size: clamp(25px, 5.5vh, 34px);
+  }
+
+  html.private-room-admin-active .admin-topbar p {
+    margin-top: 3px;
+    font-size: 12px;
+  }
+
+  html.private-room-admin-active .admin-back-button {
+    width: auto;
+    min-width: 124px;
+    min-height: 40px;
+  }
+
+  html.private-room-admin-active .admin-login-panel {
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin-bottom: 10px;
+    padding: 10px;
+  }
+
+  html.private-room-admin-active .admin-stat-grid,
+  html.private-room-admin-active .admin-overview-grid {
+    margin-bottom: 10px;
   }
 }

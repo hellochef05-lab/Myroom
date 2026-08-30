@@ -2830,6 +2830,22 @@ const [supportLoading, setSupportLoading] = useState(false);
   const [supportReplyText, setSupportReplyText] = useState("");
 
   useEffect(() => {
+    document.documentElement.classList.toggle(
+      "private-room-chat-active",
+      Boolean(channel)
+    );
+    document.body.classList.toggle(
+      "private-room-chat-active",
+      Boolean(channel)
+    );
+
+    return () => {
+      document.documentElement.classList.remove("private-room-chat-active");
+      document.body.classList.remove("private-room-chat-active");
+    };
+  }, [channel]);
+
+  useEffect(() => {
     if (!channel || typeof window === "undefined" || !window.visualViewport) {
       return undefined;
     }

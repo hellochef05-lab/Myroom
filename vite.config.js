@@ -12,6 +12,7 @@ export default defineConfig({
       includeAssets: [
         "favicon.ico",
         "apple-touch-icon.png",
+        "admin-manifest.webmanifest",
         "pwa-192x192.png",
         "pwa-512x512.png",
       ],
