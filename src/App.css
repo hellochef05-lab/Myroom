@@ -3277,3 +3277,19 @@ html.private-room-admin-active textarea {
   color: #c43139 !important;
   stroke: #c43139 !important;
 }
+
+.private-room-chat-page .private-room-message-meta {
+  right: 7px !important;
+  bottom: 4px !important;
+  gap: 2px !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+}
+
+.private-room-chat-page .private-room-message-status {
+  display: inline-block;
+  min-width: 12px;
+  margin-left: -1px;
+  letter-spacing: -3px !important;
+  transform: translateX(-1px);
+}

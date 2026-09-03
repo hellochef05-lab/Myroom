@@ -4584,16 +4584,12 @@ alert(err.message || "Join failed - see console");
               {...messageGestureProps}
               style={{
                 width: "fit-content",
-                minWidth: 64,
+                minWidth: isMine ? 86 : 68,
                 maxWidth: "100%",
                 position: "relative",
                 padding: hasAttachments
-                  ? endsGroup
-                    ? "7px 7px 20px"
-                    : "7px"
-                  : endsGroup
-                    ? "8px 12px 19px"
-                    : "8px 12px",
+                  ? "7px 7px 22px"
+                  : "8px 12px 21px",
                 borderRadius: isMine ? sentRadius : receivedRadius,
                 background: isMine ? "#d9fdd3" : "#ffffff",
                 border: "1px solid rgba(15,23,42,0.06)",
@@ -4650,34 +4646,35 @@ alert(err.message || "Join failed - see console");
                 </div>
               )}
 
-              {endsGroup && (
-                <div
-                  className="private-room-message-meta"
-                  style={{
-                    position: "absolute",
-                    right: 8,
-                    bottom: 3,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 10,
-                    color: "#667781",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <span>{sentAt ? formatTime(sentAt) : ""}</span>
-                  {isMine && (
-                    <span
-                      style={{
-                        color: hasBeenSeen ? "#0ea5e9" : "#667781",
-                        fontWeight: 900,
-                      }}
-                    >
-                      {hasBeenSeen ? "✓✓" : "✓"}
-                    </span>
-                  )}
-                </div>
-              )}
+              <div
+                className="private-room-message-meta"
+                style={{
+                  position: "absolute",
+                  right: 7,
+                  bottom: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  gap: 2,
+                  fontSize: 10,
+                  lineHeight: 1,
+                  color: "#667781",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span>{sentAt ? formatTime(sentAt) : ""}</span>
+                {isMine && (
+                  <span
+                    className="private-room-message-status"
+                    style={{
+                      color: hasBeenSeen ? "#53bdeb" : "#667781",
+                      fontWeight: 900,
+                    }}
+                  >
+                    {hasBeenSeen ? "✓✓" : "✓"}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="private-room-live-reactions">
