@@ -1496,6 +1496,12 @@ app.get("/api/plans", (_req, res) => {
 app.get(
   "/api/payment-settings",
   (_req, res) => {
+    const db = readDB();
+    const savedSettings =
+      db.paymentSettings && typeof db.paymentSettings === "object"
+        ? db.paymentSettings
+        : {};
+
     res.json({
       upiId:
         process.env.UPI_ID ||
@@ -1504,6 +1510,49 @@ app.get(
       upiName:
         process.env.UPI_NAME ||
         "SayUp Subscription",
+
+      currencyCode:
+        String(savedSettings.currencyCode || "AED").trim() || "AED",
+
+      currencyName:
+        String(savedSettings.currencyName || "UAE Dirham").trim() ||
+        "UAE Dirham",
+    });
+  }
+);
+
+app.patch(
+  "/api/admin/payment-settings",
+  (req, res) => {
+    if (!checkAdminPin(req, res)) return;
+
+    const currencyCode = String(req.body?.currencyCode || "")
+      .trim()
+      .toUpperCase()
+      .slice(0, 3);
+    const currencyName = String(req.body?.currencyName || "")
+      .trim()
+      .slice(0, 60);
+
+    if (!/^[A-Z]{3}$/.test(currencyCode) || !currencyName) {
+      return res.status(400).json({
+        error: "Enter a valid 3-letter currency code and currency name",
+      });
+    }
+
+    const db = readDB();
+    db.paymentSettings = {
+      ...(db.paymentSettings || {}),
+      currencyCode,
+      currencyName,
+      updatedAt: new Date().toISOString(),
+    };
+    writeDB(db);
+
+    return res.json({
+      success: true,
+      currencyCode,
+      currencyName,
     });
   }
 );
@@ -1637,6 +1686,11 @@ app.post(
         planId: plan.id,
         planName: plan.name,
         amount: plan.price,
+        currencyCode:
+          String(db.paymentSettings?.currencyCode || "AED").trim() || "AED",
+        currencyName:
+          String(db.paymentSettings?.currencyName || "UAE Dirham").trim() ||
+          "UAE Dirham",
         days: plan.days,
         upiReference,
 

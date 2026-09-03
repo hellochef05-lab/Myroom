@@ -2033,6 +2033,10 @@ function AdminDashboard({ API_BASE, onBack }) {
   const [payments, setPayments] = useState([]);
   const [support, setSupport] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [currencySettings, setCurrencySettings] = useState({
+    currencyCode: "AED",
+    currencyName: "UAE Dirham",
+  });
   const [userDrafts, setUserDrafts] = useState({});
   const [planDrafts, setPlanDrafts] = useState({});
   const [replyDrafts, setReplyDrafts] = useState({});
@@ -2090,7 +2094,7 @@ function AdminDashboard({ API_BASE, onBack }) {
 
     setLoading(true);
     try {
-      const [dashboardData, usersData, devicesData, roomsData, paymentsData, supportData, plansData] =
+      const [dashboardData, usersData, devicesData, roomsData, paymentsData, supportData, plansData, paymentSettingsData] =
         await Promise.all([
           request("/api/admin/dashboard"),
           request("/api/admin/users"),
@@ -2099,6 +2103,7 @@ function AdminDashboard({ API_BASE, onBack }) {
           request("/api/admin/payments"),
           request("/api/admin/support"),
           fetch(`${API_BASE}/api/plans`).then((res) => res.json()),
+          fetch(`${API_BASE}/api/payment-settings`).then((res) => res.json()),
         ]);
 
       const nextUsers = Array.isArray(usersData) ? usersData : [];
@@ -2111,6 +2116,10 @@ function AdminDashboard({ API_BASE, onBack }) {
       setPayments(Array.isArray(paymentsData) ? paymentsData : []);
       setSupport(Array.isArray(supportData) ? supportData : []);
       setPlans(nextPlans);
+      setCurrencySettings({
+        currencyCode: paymentSettingsData.currencyCode || "AED",
+        currencyName: paymentSettingsData.currencyName || "UAE Dirham",
+      });
       setSelectedUserIds([]);
       setSelectedDeviceIds([]);
       setSelectedRoomIds([]);
@@ -2482,6 +2491,30 @@ function AdminDashboard({ API_BASE, onBack }) {
     }
   }
 
+  async function saveCurrencySettings() {
+    const currencyCode = currencySettings.currencyCode.trim().toUpperCase();
+    const currencyName = currencySettings.currencyName.trim();
+
+    if (!currencyCode || !currencyName) {
+      alert("Enter a 3-letter currency code and the currency name");
+      return;
+    }
+
+    try {
+      const result = await request("/api/admin/payment-settings", {
+        method: "PATCH",
+        body: JSON.stringify({ currencyCode, currencyName }),
+      });
+      setCurrencySettings({
+        currencyCode: result.currencyCode,
+        currencyName: result.currencyName,
+      });
+      alert("Currency updated everywhere");
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
   function openView(view) {
     setActiveView(view);
     window.setTimeout(() => {
@@ -2544,6 +2577,7 @@ function AdminDashboard({ API_BASE, onBack }) {
               <StatCard label="Rooms" value={dashboard.totalRooms} accent="#f59e0b" active={activeView === "rooms"} onClick={() => openView("rooms")} />
               <StatCard label="Devices" value={dashboard.totalDevices} accent="#14b8a6" active={activeView === "devices"} onClick={() => openView("devices")} />
               <StatCard label="Pending payments" value={dashboard.pendingPayments} accent="#8b5cf6" active={activeView === "payments"} onClick={() => openView("payments")} />
+              <StatCard label="Currency" value={currencySettings.currencyCode} accent="#b58a48" active={activeView === "currency"} onClick={() => openView("currency")} />
               <StatCard label="Open support" value={dashboard.openSupport} accent="#ec4899" active={activeView === "support"} onClick={() => openView("support")} />
               <StatCard label="Closed tickets" value={dashboard.closedSupport || 0} accent="#64748b" active={activeView === "closed_support"} onClick={() => openView("closed_support")} />
             </section>
@@ -2738,7 +2772,7 @@ function AdminDashboard({ API_BASE, onBack }) {
               )}
 
               {activeView === "payments" && (
-                <div className="admin-record-list">{pendingPayments.length ? pendingPayments.map((payment) => <article className="admin-user-card" key={payment.id}><div className="admin-user-card-top"><div><h3>{payment.username}</h3><p>{payment.contact}</p></div><span className="admin-status warning">Pending</span></div><div className="admin-meta-grid"><span>Plan: {payment.planName}</span><span>Amount: AED {payment.amount}</span><span>UPI ref: {payment.upiReference}</span><span>Submitted: {formatDateTime(payment.createdAt)}</span></div><div className="admin-actions"><button onClick={() => approvePayment(payment.id)}>Approve & generate key</button><button className="danger-button" onClick={() => rejectPayment(payment.id)}>Reject</button></div></article>) : <EmptyState>No pending payments.</EmptyState>}</div>
+                <div className="admin-record-list">{pendingPayments.length ? pendingPayments.map((payment) => <article className="admin-user-card" key={payment.id}><div className="admin-user-card-top"><div><h3>{payment.username}</h3><p>{payment.contact}</p></div><span className="admin-status warning">Pending</span></div><div className="admin-meta-grid"><span>Plan: {payment.planName}</span><span>Amount: {payment.currencyCode || currencySettings.currencyCode} {payment.amount}</span><span>UPI ref: {payment.upiReference}</span><span>Submitted: {formatDateTime(payment.createdAt)}</span></div><div className="admin-actions"><button onClick={() => approvePayment(payment.id)}>Approve & generate key</button><button className="danger-button" onClick={() => rejectPayment(payment.id)}>Reject</button></div></article>) : <EmptyState>No pending payments.</EmptyState>}</div>
               )}
 
               {["support", "closed_support"].includes(activeView) && (
@@ -2776,6 +2810,55 @@ function AdminDashboard({ API_BASE, onBack }) {
               {activeView === "plans" && (
                 <div className="admin-record-list">{plans.map((plan) => { const draft = planDrafts[plan.id] || {}; return <article className="admin-user-card" key={plan.id}><h3>{plan.name}</h3><div className="admin-edit-grid"><label>Name<input className={inputClass} value={draft.name || ""} onChange={(e) => setPlanDrafts((current) => ({ ...current, [plan.id]: { ...current[plan.id], name: e.target.value } }))} /></label><label>Price<input className={inputClass} type="number" value={draft.price ?? 0} onChange={(e) => setPlanDrafts((current) => ({ ...current, [plan.id]: { ...current[plan.id], price: e.target.value } }))} /></label><label>Days<input className={inputClass} type="number" value={draft.days ?? 30} onChange={(e) => setPlanDrafts((current) => ({ ...current, [plan.id]: { ...current[plan.id], days: e.target.value } }))} /></label></div><div className="admin-actions"><button onClick={() => savePlan(plan.id)}>Save plan</button></div></article>; })}</div>
               )}
+
+              {activeView === "currency" && (
+                <div className="admin-record-list">
+                  <article className="admin-user-card">
+                    <div className="admin-user-card-top">
+                      <div>
+                        <h3>Currency settings</h3>
+                        <p>Used for plans, subscription screens, and new payment requests.</p>
+                      </div>
+                      <span className="admin-status success">{currencySettings.currencyCode}</span>
+                    </div>
+                    <div className="admin-edit-grid">
+                      <label>
+                        Currency code
+                        <input
+                          className={inputClass}
+                          value={currencySettings.currencyCode}
+                          maxLength={3}
+                          placeholder="AED"
+                          onChange={(event) => setCurrencySettings((current) => ({
+                            ...current,
+                            currencyCode: event.target.value,
+                          }))}
+                        />
+                      </label>
+                      <label>
+                        Currency name
+                        <input
+                          className={inputClass}
+                          value={currencySettings.currencyName}
+                          maxLength={60}
+                          placeholder="UAE Dirham"
+                          onChange={(event) => setCurrencySettings((current) => ({
+                            ...current,
+                            currencyName: event.target.value,
+                          }))}
+                        />
+                      </label>
+                    </div>
+                    <div className="admin-meta-grid">
+                      <span>Preview: {currencySettings.currencyCode || "AED"} 99</span>
+                      <span>{currencySettings.currencyName || "Currency name"}</span>
+                    </div>
+                    <div className="admin-actions">
+                      <button type="button" onClick={saveCurrencySettings}>Save currency</button>
+                    </div>
+                  </article>
+                </div>
+              )}
             </section>
 
             <nav className="admin-quick-nav">
@@ -2786,6 +2869,7 @@ function AdminDashboard({ API_BASE, onBack }) {
               <button onClick={() => openView("support")}>Open Support</button>
               <button onClick={() => openView("closed_support")}>Closed Tickets</button>
               <button onClick={() => openView("plans")}>Plans</button>
+              <button onClick={() => openView("currency")}>Currency</button>
             </nav>
           </>
         ) : (
@@ -2960,6 +3044,8 @@ const [supportLoading, setSupportLoading] = useState(false);
   const [paymentSettings, setPaymentSettings] = useState({
   upiId: "9781723138@sbi",
   upiName: "SayUp Subscription",
+  currencyCode: "AED",
+  currencyName: "UAE Dirham",
 });
 
   const [adminPin, setAdminPin] = useState("");
@@ -3031,6 +3117,8 @@ useEffect(() => {
         setPaymentSettings({
           upiId: data.upiId || "9781723138@sbi",
           upiName: data.upiName || "SayUp Subscription",
+          currencyCode: data.currencyCode || "AED",
+          currencyName: data.currencyName || "UAE Dirham",
         });
       }
     })
@@ -3039,6 +3127,8 @@ useEffect(() => {
         setPaymentSettings({
           upiId: "9781723138@sbi",
           upiName: "SayUp Subscription",
+          currencyCode: "AED",
+          currencyName: "UAE Dirham",
         });
       }
     });
@@ -5261,7 +5351,7 @@ alert(err.message || "Join failed - see console");
                             </div>
                           </div>
                           <div style={{ textAlign: "right" }}>
-                            <div style={{ color: "#0f766e", fontWeight: 950, marginBottom: 7 }}>AED {plan.price}</div>
+                            <div style={{ color: "#0f766e", fontWeight: 950, marginBottom: 7 }}>{paymentSettings.currencyCode} {plan.price}</div>
                             <button
                               type="button"
                               onClick={() => {
@@ -5358,7 +5448,7 @@ alert(err.message || "Join failed - see console");
               </h2>
 
               <p style={{ margin: "0 0 16px", color: "#64748b" }}>
-                AED {subscribePlan?.price} · {subscribePlan?.days} days · 1 Access Key · 2 devices only
+                {paymentSettings.currencyCode} {subscribePlan?.price} · {subscribePlan?.days} days · 1 Access Key · 2 devices only
               </p>
               <div
   style={{
@@ -5375,7 +5465,11 @@ alert(err.message || "Join failed - see console");
   </div>
 
   <div style={{ fontSize: 14, marginBottom: 4 }}>
-    <strong>Amount:</strong> AED {subscribePlan?.price}
+    <strong>Amount:</strong> {paymentSettings.currencyCode} {subscribePlan?.price}
+  </div>
+
+  <div style={{ fontSize: 14, marginBottom: 4 }}>
+    <strong>Currency:</strong> {paymentSettings.currencyName} ({paymentSettings.currencyCode})
   </div>
 
   <div style={{ fontSize: 14, marginBottom: 4 }}>
@@ -5387,7 +5481,7 @@ alert(err.message || "Join failed - see console");
   </div>
 
   <a
-    href={`upi://pay?pa=${encodeURIComponent(paymentSettings.upiId)}&pn=${encodeURIComponent(paymentSettings.upiName)}&am=${encodeURIComponent(subscribePlan?.price || "")}&cu=INR`}
+    href={`upi://pay?pa=${encodeURIComponent(paymentSettings.upiId)}&pn=${encodeURIComponent(paymentSettings.upiName)}&am=${encodeURIComponent(subscribePlan?.price || "")}&cu=${encodeURIComponent(paymentSettings.currencyCode || "AED")}`}
     style={{
       display: "inline-block",
       textDecoration: "none",
