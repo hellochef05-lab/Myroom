@@ -1,8 +1,8 @@
 {
   "id": "/admin",
-  "name": "Private Room Admin",
-  "short_name": "Room Admin",
-  "description": "Private Room administration dashboard.",
+  "name": "SayUp Admin",
+  "short_name": "SayUp Admin",
+  "description": "SayUp administration dashboard.",
   "start_url": "/admin",
   "scope": "/admin",
   "display": "standalone",

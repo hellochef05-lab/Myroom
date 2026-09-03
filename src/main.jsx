@@ -9,7 +9,7 @@ const isAdminRoute =
 if (isAdminRoute) {
   document.documentElement.classList.add("private-room-admin-active");
   document.body.classList.add("private-room-admin-active");
-  document.title = "Private Room Admin";
+  document.title = "SayUp Admin";
 
   const manifestLink =
     document.querySelector('link[rel="manifest"]') ||
@@ -20,7 +20,7 @@ if (isAdminRoute) {
   const appTitle = document.querySelector(
     'meta[name="apple-mobile-web-app-title"]'
   );
-  appTitle?.setAttribute("content", "Room Admin");
+  appTitle?.setAttribute("content", "SayUp Admin");
 
   const themeColor = document.querySelector('meta[name="theme-color"]');
   themeColor?.setAttribute("content", "#0f766e");

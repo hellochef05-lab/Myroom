@@ -19,10 +19,10 @@ export default defineConfig({
       ],
 
       manifest: {
-        name: "Private Room",
-        short_name: "Private Room",
+        name: "SayUp",
+        short_name: "SayUp",
         description:
-          "Private chat rooms, calls, media sharing and support.",
+          "SayUp conversations, calls, media sharing and support.",
 
         theme_color: "#075e54",
         background_color: "#efeae2",
@@ -66,7 +66,7 @@ export default defineConfig({
             handler: "NetworkOnly",
 
             options: {
-              cacheName: "private-room-api",
+              cacheName: "sayup-api",
             },
           },
         ],

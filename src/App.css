@@ -1,5 +1,5 @@
 /* =========================================================
-   MYROOM ADMIN Ã¢â‚¬â€ DESKTOP DESIGN, RESPONSIVE ON MOBILE
+   SAYUP ADMIN — DESKTOP DESIGN, RESPONSIVE ON MOBILE
    Paste this block at the VERY END of src/App.css.
    ========================================================= */
 
@@ -685,7 +685,7 @@
     flex-basis: 120px;
   }
 }/* =========================================================
-   MYROOM ADMIN â€” DESKTOP DESIGN, RESPONSIVE ON MOBILE
+   SAYUP ADMIN — DESKTOP DESIGN, RESPONSIVE ON MOBILE
    Paste this block at the VERY END of src/App.css.
    ========================================================= */
 
@@ -1505,6 +1505,140 @@ button {
     min-height: 48px !important;
   }
 }
+
+/* SayUp — pearl, emerald and warm-gold product skin. */
+.sayup-landing-page {
+  --sayup-emerald: #073f34;
+  --sayup-emerald-bright: #0b6b57;
+  --sayup-gold: #b58a48;
+  --sayup-ink: #17372f;
+  --sayup-muted: #746f66;
+  background:
+    radial-gradient(circle at 8% 86%, rgba(181, 138, 72, 0.14), transparent 28%),
+    radial-gradient(circle at 92% 12%, rgba(11, 107, 87, 0.08), transparent 30%),
+    linear-gradient(145deg, #fffdf9 0%, #f5eee4 52%, #fbf7f0 100%) !important;
+  color: var(--sayup-ink) !important;
+}
+
+.sayup-landing-stage::before,
+.sayup-landing-stage::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  border-radius: 999px;
+  filter: blur(1px);
+}
+
+.sayup-landing-stage::before {
+  width: 240px;
+  height: 240px;
+  left: -120px;
+  bottom: -90px;
+  background: radial-gradient(circle, rgba(181, 138, 72, 0.13), transparent 68%);
+}
+
+.sayup-landing-stage::after {
+  width: 220px;
+  height: 220px;
+  right: -110px;
+  top: -90px;
+  background: radial-gradient(circle, rgba(7, 63, 52, 0.09), transparent 68%);
+}
+
+.sayup-landing-layout {
+  position: relative;
+  z-index: 1;
+}
+
+.sayup-landing-hero,
+.sayup-landing-hero h1,
+.sayup-landing-brand {
+  color: var(--sayup-ink) !important;
+}
+
+.sayup-landing-brand {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 24px !important;
+  letter-spacing: -0.4px;
+}
+
+.sayup-brand-mark,
+.sayup-card-mark {
+  background: transparent !important;
+  color: var(--sayup-emerald) !important;
+  border: 1px solid rgba(7, 63, 52, 0.28);
+  box-shadow: 0 12px 28px rgba(62, 45, 25, 0.10) !important;
+}
+
+.sayup-landing-hero h1 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500 !important;
+  letter-spacing: -2.5px !important;
+}
+
+.sayup-auth-card {
+  background: rgba(255, 253, 249, 0.88) !important;
+  border: 1px solid rgba(124, 97, 60, 0.18) !important;
+  box-shadow: 0 32px 90px rgba(69, 50, 28, 0.16) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.08);
+  backdrop-filter: blur(24px) saturate(1.08);
+}
+
+.sayup-secure-pill {
+  border-color: rgba(7, 63, 52, 0.16) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  color: var(--sayup-ink) !important;
+}
+
+.sayup-auth-tabs {
+  background: #eee7dc !important;
+  border: 1px solid rgba(124, 97, 60, 0.10);
+}
+
+.sayup-auth-tabs button {
+  color: #675f55 !important;
+}
+
+.sayup-auth-tabs button[style*="background: rgb(255, 255, 255)"],
+.sayup-auth-tabs button[style*="background: #ffffff"] {
+  color: var(--sayup-ink) !important;
+}
+
+.sayup-auth-input {
+  min-height: 49px;
+  border-color: rgba(126, 100, 65, 0.26) !important;
+  border-radius: 13px !important;
+  background: rgba(255, 255, 255, 0.76) !important;
+  color: var(--sayup-ink) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  font-size: 16px !important;
+}
+
+.sayup-auth-input:focus {
+  outline: none !important;
+  border-color: var(--sayup-emerald-bright) !important;
+  box-shadow: 0 0 0 3px rgba(11, 107, 87, 0.10) !important;
+}
+
+.sayup-enter-button {
+  background: linear-gradient(145deg, #0a5546, #063d33) !important;
+  color: #f5dfb3 !important;
+  box-shadow: 0 16px 34px rgba(7, 63, 52, 0.22) !important;
+}
+
+.sayup-support-button,
+.sayup-manage-button {
+  border-color: rgba(7, 63, 52, 0.16) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  color: var(--sayup-emerald) !important;
+}
+
+.sayup-support-button:active,
+.sayup-manage-button:active,
+.sayup-enter-button:active {
+  transform: scale(0.985);
+}
+
 
 .private-room-chat-page {
   width: 100%;
@@ -2859,5 +2993,241 @@ html.private-room-admin-active textarea {
   html.private-room-admin-active .admin-stat-grid,
   html.private-room-admin-active .admin-overview-grid {
     margin-bottom: 10px;
+  }
+}
+
+/* Final SayUp room cascade (kept last so Stream's theme cannot repaint it dark). */
+@media (max-width: 767px) {
+  .sayup-landing-stage {
+    align-items: flex-start !important;
+    padding: max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom)) !important;
+  }
+
+  .sayup-landing-layout {
+    gap: 12px !important;
+    max-width: 520px !important;
+    margin: 0 auto;
+  }
+
+  .sayup-landing-hero {
+    padding: 4px 4px 0 !important;
+    text-align: center;
+  }
+
+  .sayup-landing-brand {
+    margin: 0 auto 8px !important;
+  }
+
+  .sayup-landing-hero h1 {
+    font-size: clamp(35px, 10vw, 47px) !important;
+    line-height: 0.98 !important;
+  }
+
+  .sayup-auth-card {
+    border-radius: 24px !important;
+    padding: 17px !important;
+  }
+
+  .sayup-auth-top {
+    margin-bottom: 12px !important;
+  }
+}
+
+.private-room-chat-page {
+  --room-ink: #18372f;
+  --room-muted: #7c776e;
+  --room-line: rgba(101, 77, 46, 0.13);
+  --room-panel: #faf7f1;
+  --room-panel-strong: #ffffff;
+  --room-accent: #0b6b57;
+}
+
+.private-room-chat-page .private-room-call-header {
+  background: linear-gradient(180deg, rgba(255, 253, 249, 0.98), rgba(247, 241, 232, 0.98)) !important;
+  border-bottom-color: var(--room-line) !important;
+  box-shadow: 0 8px 28px rgba(68, 49, 29, 0.10) !important;
+  color: var(--room-ink) !important;
+}
+
+.private-room-chat-page .private-room-header-user > button {
+  background: rgba(7, 63, 52, 0.07) !important;
+  color: #073f34 !important;
+}
+
+.private-room-chat-page .private-room-header-user > div:nth-child(2) {
+  background: linear-gradient(145deg, #0b5f4e, #073f34) !important;
+  color: #f5dfb3 !important;
+}
+
+.private-room-chat-page .private-room-support-button,
+.private-room-chat-page .private-room-header-action {
+  border-color: rgba(7, 63, 52, 0.16) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: #073f34 !important;
+  box-shadow: 0 7px 18px rgba(68, 49, 29, 0.08) !important;
+}
+
+.private-room-chat-page .private-room-header-action svg {
+  color: #0b5a49 !important;
+}
+
+.private-room-chat-page .private-room-header-action-clear svg,
+.private-room-chat-page .private-room-header-action-clear + span {
+  color: #a66e20 !important;
+}
+
+.private-room-chat-page .private-room-header-action-exit,
+.private-room-chat-page .private-room-header-action-exit svg,
+.private-room-chat-page .private-room-header-action-exit + span {
+  color: #c43139 !important;
+}
+
+.private-room-chat-page .private-room-header-actions > div > span {
+  color: #4d5f59 !important;
+  text-shadow: none !important;
+}
+
+.private-room-chat-page .private-room-message-area,
+.private-room-chat-page .str-chat,
+.private-room-chat-page .str-chat__channel,
+.private-room-chat-page .str-chat__main-panel,
+.private-room-chat-page .str-chat__window,
+.private-room-chat-page .str-chat__message-list,
+.private-room-chat-page .str-chat__list,
+.private-room-chat-page .str-chat__message-list-scroll {
+  background-color: transparent !important;
+  color: var(--room-ink) !important;
+}
+
+.private-room-chat-page .str-chat__date-separator-line {
+  background: rgba(111, 91, 65, 0.13) !important;
+}
+
+.private-room-chat-page .str-chat__date-separator-date,
+.private-room-chat-page .str-chat__date-separator > div:last-child {
+  border-color: rgba(113, 86, 52, 0.10) !important;
+  background: rgba(231, 222, 210, 0.92) !important;
+  color: #6f685e !important;
+  box-shadow: 0 4px 14px rgba(68, 49, 29, 0.07) !important;
+}
+
+.private-room-chat-page .private-room-system-message {
+  border-color: var(--room-line) !important;
+  background: rgba(240, 233, 223, 0.94) !important;
+  color: var(--room-muted) !important;
+}
+
+.private-room-chat-page .private-room-message-bubble {
+  border-color: rgba(114, 90, 59, 0.10) !important;
+  background: linear-gradient(145deg, #ffffff, #fbf8f2) !important;
+  color: #263b35 !important;
+  box-shadow: 0 5px 16px rgba(68, 49, 29, 0.10) !important;
+}
+
+.private-room-chat-page .private-room-message-bubble.is-own {
+  border-color: rgba(5, 67, 54, 0.20) !important;
+  background: linear-gradient(145deg, #0a5747, #073f34) !important;
+  color: #ffffff !important;
+}
+
+.private-room-chat-page .private-room-message-sender {
+  color: #a66e20 !important;
+}
+
+.private-room-chat-page .private-room-message-quote {
+  border-left-color: #b58a48 !important;
+  background: rgba(181, 138, 72, 0.10) !important;
+  color: inherit !important;
+}
+
+.private-room-chat-page .private-room-message-bubble.is-own .private-room-message-quote {
+  background: rgba(255, 255, 255, 0.10) !important;
+}
+
+.private-room-chat-page .private-room-message-meta {
+  color: #8a857c !important;
+}
+
+.private-room-chat-page .private-room-message-bubble.is-own .private-room-message-meta,
+.private-room-chat-page .private-room-message-bubble.is-own .private-room-message-meta span:last-child {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.private-room-chat-page .private-room-message-composer {
+  border-top-color: var(--room-line) !important;
+  background: rgba(250, 247, 241, 0.99) !important;
+  box-shadow: 0 -10px 26px rgba(68, 49, 29, 0.08) !important;
+}
+
+.private-room-chat-page .str-chat__message-input-inner {
+  border-color: rgba(107, 84, 54, 0.20) !important;
+  background: rgba(255, 255, 255, 0.97) !important;
+  box-shadow: 0 7px 20px rgba(68, 49, 29, 0.09) !important;
+}
+
+.private-room-chat-page .str-chat__textarea,
+.private-room-chat-page .str-chat__textarea textarea,
+.private-room-chat-page .str-chat__textarea__textarea {
+  color: #263b35 !important;
+  caret-color: #0b6b57 !important;
+}
+
+.private-room-chat-page .str-chat__textarea textarea::placeholder,
+.private-room-chat-page .str-chat__textarea__textarea::placeholder {
+  color: #9b968e !important;
+}
+
+.private-room-chat-page .str-chat__message-input svg,
+.private-room-chat-page .str-chat__message-input button {
+  color: #536d65 !important;
+}
+
+.private-room-chat-page .str-chat__send-button {
+  background: linear-gradient(145deg, #0b6b57, #073f34) !important;
+  color: #ffffff !important;
+  box-shadow: 0 7px 18px rgba(7, 63, 52, 0.20) !important;
+}
+
+.private-room-chat-page .str-chat__quoted-message-preview,
+.private-room-chat-page .str-chat__edit-message-form-options {
+  border-color: var(--room-line) !important;
+  background: #f5efe6 !important;
+  color: var(--room-ink) !important;
+}
+
+.private-room-chat-page .private-room-live-reactions .str-chat__simple-reactions-list,
+.private-room-reaction-picker,
+.private-room-message-action-list,
+.private-room-message-action-list button,
+.private-room-message-actions-cancel {
+  border-color: rgba(116, 89, 55, 0.14) !important;
+  background: #fffdf9 !important;
+  color: #263b35 !important;
+}
+
+.private-room-message-actions-backdrop {
+  background: rgba(35, 29, 21, 0.30) !important;
+}
+
+.private-room-message-action-list button span {
+  color: #0b6b57 !important;
+}
+
+@media (max-width: 767px) {
+  .private-room-chat-page .private-room-header-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .private-room-chat-page .private-room-header-actions > div {
+    gap: 4px !important;
+  }
+
+  .private-room-chat-page .private-room-header-actions > div > span {
+    color: #4d5f59 !important;
+    font-size: 10px !important;
+  }
+
+  .private-room-chat-page .private-room-message-composer {
+    background: rgba(250, 247, 241, 0.99) !important;
   }
 }

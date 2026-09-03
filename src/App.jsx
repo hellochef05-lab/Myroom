@@ -24,6 +24,8 @@ import {
   CircleDot,
   Copy,
   Headphones,
+  KeyRound,
+  LockKeyhole,
   Mic,
   MicOff,
   Pin,
@@ -236,6 +238,8 @@ function CallHeader({
   joinedRoom,
   onExitRoom,
   onOpenSupport,
+  onClearChat,
+  clearingChat,
 }) {
   const compact = typeof window !== "undefined" && window.innerWidth <= 768;
   const veryCompact = typeof window !== "undefined" && window.innerWidth <= 430;
@@ -257,6 +261,14 @@ function CallHeader({
       disabled: !joinedRoom || inCall,
       background: "rgba(255,255,255,0.22)",
       icon: <Video size={compact ? 17 : 21} color="#fff" />,
+    },
+    {
+      label: "Clear",
+      title: "Clear chat for everyone",
+      onClick: onClearChat,
+      disabled: !joinedRoom || clearingChat,
+      background: "rgba(181,138,72,0.14)",
+      icon: <Trash2 size={compact ? 17 : 21} color="#fff" />,
     },
     {
       label: "Exit",
@@ -991,6 +1003,8 @@ function WebRTCCall({
   onExitRoom,
   onOpenSupport,
   onCallStateChange,
+  onClearChat,
+  clearingChat,
 }) {
   const socketRef = useRef(null);
   const pcRef = useRef(null);
@@ -1913,6 +1927,8 @@ function WebRTCCall({
         joinedRoom={joinedRoom}
         onExitRoom={onExitRoom}
         onOpenSupport={onOpenSupport}
+        onClearChat={onClearChat}
+        clearingChat={clearingChat}
       />
 
       <FullScreenCallOverlay
@@ -2491,7 +2507,7 @@ function AdminDashboard({ API_BASE, onBack }) {
       <main className="admin-dashboard">
         <header className="admin-topbar">
           <div>
-            <p className="admin-eyebrow">PRIVATE ROOM CONTROL CENTER</p>
+            <p className="admin-eyebrow">SAYUP CONTROL CENTER</p>
             <h1>Admin Dashboard</h1>
             <p>Click any number to open its data and make changes.</p>
           </div>
@@ -2828,6 +2844,7 @@ useEffect(() => {
   const [supportTickets, setSupportTickets] = useState([]);
 const [supportLoading, setSupportLoading] = useState(false);
   const [supportReplyText, setSupportReplyText] = useState("");
+  const [clearingChat, setClearingChat] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle(
@@ -2941,7 +2958,7 @@ const [supportLoading, setSupportLoading] = useState(false);
   const [paymentRequestStatus, setPaymentRequestStatus] = useState(null);
   const [paymentSettings, setPaymentSettings] = useState({
   upiId: "9781723138@sbi",
-  upiName: "Private Room Subscription",
+  upiName: "SayUp Subscription",
 });
 
   const [adminPin, setAdminPin] = useState("");
@@ -3012,7 +3029,7 @@ useEffect(() => {
       if (!cancelled) {
         setPaymentSettings({
           upiId: data.upiId || "9781723138@sbi",
-          upiName: data.upiName || "Private Room Subscription",
+          upiName: data.upiName || "SayUp Subscription",
         });
       }
     })
@@ -3020,7 +3037,7 @@ useEffect(() => {
       if (!cancelled) {
         setPaymentSettings({
           upiId: "9781723138@sbi",
-          upiName: "Private Room Subscription",
+          upiName: "SayUp Subscription",
         });
       }
     });
@@ -3894,7 +3911,7 @@ async function adminUpdateTicketStatus(requestId, status) {
   }
 }
 
-async function joinRoom() {
+  async function joinRoom() {
   if (!name || !accessKey || !room) {
     alert("Enter your name, Access Key and room number");
     return;
@@ -3979,6 +3996,43 @@ if (!tokenRes.ok) {
 alert(err.message || "Join failed - see console");
     } finally {
       setJoining(false);
+    }
+  }
+
+  async function clearChatForEveryone() {
+    if (!channel || !client?.userID || clearingChat) return;
+
+    const confirmed = window.confirm(
+      `Clear every message in Room ${room} for all users? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setClearingChat(true);
+
+    try {
+      const response = await apiFetch(`${API_BASE}/api/rooms/clear`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessKey,
+          roomCode: room,
+          roomId: channel.id,
+          userId: client.userID,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || data.details || "Failed to clear chat");
+      }
+
+      channel.state.clearMessages();
+      alert("Chat cleared for everyone in this room.");
+    } catch (error) {
+      console.error("Clear chat error:", error);
+      alert(error.message || "Failed to clear chat");
+    } finally {
+      setClearingChat(false);
     }
   }
 
@@ -4744,6 +4798,7 @@ alert(err.message || "Join failed - see console");
 
     return (
       <div
+        className="sayup-landing-page"
         style={{
           position: "fixed",
           inset: 0,
@@ -4761,6 +4816,7 @@ alert(err.message || "Join failed - see console");
         }}
       >
         <div
+          className="sayup-landing-stage"
           style={{
             position: "relative",
             minHeight: "100dvh",
@@ -4772,6 +4828,7 @@ alert(err.message || "Join failed - see console");
           }}
         >
           <div
+            className="sayup-landing-layout"
             style={{
               width: "100%",
               maxWidth: 1320,
@@ -4782,12 +4839,14 @@ alert(err.message || "Join failed - see console");
             }}
           >
             <div
+              className="sayup-landing-hero"
               style={{
                 color: "#071f2a",
                 padding: isMobile ? "8px 2px 0" : isCompact ? "10px 4px" : "16px 8px",
               }}
             >
               <div
+                className="sayup-landing-brand"
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -4799,6 +4858,7 @@ alert(err.message || "Join failed - see console");
                 }}
               >
                 <span
+                  className="sayup-brand-mark"
                   style={{
                     width: 38,
                     height: 38,
@@ -4811,9 +4871,9 @@ alert(err.message || "Join failed - see console");
                     boxShadow: "0 12px 30px rgba(15,23,42,0.16)",
                   }}
                 >
-                  💬
+                  <LockKeyhole size={22} strokeWidth={1.8} />
                 </span>
-                Private Room
+                SayUp
               </div>
 
               <div
@@ -4826,7 +4886,7 @@ alert(err.message || "Join failed - see console");
                   marginBottom: 18,
                 }}
               >
-                Private communication, refined
+                Conversations, kept close
               </div>
 
               <h1
@@ -4839,9 +4899,9 @@ alert(err.message || "Join failed - see console");
                   color: "#061821",
                 }}
               >
-                Less noise.
+                Stay close.
                 <br />
-                <span style={{ color: "#ff6b4a" }}>More together.</span>
+                <span style={{ color: "#b58a48" }}>Say it.</span>
               </h1>
 
               <p
@@ -4854,7 +4914,7 @@ alert(err.message || "Join failed - see console");
                   fontWeight: 600,
                 }}
               >
-                Private chat, calls, media sharing, support, and access-key login in one simple room.
+                A calm place for conversations, calls, shared moments, and support.
               </p>
 
               {!isMobile && (
@@ -4957,6 +5017,7 @@ alert(err.message || "Join failed - see console");
             </div>
 
             <div
+              className="sayup-auth-card"
               style={{
                 width: "100%",
                 maxWidth: isMobile ? "100%" : 500,
@@ -4969,8 +5030,9 @@ alert(err.message || "Join failed - see console");
                 boxSizing: "border-box",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: isMobile ? 16 : 22 }}>
+              <div className="sayup-auth-top" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: isMobile ? 16 : 22 }}>
                 <div
+                  className="sayup-card-mark"
                   style={{
                     width: 54,
                     height: 54,
@@ -4984,9 +5046,10 @@ alert(err.message || "Join failed - see console");
                     boxShadow: "0 12px 30px rgba(15,23,42,0.16)",
                   }}
                 >
-                  💬
+                  <KeyRound size={27} strokeWidth={1.7} />
                 </div>
                 <div
+                  className="sayup-secure-pill"
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -4999,11 +5062,12 @@ alert(err.message || "Join failed - see console");
                     fontSize: 13,
                   }}
                 >
-                  <span style={{ color: "#10b981" }}>●</span> Private workspace
+                  <span style={{ color: "#0b6b57" }}>●</span> Securely connected
                 </div>
               </div>
 
               <div
+                className="sayup-auth-tabs"
                 style={{
                   textTransform: "uppercase",
                   letterSpacing: 3,
@@ -5083,6 +5147,7 @@ alert(err.message || "Join failed - see console");
                     Display name
                   </label>
                   <input
+                    className="sayup-auth-input"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Any name"
@@ -5093,6 +5158,7 @@ alert(err.message || "Join failed - see console");
                     Access Key
                   </label>
                   <input
+                    className="sayup-auth-input"
                     value={accessKey}
                     onChange={(e) => setAccessKey(e.target.value)}
                     placeholder="Enter Access Key"
@@ -5103,6 +5169,7 @@ alert(err.message || "Join failed - see console");
                     Room code
                   </label>
                   <input
+                    className="sayup-auth-input"
                     value={room}
                     onChange={(e) => setRoom(e.target.value)}
                     placeholder="Enter room code"
@@ -5110,6 +5177,7 @@ alert(err.message || "Join failed - see console");
                   />
 
                   <button
+                    className="sayup-enter-button"
                     onClick={joinRoom}
                     disabled={joining}
                     style={{
@@ -5125,10 +5193,11 @@ alert(err.message || "Join failed - see console");
                       boxShadow: "0 16px 34px rgba(15,23,42,0.20)",
                     }}
                   >
-                    {joining ? "Entering..." : "Continue to Private Room →"}
+                    {joining ? "Entering..." : "Enter SayUp →"}
                   </button>
 
                   <button
+                    className="sayup-support-button"
                     type="button"
                     onClick={() => openPublicSupport("I want to buy a subscription")}
                     style={{
@@ -5143,10 +5212,11 @@ alert(err.message || "Join failed - see console");
                       cursor: "pointer",
                     }}
                   >
-                    Need Help? Contact Support
+                    Support
                   </button>
 
                   <button
+                    className="sayup-manage-button"
                     type="button"
                     onClick={manageRoomsByAccessKey}
                     style={{
@@ -5447,7 +5517,7 @@ alert(err.message || "Join failed - see console");
       className="private-room-chat-page"
       style={{
         minHeight: "100dvh",
-        background: "linear-gradient(145deg, #061f22 0%, #0a3437 52%, #07191c 100%)",
+        background: "linear-gradient(145deg, #eee5d8 0%, #f8f4ed 52%, #e9dfd0 100%)",
         display: "flex",
         justifyContent: "center",
         alignItems: "stretch",
@@ -5463,8 +5533,8 @@ alert(err.message || "Join failed - see console");
           height: isMobile ? "100dvh" : "calc(100dvh - 32px)",
           margin: "0 auto",
           borderRadius: isMobile ? 0 : 24,
-          background: "#061f22",
-          boxShadow: isMobile ? "none" : "0 28px 90px rgba(0, 12, 14, 0.48)",
+          background: "#f7f2ea",
+          boxShadow: isMobile ? "none" : "0 28px 90px rgba(65, 48, 31, 0.22)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -5547,7 +5617,7 @@ alert(err.message || "Join failed - see console");
           }
         `}</style>
 
-        <Chat client={client} theme="messaging dark">
+        <Chat client={client} theme="messaging light">
           <Channel
             channel={channel}
             Attachment={CustomAttachment}
@@ -5562,7 +5632,7 @@ alert(err.message || "Join failed - see console");
                   display: "flex",
                   flexDirection: "column",
                   overflow: "hidden",
-                  background: "#061f22",
+                  background: "#f7f2ea",
                 }}
               >
                 <WebRTCCall
@@ -5572,6 +5642,8 @@ alert(err.message || "Join failed - see console");
                   onExitRoom={exitRoom}
                   onOpenSupport={openRoomSupport}
                   onCallStateChange={setCallUiState}
+                  onClearChat={clearChatForEveryone}
+                  clearingChat={clearingChat}
                 />
 
                 <div
@@ -5581,11 +5653,11 @@ alert(err.message || "Join failed - see console");
                     minHeight: 0,
                     overflowY: "hidden",
                     padding: isMobile ? "12px 0 8px" : "18px 18px 12px",
-                    backgroundColor: "#061f22",
+                    backgroundColor: "#f7f2ea",
                     backgroundImage: `
-                      radial-gradient(circle at 18% 12%, rgba(20,184,166,0.08), transparent 26%),
-                      radial-gradient(circle at 82% 78%, rgba(16,185,129,0.055), transparent 24%),
-                      radial-gradient(rgba(94,234,212,0.08) 0.7px, transparent 0.8px)
+                      radial-gradient(circle at 18% 12%, rgba(181,138,72,0.065), transparent 26%),
+                      radial-gradient(circle at 82% 78%, rgba(11,107,87,0.05), transparent 24%),
+                      radial-gradient(rgba(90,73,50,0.055) 0.7px, transparent 0.8px)
                     `,
                     backgroundSize: "auto, auto, 22px 22px",
                     backgroundPosition: "0 0, 0 0, 0 0",
@@ -5600,9 +5672,9 @@ alert(err.message || "Join failed - see console");
                   style={{
                     flexShrink: 0,
                     padding: "6px 9px max(6px, env(safe-area-inset-bottom))",
-                    background: "rgba(4,27,30,0.98)",
+                    background: "rgba(250,247,241,0.98)",
                     backdropFilter: "blur(10px)",
-                    borderTop: "1px solid rgba(94,234,212,0.10)",
+                    borderTop: "1px solid rgba(91,70,43,0.10)",
                     zIndex: 90,
                   }}
                 >

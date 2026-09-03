@@ -690,7 +690,7 @@ app.get("/api/health", (_req, res) => {
 
 /*
 |--------------------------------------------------------------------------
-| STREAM TOKEN AND PRIVATE ROOM CREATION
+| STREAM TOKEN AND SAYUP ROOM CREATION
 |--------------------------------------------------------------------------
 */
 
@@ -854,6 +854,86 @@ app.post("/api/token", async (req, res) => {
 
     return res.status(500).json({
       error: "Failed to create token",
+      details: error.message,
+    });
+  }
+});
+
+app.post("/api/rooms/clear", async (req, res) => {
+  try {
+    const {
+      accessKey = "",
+      roomCode = "",
+      roomId = "",
+      userId = "",
+    } = req.body || {};
+
+    if (!accessKey || !roomCode || !userId) {
+      return res.status(400).json({
+        error: "Access Key, room and user are required",
+      });
+    }
+
+    const db = readDB();
+    const auth = getActiveUserByAccessKey(db, accessKey);
+
+    if (auth.error) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    const canonicalAccessKey = String(auth.user.accessKey);
+    const safeUserId = safeId(userId);
+    const expectedUserPrefix = `key_${safeId(canonicalAccessKey)}_user_`;
+
+    if (!safeUserId.startsWith(expectedUserPrefix)) {
+      return res.status(403).json({
+        error: "Invalid user identity for this Access Key",
+      });
+    }
+
+    const expectedRoomId =
+      `key_${safeId(canonicalAccessKey)}` +
+      `_room_${safeId(roomCode)}`;
+
+    if (roomId && safeId(roomId) !== expectedRoomId) {
+      return res.status(403).json({
+        error: "This room does not belong to your Access Key",
+      });
+    }
+
+    const savedRoom = db.rooms.find(
+      (item) =>
+        item.id === expectedRoomId &&
+        sameValue(item.accessKey, canonicalAccessKey)
+    );
+
+    if (!savedRoom) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    const roomChannel = serverClient.channel("messaging", expectedRoomId);
+    await roomChannel.truncate({
+      hard_delete: true,
+      skip_push: true,
+      user_id: safeUserId,
+    });
+
+    const clearedAt = new Date().toISOString();
+    savedRoom.updatedAt = clearedAt;
+    savedRoom.clearedAt = clearedAt;
+    savedRoom.clearedBy = safeUserId;
+    await writeDB(db);
+
+    return res.json({
+      success: true,
+      roomId: expectedRoomId,
+      clearedAt,
+      message: "Chat cleared for everyone in this room",
+    });
+  } catch (error) {
+    console.error("Clear room chat error:", error);
+    return res.status(500).json({
+      error: "Failed to clear chat",
       details: error.message,
     });
   }
@@ -1423,7 +1503,7 @@ app.get(
 
       upiName:
         process.env.UPI_NAME ||
-        "Private Room Subscription",
+        "SayUp Subscription",
     });
   }
 );
@@ -4019,7 +4099,7 @@ app.get("/api/admin/maintenance/backup", (req, res) => {
   if (!checkAdminPin(req, res)) return;
 
   const db = readDB();
-  const filename = `myroom-backup-${getTodayDate()}.json`;
+  const filename = `sayup-backup-${getTodayDate()}.json`;
 
   res.setHeader("Content-Type", "application/json");
   res.setHeader(
@@ -4072,7 +4152,7 @@ app.get("/api/admin/maintenance/export/:type", (req, res) => {
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename=\"myroom-${type}-${getTodayDate()}.csv\"`
+    `attachment; filename=\"sayup-${type}-${getTodayDate()}.csv\"`
   );
   return res.send(csv);
 });
@@ -4113,9 +4193,9 @@ app.post("/api/admin/system/reset", async (req, res) => {
     if (!checkAdminDeleteKey(req, res)) return;
 
     const confirmation = String(req.body?.confirmation || "").trim();
-    if (confirmation !== "RESET MYROOM") {
+    if (confirmation !== "RESET SAYUP") {
       return res.status(400).json({
-        error: 'Type "RESET MYROOM" to confirm',
+        error: 'Type "RESET SAYUP" to confirm',
       });
     }
 
