@@ -3054,7 +3054,7 @@ html.private-room-admin-active textarea {
   color: #073f34 !important;
 }
 
-.private-room-chat-page .private-room-header-user > div:nth-child(2) {
+.private-room-chat-page .private-room-header-avatar {
   background: linear-gradient(145deg, #0b5f4e, #073f34) !important;
   color: #f5dfb3 !important;
 }

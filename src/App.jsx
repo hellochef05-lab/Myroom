@@ -341,6 +341,7 @@ function CallHeader({
 
         {!veryCompact && (
           <div
+            className="private-room-header-avatar"
             style={{
               position: "relative",
               width: compact ? 42 : 58,
