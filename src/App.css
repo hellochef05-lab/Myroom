@@ -3231,3 +3231,49 @@ html.private-room-admin-active textarea {
     background: rgba(250, 247, 241, 0.99) !important;
   }
 }
+
+/* Contrast guard: explicit state selectors beat the retired dark-room rules. */
+.private-room-chat-page .private-room-message-bubble.is-other {
+  border-color: rgba(114, 90, 59, 0.12) !important;
+  background: #ffffff !important;
+  color: #172f29 !important;
+}
+
+.private-room-chat-page .private-room-message-bubble.is-other .private-room-message-text {
+  color: #172f29 !important;
+  -webkit-text-fill-color: #172f29 !important;
+}
+
+.private-room-chat-page .private-room-message-bubble.is-own {
+  border-color: rgba(5, 67, 54, 0.20) !important;
+  background: #075246 !important;
+  color: #ffffff !important;
+}
+
+.private-room-chat-page .private-room-message-bubble.is-own .private-room-message-text {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.private-room-chat-page .private-room-header-action {
+  opacity: 1 !important;
+}
+
+.private-room-chat-page .private-room-header-action:disabled {
+  opacity: 0.62 !important;
+}
+
+.private-room-chat-page .private-room-header-action svg {
+  color: #0b5a49 !important;
+  stroke: #0b5a49 !important;
+}
+
+.private-room-chat-page .private-room-header-action-clear svg {
+  color: #a66e20 !important;
+  stroke: #a66e20 !important;
+}
+
+.private-room-chat-page .private-room-header-action-exit svg {
+  color: #c43139 !important;
+  stroke: #c43139 !important;
+}

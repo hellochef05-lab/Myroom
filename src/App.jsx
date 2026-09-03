@@ -4633,6 +4633,7 @@ alert(err.message || "Join failed - see console");
 
               {message.text && (
                 <div
+                  className="private-room-message-text"
                   style={{
                     fontSize: isMobile ? 14 : 15,
                     lineHeight: 1.4,
