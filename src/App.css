@@ -2125,7 +2125,9 @@ button {
 }
 
 .private-room-message-action-list {
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: min(430px, calc(100dvh - 92px));
   border: 1px solid rgba(15, 23, 42, 0.07);
   border-radius: 18px;
   background: #fff;
@@ -3292,4 +3294,129 @@ html.private-room-admin-active textarea {
   margin-left: -1px;
   letter-spacing: -3px !important;
   transform: translateX(-1px);
+}
+/* SayUp 2.0 room hub */
+.sayup-v2-open-button {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 999px;
+  background: rgba(255,255,255,.14);
+  color: #fff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sayup-hub-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(4, 21, 18, .42);
+  backdrop-filter: blur(5px);
+}
+
+.sayup-hub {
+  width: min(460px, 100%);
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #f8f5ef;
+  color: #173b34;
+  box-shadow: -18px 0 60px rgba(0,0,0,.22);
+  animation: sayupHubIn .24s cubic-bezier(.2,.9,.25,1);
+}
+
+@keyframes sayupHubIn { from { transform: translateX(100%); } }
+
+.sayup-hub-header {
+  padding: max(18px, env(safe-area-inset-top)) 18px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg,#064c42,#087b68);
+  color: white;
+}
+.sayup-hub-header span { font-size: 11px; font-weight: 800; opacity: .8; letter-spacing: .08em; text-transform: uppercase; }
+.sayup-hub-header h2 { margin: 2px 0 0; font: 800 27px/1.1 Georgia,serif; }
+.sayup-hub-header button { border: 0; color: white; background: rgba(255,255,255,.13); width: 40px; height: 40px; border-radius: 50%; font-size: 27px; }
+.sayup-hub-tabs { display: grid; grid-template-columns: repeat(6,1fr); background: #fff; border-bottom: 1px solid #e5e0d8; }
+.sayup-hub-tabs button { min-width: 0; padding: 9px 2px 8px; border: 0; background: transparent; color: #71817c; display: grid; gap: 2px; justify-items: center; font-size: 10px; }
+.sayup-hub-tabs b { font-size: 19px; line-height: 1; }
+.sayup-hub-tabs button.is-active { color: #087464; background: #eaf6f1; box-shadow: inset 0 -3px #b58a48; }
+.sayup-hub-content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 20px 15px max(28px,env(safe-area-inset-bottom)); }
+.sayup-hub-content h3 { margin: 0 0 13px; font-size: 21px; color: #173b34; }
+.sayup-hub-content h3 em { font-style: normal; font-size: 12px; background: #dceee8; padding: 3px 7px; border-radius: 99px; }
+.sayup-hub-search,.sayup-status-compose input { width: 100%; box-sizing: border-box; min-height: 47px; border: 1px solid #d9d4cb; border-radius: 15px; padding: 0 14px; font-size: 16px; outline: none; background: white; color: #173b34; }
+.sayup-hub-search:focus,.sayup-status-compose input:focus { border-color: #0a8875; box-shadow: 0 0 0 3px rgba(10,136,117,.12); }
+.sayup-hub-list { margin-top: 14px; display: grid; gap: 8px; }
+.sayup-hub-message-row,.sayup-hub-member { width: 100%; box-sizing: border-box; min-width: 0; border: 1px solid #e4ded5; border-radius: 15px; background: white; padding: 10px; color: inherit; display: flex; align-items: center; gap: 10px; text-align: left; }
+.sayup-hub-message-row time { margin-left: auto; align-self: flex-start; flex: 0 0 auto; color: #8b9692; font-size: 9px; }
+.sayup-hub-row-avatar { width: 37px; height: 37px; flex: 0 0 37px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(145deg,#0ca984,#06705f); color: white; font-weight: 900; }
+.sayup-hub-row-copy,.sayup-hub-member>span:last-child { min-width: 0; display: grid; gap: 3px; }
+.sayup-hub-row-copy strong,.sayup-hub-member strong { font-size: 13px; }
+.sayup-hub-row-copy small,.sayup-hub-member small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #697772; font-size: 12px; }
+.sayup-hub-empty { padding: 26px 14px; border: 1px dashed #cfc8bd; border-radius: 16px; color: #76817d; text-align: center; grid-column: 1/-1; }
+.sayup-hub-help { color: #6a7773; font-size: 13px; line-height: 1.45; margin: -5px 0 12px; }
+.sayup-hub-private { padding: 11px 13px; border-radius: 13px; color: #416058; background: #e8f5f0; font-size: 12px; line-height: 1.45; }
+.sayup-hub-media-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 5px; }
+.sayup-hub-media-grid button { aspect-ratio: 1; min-width: 0; overflow: hidden; border: 0; border-radius: 10px; background: #dfe8e4; color: #24554b; }
+.sayup-hub-media-grid img { width: 100%; height: 100%; object-fit: cover; display: block; -webkit-touch-callout: none; user-select: none; }
+.sayup-status-compose { display: grid; grid-template-columns: 1fr auto; gap: 7px; }
+.sayup-status-compose button,.sayup-hub-primary { border: 0; border-radius: 14px; background: #087464; color: white; font-weight: 800; padding: 0 17px; }
+.sayup-hub-primary { width: 100%; min-height: 47px; margin-top: 15px; }
+.sayup-setting-group { border: 1px solid #e4ded5; border-radius: 17px; overflow: hidden; background: white; }
+.sayup-setting-group label { min-height: 60px; padding: 10px 13px; border-bottom: 1px solid #eee9e1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sayup-setting-group label:last-child { border-bottom: 0; }
+.sayup-setting-group label span { display: grid; gap: 3px; }
+.sayup-setting-group label small { color: #73807c; }
+.sayup-setting-group input { width: 21px; height: 21px; accent-color: #087464; }
+.sayup-hub-feature-cards { display: grid; gap: 8px; margin-top: 14px; }
+.sayup-hub-feature-cards div { padding: 13px; border: 1px solid #e4ded5; background: white; border-radius: 14px; display: grid; gap: 4px; }
+.sayup-hub-feature-cards span { color: #6c7975; font-size: 12px; line-height: 1.45; }
+.sayup-offline-banner { flex: 0 0 auto; padding: 7px 12px; background: #fff2c8; color: #624d0b; text-align: center; font-size: 11px; font-weight: 800; border-bottom: 1px solid #efd98d; }
+.sayup-message-highlight .private-room-message-bubble { animation: sayupHighlight 1.6s ease; }
+@keyframes sayupHighlight { 30% { box-shadow: 0 0 0 5px rgba(181,138,72,.42); } }
+
+html[data-sayup-theme="dark"] .private-room-chat-shell,
+html[data-sayup-theme="dark"] .private-room-message-area { background-color: #111d1b !important; background-image: none !important; }
+html[data-sayup-theme="dark"] .private-room-message-composer { background: #182724 !important; border-color: #2b3d39 !important; }
+html[data-sayup-theme="dark"] .sayup-hub { background: #11201d; color: #e8f4f0; }
+html[data-sayup-theme="dark"] .sayup-hub-content h3 { color: #e8f4f0; }
+html[data-sayup-theme="dark"] .sayup-hub-message-row,
+html[data-sayup-theme="dark"] .sayup-hub-member,
+html[data-sayup-theme="dark"] .sayup-setting-group,
+html[data-sayup-theme="dark"] .sayup-hub-feature-cards div { background: #1b2c28; border-color: #31443f; color: #e8f4f0; }
+html[data-sayup-wallpaper="soft"] .private-room-message-area { background-image: radial-gradient(circle at 15% 20%,rgba(203,170,114,.16),transparent 25%),radial-gradient(circle at 80% 75%,rgba(14,131,108,.15),transparent 24%) !important; }
+.private-room-message-text { font-size: calc(1em * var(--sayup-chat-scale,1)) !important; }
+.private-room-media-tile img,.private-room-media-viewer-content { -webkit-touch-callout: none; user-select: none; }
+
+@media (max-width: 560px) {
+  .private-room-chat-page .sayup-v2-open-button {
+    position: absolute;
+    top: calc(7px + env(safe-area-inset-top));
+    right: 112px;
+    width: 36px;
+    height: 36px;
+    z-index: 2;
+  }
+  .sayup-hub { width: 100%; }
+  .sayup-hub-tabs span { display: none; }
+  .sayup-hub-tabs button { padding: 10px 2px; }
+}
+
+@media (min-width: 561px) and (max-width: 767px) {
+  .private-room-chat-page .sayup-v2-open-button {
+    position: absolute;
+    top: calc(7px + env(safe-area-inset-top));
+    right: 116px;
+    width: 36px;
+    height: 36px;
+    z-index: 2;
+  }
 }

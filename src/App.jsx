@@ -17,6 +17,7 @@ import {
 import { createPortal } from "react-dom";
 import "stream-chat-react/dist/css/v2/index.css";
 import "./App.css";
+import SayUpV2Hub from "./SayUpV2Hub";
 
 import {
   Camera,
@@ -28,6 +29,7 @@ import {
   LockKeyhole,
   Mic,
   MicOff,
+  MoreHorizontal,
   Pin,
   Phone,
   PhoneOff,
@@ -240,6 +242,7 @@ function CallHeader({
   onOpenSupport,
   onClearChat,
   clearingChat,
+  onOpenV2,
 }) {
   const compact = typeof window !== "undefined" && window.innerWidth <= 768;
   const veryCompact = typeof window !== "undefined" && window.innerWidth <= 430;
@@ -434,6 +437,16 @@ function CallHeader({
       >
         <Headphones size={15} aria-hidden="true" />
         Support
+      </button>
+
+      <button
+        type="button"
+        className="sayup-v2-open-button"
+        onClick={onOpenV2}
+        title="Open SayUp 2.0 tools"
+        aria-label="Open SayUp 2.0 tools"
+      >
+        <MoreHorizontal size={19} aria-hidden="true" />
       </button>
 
       <div
@@ -1006,6 +1019,7 @@ function WebRTCCall({
   onCallStateChange,
   onClearChat,
   clearingChat,
+  onOpenV2,
 }) {
   const socketRef = useRef(null);
   const pcRef = useRef(null);
@@ -1930,6 +1944,7 @@ function WebRTCCall({
         onOpenSupport={onOpenSupport}
         onClearChat={onClearChat}
         clearingChat={clearingChat}
+        onOpenV2={onOpenV2}
       />
 
       <FullScreenCallOverlay
@@ -2930,6 +2945,79 @@ useEffect(() => {
 const [supportLoading, setSupportLoading] = useState(false);
   const [supportReplyText, setSupportReplyText] = useState("");
   const [clearingChat, setClearingChat] = useState(false);
+  const [v2Open, setV2Open] = useState(false);
+  const [bookmarkedIds, setBookmarkedIds] = useState([]);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+
+  useEffect(() => {
+    const online = () => setIsOnline(true);
+    const offline = () => setIsOnline(false);
+    window.addEventListener("online", online);
+    window.addEventListener("offline", offline);
+    return () => {
+      window.removeEventListener("online", online);
+      window.removeEventListener("offline", offline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!channel) return undefined;
+    const onMessage = (event) => {
+      if (event.message?.user?.id === client?.userID) return;
+      const unread = Math.max(1, Number(channel.countUnread?.() || 1));
+      navigator.setAppBadge?.(unread).catch?.(() => {});
+      if (document.hidden && window.Notification?.permission === "granted") {
+        new window.Notification(event.message?.user?.name || `Room ${room}`, {
+          body: event.message?.text || "Sent a private attachment",
+          icon: "/pwa-192x192.png",
+          tag: channel.cid,
+        });
+      }
+    };
+    const clearBadge = () => {
+      if (!document.hidden) navigator.clearAppBadge?.().catch?.(() => {});
+    };
+    channel.on("message.new", onMessage);
+    document.addEventListener("visibilitychange", clearBadge);
+    return () => {
+      channel.off("message.new", onMessage);
+      document.removeEventListener("visibilitychange", clearBadge);
+    };
+  }, [channel, client?.userID, room]);
+
+  useEffect(() => {
+    if (!channel?.cid) {
+      setBookmarkedIds([]);
+      return;
+    }
+    try {
+      const saved = JSON.parse(localStorage.getItem(`sayup_bookmarks_${channel.cid}`));
+      setBookmarkedIds(Array.isArray(saved) ? saved : []);
+    } catch {
+      setBookmarkedIds([]);
+    }
+  }, [channel?.cid]);
+
+  const toggleBookmark = (messageId) => {
+    setBookmarkedIds((current) => {
+      const next = current.includes(messageId)
+        ? current.filter((id) => id !== messageId)
+        : [...current, messageId];
+      if (channel?.cid) localStorage.setItem(`sayup_bookmarks_${channel.cid}`, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const jumpToMessage = (messageId) => {
+    setV2Open(false);
+    requestAnimationFrame(() => {
+      const safeId = window.CSS?.escape ? window.CSS.escape(messageId) : messageId.replace(/["\\]/g, "\\$&");
+      const element = document.querySelector(`[data-message-id="${safeId}"]`);
+      element?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      element?.classList?.add("sayup-message-highlight");
+      window.setTimeout(() => element?.classList?.remove("sayup-message-highlight"), 1700);
+    });
+  };
 
   useEffect(() => {
     document.documentElement.classList.toggle(
@@ -3110,7 +3198,7 @@ useEffect(() => {
 useEffect(() => {
   let cancelled = false;
 
-  apiFetch(`${API_BASE}/api/payment-settings`)
+  const refreshPaymentSettings = () => apiFetch(`${API_BASE}/api/payment-settings`)
     .then((res) => res.json())
     .then((data) => {
       if (!cancelled) {
@@ -3133,15 +3221,24 @@ useEffect(() => {
       }
     });
 
+  refreshPaymentSettings();
+  const refreshId = window.setInterval(refreshPaymentSettings, 10000);
+  const refreshWhenVisible = () => {
+    if (!document.hidden) refreshPaymentSettings();
+  };
+  document.addEventListener("visibilitychange", refreshWhenVisible);
+
   return () => {
     cancelled = true;
+    window.clearInterval(refreshId);
+    document.removeEventListener("visibilitychange", refreshWhenVisible);
   };
 }, []);
 
 useEffect(() => {
   let cancelled = false;
 
-  apiFetch(`${API_BASE}/api/plans`)
+  const refreshPlans = () => apiFetch(`${API_BASE}/api/plans`)
       .then((res) => res.json())
       .then((data) => {
         if (!cancelled) {
@@ -3164,8 +3261,17 @@ useEffect(() => {
         if (!cancelled) setPlans([]);
       });
 
+    refreshPlans();
+    const refreshId = window.setInterval(refreshPlans, 10000);
+    const refreshWhenVisible = () => {
+      if (!document.hidden) refreshPlans();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
     return () => {
       cancelled = true;
+      window.clearInterval(refreshId);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, []);
 
@@ -4273,15 +4379,16 @@ alert(err.message || "Join failed - see console");
                 key={`${media.url}-${mediaIndex}`}
                 className="private-room-media-tile"
                 onClick={() => openMediaPreview(source, mediaIndex)}
+                onContextMenu={(event) => event.preventDefault()}
                 aria-label={`Open ${media.type} ${mediaIndex + 1} of ${visualItems.length}`}
               >
                 {media.type === "video" ? (
                   <>
-                    <video src={media.url} preload="metadata" muted playsInline />
+                    <video src={media.url} preload="metadata" muted playsInline disablePictureInPicture controlsList="nodownload" />
                     <span className="private-room-media-play">▶</span>
                   </>
                 ) : (
-                  <img src={media.url} alt={media.title || "Shared image"} />
+                  <img src={media.url} alt={media.title || "Shared image"} draggable="false" />
                 )}
                 {visualItems.length > 1 && (
                   <span className="private-room-media-count">{mediaIndex + 1}/{visualItems.length}</span>
@@ -4309,6 +4416,7 @@ alert(err.message || "Join failed - see console");
     const longPressTimerRef = useRef(0);
     const longPressTriggeredRef = useRef(false);
     const longPressStartRef = useRef(null);
+    const swipeStartRef = useRef(null);
 
     useEffect(() => {
       if (!actionsOpen) return undefined;
@@ -4403,7 +4511,7 @@ alert(err.message || "Join failed - see console");
       clearLongPress();
       const bubbleRect = messageBubbleRef.current?.getBoundingClientRect();
       const menuWidth = Math.min(300, window.innerWidth - 24);
-      const estimatedMenuHeight = 315;
+      const estimatedMenuHeight = 490;
       const preferredLeft = isMine
         ? (bubbleRect?.right || window.innerWidth - 12) - menuWidth
         : bubbleRect?.left || 12;
@@ -4449,6 +4557,7 @@ alert(err.message || "Join failed - see console");
     const startTouchLongPress = (event) => {
       const touch = event.touches?.[0];
       if (!touch) return;
+      swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
       clearLongPress();
       longPressTriggeredRef.current = false;
       longPressStartRef.current = {
@@ -4465,6 +4574,21 @@ alert(err.message || "Join failed - see console");
       if (!start || start.pointerId !== "touch" || !touch) return;
       const moved = Math.hypot(touch.clientX - start.x, touch.clientY - start.y);
       if (moved > 14) clearLongPress();
+    };
+
+    const finishTouchGesture = (event) => {
+      const start = swipeStartRef.current;
+      const touch = event.changedTouches?.[0];
+      clearLongPress();
+      swipeStartRef.current = null;
+      if (!start || !touch || longPressTriggeredRef.current) return;
+      const horizontal = touch.clientX - start.x;
+      const vertical = Math.abs(touch.clientY - start.y);
+      const replyDistance = isMine ? -58 : 58;
+      if ((isMine ? horizontal <= replyDistance : horizontal >= replyDistance) && vertical < 48) {
+        quoteMessage();
+        window.navigator.vibrate?.(10);
+      }
     };
 
     const quoteMessage = () => {
@@ -4525,6 +4649,43 @@ alert(err.message || "Join failed - see console");
       setActionsOpen(false);
     };
 
+    const editSelectedMessage = async () => {
+      setActionsOpen(false);
+      const nextText = window.prompt("Edit message", message.text || "");
+      if (nextText === null || nextText.trim() === (message.text || "").trim()) return;
+      if (!nextText.trim() && !message.attachments?.length) return;
+      try {
+        await client?.updateMessage({ id: message.id, text: nextText.trim() });
+      } catch (error) {
+        console.error("Could not edit message", error);
+        alert("This message could not be edited.");
+      }
+    };
+
+    const forwardSelectedMessage = async () => {
+      setActionsOpen(false);
+      const destination = window.prompt("Forward to room number");
+      if (!destination?.trim() || !client) return;
+      try {
+        const destinationId = createPrivateRoomId(accessKey, destination.trim());
+        const destinationChannel = client.channel("messaging", destinationId, {
+          name: `Room ${destination.trim()}`,
+          accessKey,
+          roomCode: destination.trim(),
+        });
+        await destinationChannel.watch();
+        await destinationChannel.sendMessage({
+          text: message.text || "Forwarded attachment",
+          attachments: message.attachments || [],
+          sayup_forwarded: true,
+        });
+        alert(`Forwarded to Room ${destination.trim()}`);
+      } catch (error) {
+        console.error("Could not forward message", error);
+        alert("This message could not be forwarded to that room.");
+      }
+    };
+
     const receivedRadius =
       groupStyle === "single"
         ? "7px 18px 18px 18px"
@@ -4552,7 +4713,7 @@ alert(err.message || "Join failed - see console");
       onPointerMove: trackLongPressMovement,
       onTouchStart: startTouchLongPress,
       onTouchMove: trackTouchLongPressMovement,
-      onTouchEnd: clearLongPress,
+      onTouchEnd: finishTouchGesture,
       onTouchCancel: clearLongPress,
       onDragStart: (event) => event.preventDefault(),
       onSelect: (event) => {
@@ -4576,6 +4737,7 @@ alert(err.message || "Join failed - see console");
     return (
       <>
       <div
+        data-message-id={message.id}
         style={{
           display: "flex",
           justifyContent: isMine ? "flex-end" : "flex-start",
@@ -4820,6 +4982,23 @@ alert(err.message || "Join failed - see console");
                   <span><Copy size={19} /></span>
                   Copy
                 </button>
+
+                <button type="button" onClick={() => { toggleBookmark(message.id); setActionsOpen(false); }}>
+                  <span>★</span>
+                  {bookmarkedIds.includes(message.id) ? "Remove from saved" : "Save message"}
+                </button>
+
+                <button type="button" onClick={forwardSelectedMessage}>
+                  <span>➜</span>
+                  Forward
+                </button>
+
+                {isMine && canUseAction("edit") && (
+                  <button type="button" onClick={editSelectedMessage}>
+                    <span>✎</span>
+                    Edit message
+                  </button>
+                )}
 
                 {canUseAction("pin") && (
                   <button
@@ -5737,7 +5916,14 @@ alert(err.message || "Join failed - see console");
                   onCallStateChange={setCallUiState}
                   onClearChat={clearChatForEveryone}
                   clearingChat={clearingChat}
+                  onOpenV2={() => setV2Open(true)}
                 />
+
+                {!isOnline && (
+                  <div className="sayup-offline-banner" role="status">
+                    Offline · SayUp will reconnect when your internet returns
+                  </div>
+                )}
 
                 <div
                   className="private-room-message-area"
@@ -5809,6 +5995,17 @@ alert(err.message || "Join failed - see console");
   onReply={replyToSupportTicket}
 />
 
+        <SayUpV2Hub
+          open={v2Open}
+          onClose={() => setV2Open(false)}
+          channel={channel}
+          currentUserId={client?.userID}
+          room={room}
+          bookmarkedIds={bookmarkedIds}
+          onOpenMedia={openMediaPreview}
+          onJumpToMessage={jumpToMessage}
+        />
+
         {mediaPreview?.items?.length > 0 && (() => {
           const currentMedia = mediaPreview.items[mediaPreview.index] || mediaPreview.items[0];
           const hasMultiple = mediaPreview.items.length > 1;
@@ -5846,15 +6043,20 @@ alert(err.message || "Join failed - see console");
                     key={currentMedia.url}
                     src={currentMedia.url}
                     controls
+                    controlsList="nodownload"
+                    disablePictureInPicture
                     autoPlay
                     playsInline
                     className="private-room-media-viewer-content"
+                    onContextMenu={(event) => event.preventDefault()}
                   />
                 ) : (
                   <img
                     src={currentMedia.url}
                     alt={currentMedia.title || "Shared media"}
                     className="private-room-media-viewer-content"
+                    draggable="false"
+                    onContextMenu={(event) => event.preventDefault()}
                   />
                 )}
 
