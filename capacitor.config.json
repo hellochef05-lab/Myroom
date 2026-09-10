@@ -1,0 +1,14 @@
+{
+  "appId": "com.sayup.chat",
+  "appName": "SayUp",
+  "webDir": "dist",
+  "server": {
+    "url": "https://myroom-n1bl.vercel.app",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#efeae2"
+  }
+}

@@ -9,9 +9,13 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "node index.js",
-    "server": "node index.js"
+    "server": "node index.js",
+    "android:sync": "npm run build && cap sync android",
+    "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
     "@daily-co/daily-js": "^0.87.0",
     "@daily-co/daily-react": "^0.24.0",
     "@supabase/supabase-js": "^2.111.0",
@@ -29,6 +33,7 @@
     "stream-chat-react": "^13.14.2"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.1",
     "@eslint/js": "^9.39.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
