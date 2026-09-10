@@ -3043,81 +3043,45 @@ const [supportLoading, setSupportLoading] = useState(false);
     const root = document.documentElement;
     const viewport = window.visualViewport;
     let animationFrame = 0;
-    let restoreFrame = 0;
 
-    const syncChatViewport = () => {
+    const syncChatViewportSize = () => {
       cancelAnimationFrame(animationFrame);
       animationFrame = requestAnimationFrame(() => {
-        const messageList = document.querySelector(
-          ".private-room-chat-shell .str-chat__list"
-        );
-        const previousScrollTop = messageList?.scrollTop ?? 0;
-        const distanceFromBottom = messageList
-          ? messageList.scrollHeight -
-            messageList.clientHeight -
-            messageList.scrollTop
-          : 0;
-        const wasAtBottom = distanceFromBottom <= 48;
         const visibleHeight = Math.round(viewport.height * 100) / 100;
-        const visibleTop = Math.max(
-          0,
-          Math.round(viewport.offsetTop * 100) / 100
-        );
-        const focusedElement = document.activeElement;
-        const messageFieldIsFocused = Boolean(
-          focusedElement?.matches?.(
-            "input:not([type='checkbox']):not([type='radio']):not([type='button']):not([type='submit']), textarea, [contenteditable='true']"
-          )
-        );
-
         root.style.setProperty(
           "--private-room-visible-height",
           `${visibleHeight}px`
         );
-        root.style.setProperty(
-          "--private-room-visible-top",
-          `${visibleTop}px`
-        );
-        root.style.setProperty(
-          "--private-room-composer-bottom",
-          messageFieldIsFocused
-            ? "0px"
-            : "max(7px, env(safe-area-inset-bottom))"
-        );
-
-        cancelAnimationFrame(restoreFrame);
-        restoreFrame = requestAnimationFrame(() => {
-          const currentMessageList = document.querySelector(
-            ".private-room-chat-shell .str-chat__list"
-          );
-          if (!currentMessageList) return;
-
-          const nextScrollTop = wasAtBottom
-            ? currentMessageList.scrollHeight - currentMessageList.clientHeight
-            : previousScrollTop;
-
-          currentMessageList.scrollTop = Math.max(0, nextScrollTop);
-        });
       });
     };
 
-    syncChatViewport();
-    viewport.addEventListener("resize", syncChatViewport, { passive: true });
-    viewport.addEventListener("scroll", syncChatViewport, { passive: true });
-    window.addEventListener("orientationchange", syncChatViewport);
-    document.addEventListener("focusin", syncChatViewport);
-    document.addEventListener("focusout", syncChatViewport);
+    const syncComposerInset = () => {
+      const focusedElement = document.activeElement;
+      const messageFieldIsFocused = Boolean(
+        focusedElement?.closest?.(".private-room-message-composer")
+      );
+      root.style.setProperty(
+        "--private-room-composer-bottom",
+        messageFieldIsFocused
+          ? "0px"
+          : "max(7px, env(safe-area-inset-bottom))"
+      );
+    };
+
+    syncChatViewportSize();
+    syncComposerInset();
+    viewport.addEventListener("resize", syncChatViewportSize, { passive: true });
+    window.addEventListener("orientationchange", syncChatViewportSize);
+    document.addEventListener("focusin", syncComposerInset);
+    document.addEventListener("focusout", syncComposerInset);
 
     return () => {
       cancelAnimationFrame(animationFrame);
-      cancelAnimationFrame(restoreFrame);
-      viewport.removeEventListener("resize", syncChatViewport);
-      viewport.removeEventListener("scroll", syncChatViewport);
-      window.removeEventListener("orientationchange", syncChatViewport);
-      document.removeEventListener("focusin", syncChatViewport);
-      document.removeEventListener("focusout", syncChatViewport);
+      viewport.removeEventListener("resize", syncChatViewportSize);
+      window.removeEventListener("orientationchange", syncChatViewportSize);
+      document.removeEventListener("focusin", syncComposerInset);
+      document.removeEventListener("focusout", syncComposerInset);
       root.style.removeProperty("--private-room-visible-height");
-      root.style.removeProperty("--private-room-visible-top");
       root.style.removeProperty("--private-room-composer-bottom");
     };
   }, [channel]);

@@ -1889,9 +1889,8 @@ button {
     margin: 0 !important;
     padding: 0 !important;
     overflow: hidden !important;
-    transform: translate3d(0, var(--private-room-visible-top, 0px), 0);
-    transform-origin: top left;
-    will-change: transform, height;
+    transform: none !important;
+    will-change: height;
     contain: layout paint size;
   }
 
