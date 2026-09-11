@@ -2265,6 +2265,8 @@ button {
 }
 
 .private-room-chat-page .private-room-message-quote {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
   border-left-color: #35d6bb !important;
   background: rgba(1, 19, 21, 0.30) !important;
   color: #b8d4d1 !important;

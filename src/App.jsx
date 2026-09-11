@@ -3043,6 +3043,23 @@ const [supportLoading, setSupportLoading] = useState(false);
     const root = document.documentElement;
     const viewport = window.visualViewport;
     let animationFrame = 0;
+    let latestAnchorTimer = 0;
+    let keepLatestVisible = false;
+
+    const anchorToLatestMessage = () => {
+      window.clearTimeout(latestAnchorTimer);
+      if (!keepLatestVisible) return;
+      latestAnchorTimer = window.setTimeout(() => {
+        const messageList = document.querySelector(
+          ".private-room-chat-shell .str-chat__list"
+        );
+        if (!messageList || !keepLatestVisible) return;
+        messageList.scrollTop = Math.max(
+          0,
+          messageList.scrollHeight - messageList.clientHeight
+        );
+      }, 90);
+    };
 
     const syncChatViewportSize = () => {
       cancelAnimationFrame(animationFrame);
@@ -3060,6 +3077,7 @@ const [supportLoading, setSupportLoading] = useState(false);
           "--private-room-visible-top",
           `${visibleTop}px`
         );
+        anchorToLatestMessage();
       });
     };
 
@@ -3074,6 +3092,19 @@ const [supportLoading, setSupportLoading] = useState(false);
           ? "0px"
           : "max(7px, env(safe-area-inset-bottom))"
       );
+      keepLatestVisible = messageFieldIsFocused;
+      if (messageFieldIsFocused) anchorToLatestMessage();
+    };
+
+    const handleComposerFocusIn = (event) => {
+      if (!event.target?.closest?.(".private-room-message-composer")) return;
+      keepLatestVisible = true;
+      syncComposerInset();
+      anchorToLatestMessage();
+    };
+
+    const handleComposerFocusOut = () => {
+      requestAnimationFrame(syncComposerInset);
     };
 
     syncChatViewportSize();
@@ -3081,16 +3112,17 @@ const [supportLoading, setSupportLoading] = useState(false);
     viewport.addEventListener("resize", syncChatViewportSize, { passive: true });
     viewport.addEventListener("scroll", syncChatViewportSize, { passive: true });
     window.addEventListener("orientationchange", syncChatViewportSize);
-    document.addEventListener("focusin", syncComposerInset);
-    document.addEventListener("focusout", syncComposerInset);
+    document.addEventListener("focusin", handleComposerFocusIn);
+    document.addEventListener("focusout", handleComposerFocusOut);
 
     return () => {
       cancelAnimationFrame(animationFrame);
+      window.clearTimeout(latestAnchorTimer);
       viewport.removeEventListener("resize", syncChatViewportSize);
       viewport.removeEventListener("scroll", syncChatViewportSize);
       window.removeEventListener("orientationchange", syncChatViewportSize);
-      document.removeEventListener("focusin", syncComposerInset);
-      document.removeEventListener("focusout", syncComposerInset);
+      document.removeEventListener("focusin", handleComposerFocusIn);
+      document.removeEventListener("focusout", handleComposerFocusOut);
       root.style.removeProperty("--private-room-visible-height");
       root.style.removeProperty("--private-room-visible-top");
       root.style.removeProperty("--private-room-composer-bottom");
@@ -4383,6 +4415,7 @@ alert(err.message || "Join failed - see console");
   const MyMessage = (props) => {
     const context = useMessageContext();
     const messageComposer = useMessageComposer();
+    const { jumpToMessage: jumpToOriginalMessage } = useChannelActionContext();
     const message = context?.message || props?.message;
     const contextGroupStyles = context?.groupStyles || props?.groupStyles || [];
     const [actionsOpen, setActionsOpen] = useState(false);
@@ -4830,6 +4863,19 @@ alert(err.message || "Join failed - see console");
               {message.quoted_message && (
                 <div
                   className="private-room-message-quote"
+                  role="button"
+                  tabIndex={0}
+                  title="Go to original message"
+                  aria-label="Go to original message"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    jumpToOriginalMessage?.(message.quoted_message.id, 25, 1800);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    jumpToOriginalMessage?.(message.quoted_message.id, 25, 1800);
+                  }}
                   style={{
                     marginBottom: 7,
                     padding: "7px 9px",
