@@ -23,6 +23,7 @@ import SayUpV2Hub from "./SayUpV2Hub";
 import {
   Camera,
   CameraOff,
+  Check,
   CircleDot,
   Copy,
   Headphones,
@@ -4989,13 +4990,14 @@ alert(err.message || "Join failed - see console");
                 <span>{sentAt ? formatTime(sentAt) : ""}</span>
                 {isMine && (
                   <span
-                    className="private-room-message-status"
-                    style={{
-                      color: hasBeenSeen ? "#53bdeb" : "#667781",
-                      fontWeight: 900,
-                    }}
+                    className={`private-room-message-status ${
+                      hasBeenSeen ? "is-seen" : "is-delivered"
+                    }`}
+                    aria-label={hasBeenSeen ? "Read" : "Delivered"}
+                    title={hasBeenSeen ? "Read" : "Delivered"}
                   >
-                    {hasBeenSeen ? "✓✓" : "✓"}
+                    <Check className="private-room-check is-first" aria-hidden="true" />
+                    <Check className="private-room-check is-second" aria-hidden="true" />
                   </span>
                 )}
               </div>

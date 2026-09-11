@@ -3291,11 +3291,42 @@ html.private-room-admin-active textarea {
 }
 
 .private-room-chat-page .private-room-message-status {
+  position: relative;
   display: inline-block;
-  min-width: 12px;
-  margin-left: -1px;
-  letter-spacing: -3px !important;
-  transform: translateX(-1px);
+  width: 16px;
+  min-width: 16px;
+  height: 11px;
+  margin-left: 0;
+  color: #667781 !important;
+  vertical-align: -1px;
+}
+
+.private-room-chat-page .private-room-message-status .private-room-check {
+  position: absolute;
+  top: -2px;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor !important;
+  stroke-width: 2.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.private-room-chat-page .private-room-message-status .is-first {
+  left: 0;
+}
+
+.private-room-chat-page .private-room-message-status .is-second {
+  left: 4px;
+}
+
+.private-room-chat-page .private-room-message-status.is-seen {
+  color: #53bdeb !important;
+}
+
+.private-room-chat-page .private-room-message-status.is-delivered {
+  color: rgba(255, 255, 255, 0.72) !important;
 }
 /* SayUp 2.0 room hub */
 .sayup-v2-open-button {
