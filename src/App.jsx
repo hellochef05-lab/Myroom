@@ -3048,9 +3048,17 @@ const [supportLoading, setSupportLoading] = useState(false);
       cancelAnimationFrame(animationFrame);
       animationFrame = requestAnimationFrame(() => {
         const visibleHeight = Math.round(viewport.height * 100) / 100;
+        const visibleTop = Math.max(
+          0,
+          Math.round(viewport.offsetTop * 100) / 100
+        );
         root.style.setProperty(
           "--private-room-visible-height",
           `${visibleHeight}px`
+        );
+        root.style.setProperty(
+          "--private-room-visible-top",
+          `${visibleTop}px`
         );
       });
     };
@@ -3071,6 +3079,7 @@ const [supportLoading, setSupportLoading] = useState(false);
     syncChatViewportSize();
     syncComposerInset();
     viewport.addEventListener("resize", syncChatViewportSize, { passive: true });
+    viewport.addEventListener("scroll", syncChatViewportSize, { passive: true });
     window.addEventListener("orientationchange", syncChatViewportSize);
     document.addEventListener("focusin", syncComposerInset);
     document.addEventListener("focusout", syncComposerInset);
@@ -3078,10 +3087,12 @@ const [supportLoading, setSupportLoading] = useState(false);
     return () => {
       cancelAnimationFrame(animationFrame);
       viewport.removeEventListener("resize", syncChatViewportSize);
+      viewport.removeEventListener("scroll", syncChatViewportSize);
       window.removeEventListener("orientationchange", syncChatViewportSize);
       document.removeEventListener("focusin", syncComposerInset);
       document.removeEventListener("focusout", syncComposerInset);
       root.style.removeProperty("--private-room-visible-height");
+      root.style.removeProperty("--private-room-visible-top");
       root.style.removeProperty("--private-room-composer-bottom");
     };
   }, [channel]);
