@@ -13,6 +13,7 @@ import {
   useChannelActionContext,
   useMessageComposer,
   useMessageContext,
+  useStateStore,
 } from "stream-chat-react";
 import { createPortal } from "react-dom";
 import "stream-chat-react/dist/css/v2/index.css";
@@ -44,6 +45,55 @@ const isMobile =
 
 const apiKey = import.meta.env.VITE_STREAM_API_KEY;
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+
+const quotedMessageSelector = (state) => ({
+  quotedMessage: state.quotedMessage,
+});
+
+function WhatsAppQuotedMessagePreview() {
+  const messageComposer = useMessageComposer();
+  const { quotedMessage } =
+    useStateStore(messageComposer.state, quotedMessageSelector) || {};
+
+  if (!quotedMessage) return null;
+
+  const attachment = quotedMessage.attachments?.[0];
+  const thumbnail =
+    attachment?.thumb_url || attachment?.image_url ||
+    (String(attachment?.mime_type || "").startsWith("image/")
+      ? attachment?.asset_url
+      : null);
+  const previewText =
+    quotedMessage.text ||
+    (attachment?.type === "audio" || attachment?.type === "voiceRecording"
+      ? "🎤 Voice message"
+      : attachment?.type === "video"
+        ? "▶ Video"
+        : attachment
+          ? "📎 Attachment"
+          : "Message");
+
+  return (
+    <div className="sayup-composer-reply" aria-label="Replying to message">
+      <span className="sayup-composer-reply-accent" aria-hidden="true" />
+      <div className="sayup-composer-reply-copy">
+        <strong>{quotedMessage.user?.name || "Member"}</strong>
+        <span>{previewText}</span>
+      </div>
+      {thumbnail && (
+        <img src={thumbnail} alt="Quoted attachment" draggable="false" />
+      )}
+      <button
+        type="button"
+        aria-label="Cancel reply"
+        title="Cancel reply"
+        onClick={() => messageComposer.setQuotedMessage(null)}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
 
 function OpenChatAtLatestMessage({ channelId }) {
   const { jumpToLatestMessage } = useChannelActionContext();
@@ -5915,6 +5965,7 @@ alert(err.message || "Join failed - see console");
             channel={channel}
             Attachment={CustomAttachment}
             Message={MyMessage}
+            QuotedMessagePreview={WhatsAppQuotedMessagePreview}
           >
             <OpenChatAtLatestMessage channelId={channel.cid} />
             <Window>
