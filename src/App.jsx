@@ -27,8 +27,6 @@ import {
   CircleDot,
   Copy,
   Headphones,
-  KeyRound,
-  LockKeyhole,
   Mic,
   MicOff,
   MoreHorizontal,
@@ -5212,7 +5210,7 @@ alert(err.message || "Join failed - see console");
                     boxShadow: "0 12px 30px rgba(15,23,42,0.16)",
                   }}
                 >
-                  <LockKeyhole size={22} strokeWidth={1.8} />
+                  <img src="/sayup-icon.png" alt="" aria-hidden="true" />
                 </span>
                 SayUp
               </div>
@@ -5387,7 +5385,7 @@ alert(err.message || "Join failed - see console");
                     boxShadow: "0 12px 30px rgba(15,23,42,0.16)",
                   }}
                 >
-                  <KeyRound size={27} strokeWidth={1.7} />
+                  <img src="/sayup-icon.png" alt="SayUp" />
                 </div>
                 <div
                   className="sayup-secure-pill"

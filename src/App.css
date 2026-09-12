@@ -1568,6 +1568,15 @@ button {
   color: var(--sayup-emerald) !important;
   border: 1px solid rgba(7, 63, 52, 0.28);
   box-shadow: 0 12px 28px rgba(62, 45, 25, 0.10) !important;
+  overflow: hidden;
+}
+
+.sayup-brand-mark img,
+.sayup-card-mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .sayup-landing-hero h1 {
