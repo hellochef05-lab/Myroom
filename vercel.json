@@ -1,6 +1,16 @@
 {
   "rewrites": [
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "sayup-admin.vercel.app"
+        }
+      ],
+      "destination": "/admin-app/index.html"
+    },
+    {
       "source": "/admin",
       "destination": "/admin/index.html"
     },

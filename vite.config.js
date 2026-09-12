@@ -14,6 +14,7 @@ export default defineConfig({
         "favicon.ico",
         "apple-touch-icon.png",
         "admin-manifest.webmanifest",
+        "admin-domain-manifest.webmanifest",
         "admin-apple-touch-icon.png",
         "admin-favicon-32x32.png",
         "admin-favicon.ico",
@@ -87,7 +88,10 @@ devOptions: {
       transformIndexHtml: {
         order: "post",
         handler(html, context) {
-          if (!context.filename?.endsWith("/admin/index.html")) return html;
+          const isAdminEntry =
+            context.filename?.endsWith("/admin/index.html") ||
+            context.filename?.endsWith("/admin-app/index.html");
+          if (!isAdminEntry) return html;
           return html.replace(
             '<link rel="manifest" href="/manifest.webmanifest">',
             ""
@@ -101,6 +105,7 @@ devOptions: {
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
         admin: fileURLToPath(new URL("./admin/index.html", import.meta.url)),
+        adminApp: fileURLToPath(new URL("./admin-app/index.html", import.meta.url)),
       },
     },
   },

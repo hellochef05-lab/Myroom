@@ -5117,7 +5117,9 @@ alert(err.message || "Join failed - see console");
     );
   };
 
+  const isAdminHostname = window.location.hostname === "sayup-admin.vercel.app";
   const isAdminPage =
+    isAdminHostname ||
     window.location.pathname.replace(/\/+$/, "") === "/admin";
 
   if (isAdminPage) {
@@ -5125,7 +5127,9 @@ alert(err.message || "Join failed - see console");
       <AdminDashboard
         API_BASE={API_BASE}
         onBack={() => {
-          window.location.href = "/";
+          window.location.href = isAdminHostname
+            ? "https://sayup-chat.vercel.app/"
+            : "/";
         }}
       />
     );

@@ -3,7 +3,9 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
 
+const isAdminHostname = window.location.hostname === "sayup-admin.vercel.app";
 const isAdminRoute =
+  isAdminHostname ||
   window.location.pathname.replace(/\/+$/, "") === "/admin";
 
 if (isAdminRoute) {
@@ -15,7 +17,12 @@ if (isAdminRoute) {
     document.querySelector('link[rel="manifest"]') ||
     document.head.appendChild(document.createElement("link"));
   manifestLink.setAttribute("rel", "manifest");
-  manifestLink.setAttribute("href", "/admin-manifest.webmanifest");
+  manifestLink.setAttribute(
+    "href",
+    isAdminHostname
+      ? "/admin-domain-manifest.webmanifest"
+      : "/admin-manifest.webmanifest"
+  );
 
   const appTitle = document.querySelector(
     'meta[name="apple-mobile-web-app-title"]'
