@@ -22,6 +22,16 @@ if (isAdminRoute) {
   );
   appTitle?.setAttribute("content", "SayUp Admin");
 
+  document
+    .querySelector('link[rel="apple-touch-icon"]')
+    ?.setAttribute("href", "/admin-apple-touch-icon.png");
+  document
+    .querySelector('link[rel="icon"]')
+    ?.setAttribute("href", "/admin-favicon-32x32.png");
+  document
+    .querySelector('link[rel="shortcut icon"]')
+    ?.setAttribute("href", "/admin-favicon.ico");
+
   const themeColor = document.querySelector('meta[name="theme-color"]');
   themeColor?.setAttribute("content", "#0f766e");
 }
