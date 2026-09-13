@@ -3092,23 +3092,6 @@ const [supportLoading, setSupportLoading] = useState(false);
     const root = document.documentElement;
     const viewport = window.visualViewport;
     let animationFrame = 0;
-    let latestAnchorTimer = 0;
-    let keepLatestVisible = false;
-
-    const anchorToLatestMessage = () => {
-      window.clearTimeout(latestAnchorTimer);
-      if (!keepLatestVisible) return;
-      latestAnchorTimer = window.setTimeout(() => {
-        const messageList = document.querySelector(
-          ".private-room-chat-shell .str-chat__list"
-        );
-        if (!messageList || !keepLatestVisible) return;
-        messageList.scrollTop = Math.max(
-          0,
-          messageList.scrollHeight - messageList.clientHeight
-        );
-      }, 90);
-    };
 
     const syncChatViewportSize = () => {
       cancelAnimationFrame(animationFrame);
@@ -3126,7 +3109,6 @@ const [supportLoading, setSupportLoading] = useState(false);
           "--private-room-visible-top",
           `${visibleTop}px`
         );
-        anchorToLatestMessage();
       });
     };
 
@@ -3141,15 +3123,11 @@ const [supportLoading, setSupportLoading] = useState(false);
           ? "0px"
           : "max(7px, env(safe-area-inset-bottom))"
       );
-      keepLatestVisible = messageFieldIsFocused;
-      if (messageFieldIsFocused) anchorToLatestMessage();
     };
 
     const handleComposerFocusIn = (event) => {
       if (!event.target?.closest?.(".private-room-message-composer")) return;
-      keepLatestVisible = true;
       syncComposerInset();
-      anchorToLatestMessage();
     };
 
     const handleComposerFocusOut = () => {
@@ -3166,7 +3144,6 @@ const [supportLoading, setSupportLoading] = useState(false);
 
     return () => {
       cancelAnimationFrame(animationFrame);
-      window.clearTimeout(latestAnchorTimer);
       viewport.removeEventListener("resize", syncChatViewportSize);
       viewport.removeEventListener("scroll", syncChatViewportSize);
       window.removeEventListener("orientationchange", syncChatViewportSize);
