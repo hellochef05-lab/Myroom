@@ -104,6 +104,7 @@ function OpenChatAtLatestMessage({ channelId }) {
     let cancelled = false;
     let frameId = 0;
     let settleTimer = 0;
+    let initialResizeObserver;
 
     const scrollToLatest = () => {
       if (cancelled) return;
@@ -133,6 +134,13 @@ function OpenChatAtLatestMessage({ channelId }) {
       // Keyboard, focus and viewport changes must not trigger this again.
       frameId = window.requestAnimationFrame(scrollToLatest);
       settleTimer = window.setTimeout(scrollToLatest, 180);
+
+      const messageArea = document.querySelector(".private-room-message-area");
+      if (messageArea && typeof ResizeObserver === "function") {
+        initialResizeObserver = new ResizeObserver(scrollToLatest);
+        initialResizeObserver.observe(messageArea);
+        window.setTimeout(() => initialResizeObserver?.disconnect(), 700);
+      }
     };
 
     openAtLatest();
@@ -141,6 +149,7 @@ function OpenChatAtLatestMessage({ channelId }) {
       cancelled = true;
       window.cancelAnimationFrame(frameId);
       window.clearTimeout(settleTimer);
+      initialResizeObserver?.disconnect();
     };
   }, [channelId]);
 
@@ -156,11 +165,12 @@ function OpenChatAtLatestMessage({ channelId }) {
 
     const viewport = window.visualViewport;
     let keyboardOpening = false;
-    let composerFocused = false;
     let settleTimer = 0;
     let fallbackTimer = 0;
     let frameId = 0;
     let keyboardSession = 0;
+    let keyboardOpeningStartedAt = 0;
+    let resizeObserver;
 
     const pinLatestMessage = () => {
       window.cancelAnimationFrame(frameId);
@@ -185,29 +195,43 @@ function OpenChatAtLatestMessage({ channelId }) {
 
     const scheduleSettle = () => {
       window.clearTimeout(settleTimer);
-      settleTimer = window.setTimeout(finishKeyboardOpening, 160);
+      const elapsed = performance.now() - keyboardOpeningStartedAt;
+      const delay = Math.max(180, 520 - elapsed);
+      settleTimer = window.setTimeout(finishKeyboardOpening, delay);
     };
 
-    const handleFocusIn = (event) => {
-      const field = event.target?.closest?.(
-        ".private-room-message-composer textarea, .private-room-message-composer input, .private-room-message-composer [contenteditable='true']",
-      );
-      if (!field || composerFocused) return;
+    const isComposerField = (target) => Boolean(target?.closest?.(
+      ".private-room-message-composer textarea, .private-room-message-composer input, .private-room-message-composer [contenteditable='true']",
+    ));
 
-      composerFocused = true;
+    const beginKeyboardOpening = (event) => {
+      if (!isComposerField(event.target)) return;
+      if (keyboardOpening) {
+        pinLatestMessage();
+        return;
+      }
+
       keyboardOpening = true;
+      keyboardOpeningStartedAt = performance.now();
       const session = ++keyboardSession;
 
-      // Load the latest message set immediately, then keep its bottom edge fixed
-      // while iOS/Android animates the visual viewport around the keyboard.
       Promise.resolve(jumpToLatestRef.current?.())
         .catch(() => {})
         .finally(() => {
           if (keyboardOpening && session === keyboardSession) pinLatestMessage();
         });
       pinLatestMessage();
+      scheduleSettle();
       window.clearTimeout(fallbackTimer);
-      fallbackTimer = window.setTimeout(finishKeyboardOpening, 650);
+      fallbackTimer = window.setTimeout(finishKeyboardOpening, 900);
+    };
+
+    const handleFocusIn = (event) => {
+      const field = event.target?.closest?.(
+        ".private-room-message-composer textarea, .private-room-message-composer input, .private-room-message-composer [contenteditable='true']",
+      );
+      if (!field) return;
+      beginKeyboardOpening(event);
     };
 
     const handleViewportResize = () => {
@@ -225,13 +249,27 @@ function OpenChatAtLatestMessage({ channelId }) {
           ".private-room-message-composer",
         );
         if (stillInComposer) return;
-        composerFocused = false;
         keyboardOpening = false;
         window.clearTimeout(settleTimer);
         window.clearTimeout(fallbackTimer);
       }, 0);
     };
 
+    const messageArea = document.querySelector(".private-room-message-area");
+    const messageList = document.querySelector(
+      ".private-room-chat-shell .str-chat__list",
+    );
+    if (typeof ResizeObserver === "function") {
+      resizeObserver = new ResizeObserver(() => {
+        if (!keyboardOpening) return;
+        pinLatestMessage();
+        scheduleSettle();
+      });
+      if (messageArea) resizeObserver.observe(messageArea);
+      if (messageList) resizeObserver.observe(messageList);
+    }
+
+    document.addEventListener("pointerdown", beginKeyboardOpening, { passive: true });
     document.addEventListener("focusin", handleFocusIn);
     document.addEventListener("focusout", handleFocusOut);
     viewport.addEventListener("resize", handleViewportResize, { passive: true });
@@ -240,6 +278,8 @@ function OpenChatAtLatestMessage({ channelId }) {
       window.clearTimeout(settleTimer);
       window.clearTimeout(fallbackTimer);
       window.cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+      document.removeEventListener("pointerdown", beginKeyboardOpening);
       document.removeEventListener("focusin", handleFocusIn);
       document.removeEventListener("focusout", handleFocusOut);
       viewport.removeEventListener("resize", handleViewportResize);
@@ -6154,7 +6194,7 @@ alert(err.message || "Join failed - see console");
                     backgroundPosition: "0 0, 0 0, 0 0",
                   }}
                 >
-                  <MessageList />
+                  <MessageList scrolledUpThreshold={24} />
                 </div>
 
                 {!callUiState.active && (
