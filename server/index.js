@@ -226,6 +226,19 @@ function getDeviceType(deviceName = "") {
   return "Other";
 }
 
+function preferKnownValue(incoming, current, fallback = "") {
+  const next = String(incoming || "").trim();
+  if (next && !/^unknown(?: device)?$/i.test(next)) return next;
+  const saved = String(current || "").trim();
+  return saved || fallback;
+}
+
+function getReportedDeviceType(reportedType, deviceName) {
+  const allowed = new Set(["iOS", "Android", "Mac", "Windows", "Linux", "Other"]);
+  const type = String(reportedType || "").trim();
+  return allowed.has(type) ? type : getDeviceType(deviceName);
+}
+
 function isRecentlyOnline(value, minutes = 5) {
   if (!value) return false;
   const timestamp = new Date(value).getTime();
@@ -952,6 +965,7 @@ app.post("/api/login", (req, res) => {
     accessKey = "",
     deviceId = "",
     deviceName = "",
+    deviceType = "",
     country = "Unknown",
     timezone = "",
     platform = "",
@@ -1022,20 +1036,21 @@ app.post("/api/login", (req, res) => {
     existingDevice.lastLoginAt =
       new Date().toISOString();
 
-    existingDevice.deviceName =
-      deviceName ||
-      existingDevice.deviceName ||
-      "Unknown Device";
+    existingDevice.deviceName = preferKnownValue(
+      deviceName,
+      existingDevice.deviceName,
+      "Unknown Device"
+    );
 
     existingDevice.streamUserId = streamUserId;
-    existingDevice.country = country || existingDevice.country || "Unknown";
-    existingDevice.timezone = timezone || existingDevice.timezone || "";
-    existingDevice.platform = platform || existingDevice.platform || "";
-    existingDevice.deviceType = getDeviceType(deviceName || existingDevice.deviceName);
+    existingDevice.country = preferKnownValue(country, existingDevice.country, "Unknown");
+    existingDevice.timezone = preferKnownValue(timezone, existingDevice.timezone);
+    existingDevice.platform = preferKnownValue(platform, existingDevice.platform);
+    existingDevice.deviceType = getReportedDeviceType(deviceType, existingDevice.deviceName);
     user.lastLoginAt = new Date().toISOString();
     user.lastActivityAt = user.lastLoginAt;
-    user.country = country || user.country || "Unknown";
-    user.timezone = timezone || user.timezone || "";
+    user.country = preferKnownValue(country, user.country, "Unknown");
+    user.timezone = preferKnownValue(timezone, user.timezone);
 
     writeDB(db);
 
@@ -1068,9 +1083,9 @@ app.post("/api/login", (req, res) => {
     userId: user.id,
     accessKey: canonicalKey,
     deviceId,
-    deviceName: deviceName || "Unknown Device",
-    deviceType: getDeviceType(deviceName),
-    country: country || "Unknown",
+    deviceName: preferKnownValue(deviceName, "", "Unknown Device"),
+    deviceType: getReportedDeviceType(deviceType, deviceName),
+    country: preferKnownValue(country, "", "Unknown"),
     timezone: timezone || "",
     platform: platform || "",
     streamUserId,
@@ -1083,8 +1098,8 @@ app.post("/api/login", (req, res) => {
 
   user.lastLoginAt = new Date().toISOString();
   user.lastActivityAt = user.lastLoginAt;
-  user.country = country || user.country || "Unknown";
-  user.timezone = timezone || user.timezone || "";
+  user.country = preferKnownValue(country, user.country, "Unknown");
+  user.timezone = preferKnownValue(timezone, user.timezone);
 
   writeDB(db);
 
@@ -2390,7 +2405,15 @@ app.post(
 );
 
 app.post("/api/activity", (req, res) => {
-  const { accessKey, deviceId, country = "Unknown", timezone = "", platform = "" } = req.body || {};
+  const {
+    accessKey,
+    deviceId,
+    deviceName = "",
+    deviceType = "",
+    country = "Unknown",
+    timezone = "",
+    platform = "",
+  } = req.body || {};
   if (!accessKey || !deviceId) {
     return res.status(400).json({ error: "Access Key and device ID are required" });
   }
@@ -2402,8 +2425,8 @@ app.post("/api/activity", (req, res) => {
   const now = new Date().toISOString();
   user.lastActivityAt = now;
   user.lastLoginAt = user.lastLoginAt || now;
-  user.country = country || user.country || "Unknown";
-  user.timezone = timezone || user.timezone || "";
+  user.country = preferKnownValue(country, user.country, "Unknown");
+  user.timezone = preferKnownValue(timezone, user.timezone);
 
   const device = db.devices.find(
     (item) => sameValue(item.accessKey, accessKey) && item.deviceId === deviceId
@@ -2411,10 +2434,11 @@ app.post("/api/activity", (req, res) => {
   if (device) {
     device.lastActivityAt = now;
     device.lastLoginAt = now;
-    device.country = country || device.country || "Unknown";
-    device.timezone = timezone || device.timezone || "";
-    device.platform = platform || device.platform || "";
-    device.deviceType = getDeviceType(device.deviceName);
+    device.deviceName = preferKnownValue(deviceName, device.deviceName, "Unknown Device");
+    device.country = preferKnownValue(country, device.country, "Unknown");
+    device.timezone = preferKnownValue(timezone, device.timezone);
+    device.platform = preferKnownValue(platform, device.platform);
+    device.deviceType = getReportedDeviceType(deviceType, device.deviceName);
   }
 
   writeDB(db);

@@ -221,27 +221,72 @@ function getDeviceId() {
   return deviceId;
 }
 
-function getDeviceName() {
-  return navigator.userAgent || "Unknown Device";
+function getClientDeviceInfo() {
+  const userAgent = navigator.userAgent || "";
+  const platform = navigator.userAgentData?.platform || navigator.platform || "";
+  const isTouchMac = /Mac/.test(platform) && navigator.maxTouchPoints > 1;
+
+  if (/iPad/.test(userAgent) || isTouchMac) {
+    return { deviceName: "Apple iPad", deviceType: "iOS", platform: "iPadOS" };
+  }
+  if (/iPhone/.test(userAgent)) {
+    return { deviceName: "Apple iPhone", deviceType: "iOS", platform: "iOS" };
+  }
+  if (/Android/.test(userAgent)) {
+    const model = userAgent.match(/Android[^;]*;\s*([^;)]+?)(?:\s+Build\/|;|\))/i)?.[1]?.trim();
+    const usefulModel = model && !/^[a-z]$/i.test(model) ? model : "Android device";
+    return { deviceName: usefulModel, deviceType: "Android", platform: "Android" };
+  }
+  if (/Windows/.test(userAgent) || /Win/.test(platform)) {
+    return { deviceName: "Windows PC", deviceType: "Windows", platform: "Windows" };
+  }
+  if (/Macintosh|Mac OS/.test(userAgent) || /Mac/.test(platform)) {
+    return { deviceName: "Apple Mac", deviceType: "Mac", platform: "macOS" };
+  }
+  if (/Linux/.test(userAgent) || /Linux/.test(platform)) {
+    return { deviceName: "Linux device", deviceType: "Linux", platform: "Linux" };
+  }
+
+  return { deviceName: "Other device", deviceType: "Other", platform };
 }
 
-function getClientLocationInfo() {
+function getFallbackLocationInfo() {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-  const locale = navigator.language || "";
-  const region = locale.includes("-") ? locale.split("-").pop().toUpperCase() : "";
-  const regionNames = typeof Intl.DisplayNames === "function"
-    ? new Intl.DisplayNames(["en"], { type: "region" })
-    : null;
-  let country = region && regionNames ? regionNames.of(region) : "Unknown";
-
-  if (timezone === "Asia/Dubai") country = "United Arab Emirates";
-  if (!country) country = "Unknown";
 
   return {
-    country,
+    country: timezone === "Asia/Dubai" ? "United Arab Emirates" : "Unknown",
     timezone,
-    platform: navigator.userAgentData?.platform || navigator.platform || "",
   };
+}
+
+let clientContextPromise;
+
+async function getClientLocationInfo() {
+  if (!clientContextPromise) {
+    clientContextPromise = fetch("/api/client-context", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Location lookup failed");
+        const data = await response.json();
+        const countryCode = String(data.countryCode || "").toUpperCase();
+        const regionNames = typeof Intl.DisplayNames === "function"
+          ? new Intl.DisplayNames(["en"], { type: "region" })
+          : null;
+        const country = /^[A-Z]{2}$/.test(countryCode) && regionNames
+          ? regionNames.of(countryCode)
+          : "Unknown";
+
+        return {
+          country: country || "Unknown",
+          timezone: data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+        };
+      })
+      .catch(() => {
+        clientContextPromise = undefined;
+        return getFallbackLocationInfo();
+      });
+  }
+
+  return clientContextPromise;
 }
 
 
@@ -3210,17 +3255,22 @@ const [supportLoading, setSupportLoading] = useState(false);
 useEffect(() => {
   if (!loggedUser?.accessKey) return undefined;
 
-  const sendActivity = () => {
-    const location = getClientLocationInfo();
-    fetch(`${API_BASE}/api/activity`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        accessKey: loggedUser.accessKey,
-        deviceId: getDeviceId(),
-        ...location,
-      }),
-    }).catch(() => {});
+  const sendActivity = async () => {
+    try {
+      const location = await getClientLocationInfo();
+      await fetch(`${API_BASE}/api/activity`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessKey: loggedUser.accessKey,
+          deviceId: getDeviceId(),
+          ...getClientDeviceInfo(),
+          ...location,
+        }),
+      });
+    } catch {
+      // Activity reporting must never interrupt the chat experience.
+    }
   };
 
   sendActivity();
@@ -4158,6 +4208,10 @@ async function adminUpdateTicketStatus(requestId, status) {
     const privateRoomIdForLogin = createPrivateRoomId(accessKey, room);
 
     try {
+      const [location, device] = await Promise.all([
+        getClientLocationInfo(),
+        Promise.resolve(getClientDeviceInfo()),
+      ]);
       const loginRes = await apiFetch(`${API_BASE}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -4168,8 +4222,8 @@ async function adminUpdateTicketStatus(requestId, status) {
           roomCode: room,
           privateRoomId: privateRoomIdForLogin,
           deviceId: currentDeviceId,
-          deviceName: getDeviceName(),
-          ...getClientLocationInfo(),
+          ...device,
+          ...location,
         }),
       });
 
