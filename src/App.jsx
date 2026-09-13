@@ -141,6 +141,92 @@ function OpenChatAtLatestMessage({ channelId }) {
     };
   }, [channelId]);
 
+  useEffect(() => {
+    if (
+      !channelId ||
+      typeof window === "undefined" ||
+      !window.visualViewport ||
+      !window.matchMedia("(max-width: 767px)").matches
+    ) {
+      return undefined;
+    }
+
+    const viewport = window.visualViewport;
+    let keyboardOpening = false;
+    let composerFocused = false;
+    let settleTimer = 0;
+    let frameId = 0;
+
+    const revealLatestMessage = async () => {
+      if (!keyboardOpening) return;
+      keyboardOpening = false;
+
+      try {
+        await jumpToLatestRef.current?.();
+      } catch {
+        // The local list can still be positioned when Stream is reconnecting.
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        const messageList = document.querySelector(
+          ".private-room-chat-shell .str-chat__list",
+        );
+        messageList?.scrollTo({
+          top: messageList.scrollHeight,
+          behavior: "auto",
+        });
+      });
+    };
+
+    const scheduleReveal = (delay) => {
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(revealLatestMessage, delay);
+    };
+
+    const handleFocusIn = (event) => {
+      const field = event.target?.closest?.(
+        ".private-room-message-composer textarea, .private-room-message-composer input, .private-room-message-composer [contenteditable='true']",
+      );
+      if (!field || composerFocused) return;
+
+      composerFocused = true;
+      keyboardOpening = true;
+      // Fallback for browsers that do not emit a usable viewport resize event.
+      scheduleReveal(360);
+    };
+
+    const handleViewportResize = () => {
+      if (!keyboardOpening) return;
+      // iOS emits several resize events during its keyboard animation. Debounce
+      // them and position once, after the visible viewport has settled.
+      scheduleReveal(90);
+    };
+
+    const handleFocusOut = () => {
+      window.setTimeout(() => {
+        const stillInComposer = document.activeElement?.closest?.(
+          ".private-room-message-composer",
+        );
+        if (stillInComposer) return;
+        composerFocused = false;
+        keyboardOpening = false;
+        window.clearTimeout(settleTimer);
+      }, 0);
+    };
+
+    document.addEventListener("focusin", handleFocusIn);
+    document.addEventListener("focusout", handleFocusOut);
+    viewport.addEventListener("resize", handleViewportResize, { passive: true });
+
+    return () => {
+      window.clearTimeout(settleTimer);
+      window.cancelAnimationFrame(frameId);
+      document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("focusout", handleFocusOut);
+      viewport.removeEventListener("resize", handleViewportResize);
+    };
+  }, [channelId]);
+
   return null;
 }
 
