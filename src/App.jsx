@@ -103,6 +103,7 @@ function OpenChatAtLatestMessage({ channelId }) {
   useEffect(() => {
     let cancelled = false;
     let frameId = 0;
+    let settleTimer = 0;
 
     const scrollToLatest = () => {
       if (cancelled) return;
@@ -131,6 +132,7 @@ function OpenChatAtLatestMessage({ channelId }) {
       // Position the room once after the latest message set has rendered.
       // Keyboard, focus and viewport changes must not trigger this again.
       frameId = window.requestAnimationFrame(scrollToLatest);
+      settleTimer = window.setTimeout(scrollToLatest, 180);
     };
 
     openAtLatest();
@@ -138,6 +140,7 @@ function OpenChatAtLatestMessage({ channelId }) {
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(frameId);
+      window.clearTimeout(settleTimer);
     };
   }, [channelId]);
 
@@ -155,32 +158,34 @@ function OpenChatAtLatestMessage({ channelId }) {
     let keyboardOpening = false;
     let composerFocused = false;
     let settleTimer = 0;
+    let fallbackTimer = 0;
     let frameId = 0;
+    let keyboardSession = 0;
 
-    const revealLatestMessage = async () => {
-      if (!keyboardOpening) return;
-      keyboardOpening = false;
-
-      try {
-        await jumpToLatestRef.current?.();
-      } catch {
-        // The local list can still be positioned when Stream is reconnecting.
-      }
-
+    const pinLatestMessage = () => {
+      window.cancelAnimationFrame(frameId);
       frameId = window.requestAnimationFrame(() => {
         const messageList = document.querySelector(
           ".private-room-chat-shell .str-chat__list",
         );
-        messageList?.scrollTo({
-          top: messageList.scrollHeight,
-          behavior: "auto",
-        });
+        if (!messageList) return;
+        messageList.scrollTop = Math.max(
+          0,
+          messageList.scrollHeight - messageList.clientHeight,
+        );
       });
     };
 
-    const scheduleReveal = (delay) => {
+    const finishKeyboardOpening = () => {
+      if (!keyboardOpening) return;
+      pinLatestMessage();
+      keyboardOpening = false;
+      window.clearTimeout(fallbackTimer);
+    };
+
+    const scheduleSettle = () => {
       window.clearTimeout(settleTimer);
-      settleTimer = window.setTimeout(revealLatestMessage, delay);
+      settleTimer = window.setTimeout(finishKeyboardOpening, 160);
     };
 
     const handleFocusIn = (event) => {
@@ -191,15 +196,27 @@ function OpenChatAtLatestMessage({ channelId }) {
 
       composerFocused = true;
       keyboardOpening = true;
-      // Fallback for browsers that do not emit a usable viewport resize event.
-      scheduleReveal(360);
+      const session = ++keyboardSession;
+
+      // Load the latest message set immediately, then keep its bottom edge fixed
+      // while iOS/Android animates the visual viewport around the keyboard.
+      Promise.resolve(jumpToLatestRef.current?.())
+        .catch(() => {})
+        .finally(() => {
+          if (keyboardOpening && session === keyboardSession) pinLatestMessage();
+        });
+      pinLatestMessage();
+      window.clearTimeout(fallbackTimer);
+      fallbackTimer = window.setTimeout(finishKeyboardOpening, 650);
     };
 
     const handleViewportResize = () => {
       if (!keyboardOpening) return;
-      // iOS emits several resize events during its keyboard animation. Debounce
-      // them and position once, after the visible viewport has settled.
-      scheduleReveal(90);
+      // Pin inside the message list only (never the page) during the short
+      // keyboard animation. Once resize events settle, normal manual scrolling
+      // resumes and new messages cannot pull the user around.
+      pinLatestMessage();
+      scheduleSettle();
     };
 
     const handleFocusOut = () => {
@@ -211,6 +228,7 @@ function OpenChatAtLatestMessage({ channelId }) {
         composerFocused = false;
         keyboardOpening = false;
         window.clearTimeout(settleTimer);
+        window.clearTimeout(fallbackTimer);
       }, 0);
     };
 
@@ -220,6 +238,7 @@ function OpenChatAtLatestMessage({ channelId }) {
 
     return () => {
       window.clearTimeout(settleTimer);
+      window.clearTimeout(fallbackTimer);
       window.cancelAnimationFrame(frameId);
       document.removeEventListener("focusin", handleFocusIn);
       document.removeEventListener("focusout", handleFocusOut);
