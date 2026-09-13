@@ -309,6 +309,26 @@ function createStreamUserId(accessKey, displayName, deviceId) {
   return `key_${normaliseIdentifier(accessKey, "unknown")}_user_${normaliseIdentifier(displayName, "guest")}_${deviceSuffix}`;
 }
 
+function focusMobileComposerWithoutPageScroll(event) {
+  if (
+    typeof window === "undefined" ||
+    !window.matchMedia("(max-width: 767px)").matches ||
+    document.activeElement === event.currentTarget
+  ) {
+    return;
+  }
+
+  // Safari normally pans the page before opening its keyboard. Focusing from
+  // the original user gesture with preventScroll keeps the app shell fixed,
+  // leaving only the message list to resize like a native chat screen.
+  event.preventDefault();
+  try {
+    event.currentTarget.focus({ preventScroll: true });
+  } catch {
+    event.currentTarget.focus();
+  }
+}
+
 const DEFAULT_API_TIMEOUT_MS = 25000;
 
 function wait(ms) {
@@ -6220,6 +6240,7 @@ alert(err.message || "Join failed - see console");
                         enterKeyHint: "send",
                         autoCapitalize: "sentences",
                         autoCorrect: "on",
+                        onPointerDown: focusMobileComposerWithoutPageScroll,
                       }}
                     />
                   </div>

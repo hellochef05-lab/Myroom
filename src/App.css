@@ -1885,6 +1885,12 @@ button {
     overflow: hidden !important;
   }
 
+  html.private-room-chat-active body {
+    position: fixed !important;
+    inset: 0 !important;
+    overscroll-behavior: none !important;
+  }
+
   .private-room-chat-page {
     position: fixed !important;
     top: 0 !important;
