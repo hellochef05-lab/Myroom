@@ -1511,15 +1511,19 @@ button {
    One component system, three persistent visual identities.
    ========================================================= */
 
-.sayup-support-theme-row {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+.sayup-landing-top-actions {
+  position: absolute;
+  top: max(20px, env(safe-area-inset-top));
+  right: max(20px, env(safe-area-inset-right));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 9px;
-  margin-top: 12px;
 }
 
-.sayup-support-theme-row .sayup-support-button,
-.sayup-theme-picker {
+.sayup-landing-top-actions .sayup-support-button,
+.sayup-landing-top-actions .sayup-theme-picker {
   min-width: 0;
   min-height: 46px;
   margin: 0 !important;
@@ -1533,8 +1537,13 @@ button {
   font-weight: 900;
 }
 
-.sayup-support-theme-row .sayup-support-button {
+.sayup-landing-top-actions .sayup-support-button {
+  min-width: 106px;
   cursor: pointer;
+}
+
+.sayup-landing-top-actions .sayup-theme-picker {
+  width: min(190px, 42vw);
 }
 
 .sayup-theme-picker {
@@ -1570,9 +1579,8 @@ button {
 }
 
 @media (max-width: 390px) {
-  .sayup-support-theme-row {
-    grid-template-columns: 0.8fr 1.2fr;
-    gap: 7px;
+  .sayup-landing-top-actions {
+    gap: 6px;
   }
 
   .sayup-theme-picker-label {
@@ -1615,7 +1623,7 @@ html[data-sayup-palette="glass"] .sayup-auth-tabs {
 }
 
 html[data-sayup-palette="glass"] .sayup-auth-input,
-html[data-sayup-palette="glass"] .sayup-support-theme-row .sayup-support-button,
+html[data-sayup-palette="glass"] .sayup-landing-top-actions .sayup-support-button,
 html[data-sayup-palette="glass"] .sayup-theme-picker,
 html[data-sayup-palette="glass"] .sayup-manage-button {
   border-color: rgba(6, 78, 59, 0.18) !important;
@@ -1712,7 +1720,7 @@ html[data-sayup-palette="midnight"] .sayup-auth-card {
 }
 
 html[data-sayup-palette="midnight"] .sayup-secure-pill,
-html[data-sayup-palette="midnight"] .sayup-support-theme-row .sayup-support-button,
+html[data-sayup-palette="midnight"] .sayup-landing-top-actions .sayup-support-button,
 html[data-sayup-palette="midnight"] .sayup-theme-picker,
 html[data-sayup-palette="midnight"] .sayup-manage-button {
   border-color: rgba(45, 212, 191, 0.20) !important;
@@ -3369,10 +3377,32 @@ html.private-room-admin-active textarea {
     padding: max(18px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom)) !important;
   }
 
+  .sayup-landing-top-actions {
+    top: max(12px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+    gap: 7px;
+  }
+
+  .sayup-landing-top-actions .sayup-support-button,
+  .sayup-landing-top-actions .sayup-theme-picker {
+    min-height: 40px;
+    border-radius: 999px !important;
+  }
+
+  .sayup-landing-top-actions .sayup-support-button {
+    min-width: 96px;
+    padding-inline: 12px !important;
+  }
+
+  .sayup-landing-top-actions .sayup-theme-picker {
+    width: min(174px, 48vw);
+  }
+
   .sayup-landing-layout {
     gap: 12px !important;
     max-width: 520px !important;
     margin: 0 auto;
+    padding-top: 48px;
   }
 
   .sayup-landing-hero {

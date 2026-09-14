@@ -5417,6 +5417,17 @@ alert(err.message || "Join failed - see console");
             boxSizing: "border-box",
           }}
         >
+          <div className="sayup-landing-top-actions">
+            <button
+              className="sayup-support-button"
+              type="button"
+              onClick={() => openPublicSupport("I want to buy a subscription")}
+            >
+              🎧 Support
+            </button>
+            <SayUpThemePicker value={uiTheme} onChange={setUiTheme} />
+          </div>
+
           <div
             className="sayup-landing-layout"
             style={{
@@ -5786,17 +5797,6 @@ alert(err.message || "Join failed - see console");
                     {joining ? "Entering..." : "Enter SayUp →"}
                   </button>
 
-                  <div className="sayup-support-theme-row">
-                    <button
-                      className="sayup-support-button"
-                      type="button"
-                      onClick={() => openPublicSupport("I want to buy a subscription")}
-                    >
-                      🎧 Support
-                    </button>
-                    <SayUpThemePicker value={uiTheme} onChange={setUiTheme} />
-                  </div>
-
                   <button
                     className="sayup-manage-button"
                     type="button"
@@ -5887,16 +5887,6 @@ alert(err.message || "Join failed - see console");
                     )}
                   </div>
 
-                  <div className="sayup-support-theme-row">
-                    <button
-                      className="sayup-support-button"
-                      type="button"
-                      onClick={() => openPublicSupport("I want to buy a subscription")}
-                    >
-                      🎧 Ask Support
-                    </button>
-                    <SayUpThemePicker value={uiTheme} onChange={setUiTheme} />
-                  </div>
                 </>
               )}
 
