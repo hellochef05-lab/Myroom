@@ -1506,6 +1506,353 @@ button {
   }
 }
 
+/* =========================================================
+   SAYUP PREMIUM PALETTES
+   One component system, three persistent visual identities.
+   ========================================================= */
+
+.sayup-support-theme-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.sayup-support-theme-row .sayup-support-button,
+.sayup-theme-picker {
+  min-width: 0;
+  min-height: 46px;
+  margin: 0 !important;
+  padding: 0 12px !important;
+  border: 1px solid rgba(7, 63, 52, 0.16) !important;
+  border-radius: 14px !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: #073f34 !important;
+  box-shadow: 0 7px 20px rgba(68, 49, 29, 0.07);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sayup-support-theme-row .sayup-support-button {
+  cursor: pointer;
+}
+
+.sayup-theme-picker {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.sayup-theme-picker-label {
+  white-space: nowrap;
+}
+
+.sayup-theme-picker select {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sayup-plan-card,
+.sayup-package-heading,
+.sayup-plan-name,
+.sayup-plan-meta,
+.sayup-plan-price,
+.sayup-privacy-note {
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease;
+}
+
+@media (max-width: 390px) {
+  .sayup-support-theme-row {
+    grid-template-columns: 0.8fr 1.2fr;
+    gap: 7px;
+  }
+
+  .sayup-theme-picker-label {
+    display: none;
+  }
+
+  .sayup-theme-picker {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding-inline: 10px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .sayup-theme-picker select {
+    font-size: 16px;
+  }
+}
+
+/* Emerald Glass */
+html[data-sayup-palette="glass"] .sayup-landing-page {
+  --sayup-emerald: #064e3b;
+  --sayup-emerald-bright: #0a8f70;
+  --sayup-gold: #d5a84b;
+  --sayup-ink: #073b30;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.92), transparent 27%),
+    radial-gradient(circle at 82% 76%, rgba(16, 185, 129, 0.20), transparent 28%),
+    linear-gradient(145deg, #f6fff9 0%, #dff6ea 48%, #bfe8d3 100%) !important;
+}
+
+html[data-sayup-palette="glass"] .sayup-auth-card {
+  border-color: rgba(6, 78, 59, 0.18) !important;
+  background: rgba(246, 255, 249, 0.74) !important;
+  box-shadow: 0 32px 90px rgba(6, 78, 59, 0.18) !important;
+  backdrop-filter: blur(28px) saturate(1.15);
+}
+
+html[data-sayup-palette="glass"] .sayup-auth-tabs {
+  background: rgba(6, 78, 59, 0.09) !important;
+}
+
+html[data-sayup-palette="glass"] .sayup-auth-input,
+html[data-sayup-palette="glass"] .sayup-support-theme-row .sayup-support-button,
+html[data-sayup-palette="glass"] .sayup-theme-picker,
+html[data-sayup-palette="glass"] .sayup-manage-button {
+  border-color: rgba(6, 78, 59, 0.18) !important;
+  background: rgba(255, 255, 255, 0.68) !important;
+  color: #064e3b !important;
+}
+
+html[data-sayup-palette="glass"] .sayup-enter-button {
+  background: linear-gradient(145deg, #0a8f70, #055c49) !important;
+  color: #ffffff !important;
+  box-shadow: 0 16px 34px rgba(6, 78, 59, 0.25) !important;
+}
+
+html[data-sayup-palette="glass"] .sayup-plan-card {
+  border-color: rgba(6, 78, 59, 0.15) !important;
+  background: rgba(255, 255, 255, 0.58) !important;
+}
+
+html[data-sayup-palette="glass"] .private-room-chat-page {
+  --room-ink: #073b30;
+  --room-muted: #647c74;
+  --room-line: rgba(6, 78, 59, 0.14);
+  --room-accent: #0a8f70;
+}
+
+html[data-sayup-palette="glass"] .private-room-chat-page .private-room-call-header {
+  background: linear-gradient(145deg, #08745d, #05503f) !important;
+  color: #ffffff !important;
+}
+
+html[data-sayup-palette="glass"] .private-room-chat-page .private-room-call-header strong,
+html[data-sayup-palette="glass"] .private-room-chat-page .private-room-call-header span,
+html[data-sayup-palette="glass"] .private-room-chat-page .private-room-header-action svg {
+  color: #ffffff !important;
+}
+
+html[data-sayup-palette="glass"] .private-room-chat-page .private-room-message-area {
+  background-color: #e9f6ef !important;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.20), rgba(255, 255, 255, 0.20)),
+    radial-gradient(rgba(6, 78, 59, 0.075) 0.7px, transparent 0.8px) !important;
+  background-size: auto, 22px 22px !important;
+}
+
+html[data-sayup-palette="glass"] .private-room-chat-page .private-room-message-bubble.is-other {
+  border-color: rgba(6, 78, 59, 0.10) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: #17372f !important;
+}
+
+html[data-sayup-palette="glass"] .private-room-chat-page .private-room-message-bubble.is-own {
+  border-color: rgba(4, 94, 73, 0.18) !important;
+  background: linear-gradient(145deg, #08745d, #05503f) !important;
+  color: #ffffff !important;
+}
+
+html[data-sayup-palette="glass"] .private-room-chat-page .private-room-message-composer {
+  background: rgba(239, 250, 244, 0.96) !important;
+}
+
+/* Midnight Jade */
+html[data-sayup-palette="midnight"] {
+  color-scheme: dark;
+}
+
+html[data-sayup-palette="midnight"] .sayup-landing-page {
+  --sayup-emerald: #2dd4bf;
+  --sayup-emerald-bright: #2dd4bf;
+  --sayup-gold: #f0d6a6;
+  --sayup-ink: #f5f0e8;
+  background:
+    radial-gradient(circle at 50% 8%, rgba(45, 212, 191, 0.18), transparent 30%),
+    radial-gradient(circle at 82% 88%, rgba(10, 94, 81, 0.20), transparent 28%),
+    linear-gradient(150deg, #031315 0%, #071f21 52%, #031012 100%) !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-landing-hero,
+html[data-sayup-palette="midnight"] .sayup-landing-hero h1,
+html[data-sayup-palette="midnight"] .sayup-landing-brand,
+html[data-sayup-palette="midnight"] .sayup-auth-card h2,
+html[data-sayup-palette="midnight"] .sayup-auth-card label {
+  color: #f5f0e8 !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-landing-hero > p,
+html[data-sayup-palette="midnight"] .sayup-auth-card > p {
+  color: #9eb9b4 !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-auth-card {
+  border-color: rgba(45, 212, 191, 0.18) !important;
+  background: rgba(5, 27, 29, 0.88) !important;
+  box-shadow: 0 32px 100px rgba(0, 0, 0, 0.46) !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-secure-pill,
+html[data-sayup-palette="midnight"] .sayup-support-theme-row .sayup-support-button,
+html[data-sayup-palette="midnight"] .sayup-theme-picker,
+html[data-sayup-palette="midnight"] .sayup-manage-button {
+  border-color: rgba(45, 212, 191, 0.20) !important;
+  background: rgba(10, 48, 49, 0.82) !important;
+  color: #d9fff8 !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-auth-tabs {
+  border-color: rgba(45, 212, 191, 0.13) !important;
+  background: #09282a !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-auth-tabs button {
+  color: #91aaa6 !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-auth-tabs button[style*="background: rgb(255, 255, 255)"],
+html[data-sayup-palette="midnight"] .sayup-auth-tabs button[style*="background: #ffffff"] {
+  background: #12423f !important;
+  color: #ffffff !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-auth-input {
+  border-color: rgba(45, 212, 191, 0.24) !important;
+  background: rgba(3, 20, 22, 0.78) !important;
+  color: #f5f0e8 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-auth-input::placeholder {
+  color: #76918d !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-package-heading,
+html[data-sayup-palette="midnight"] .sayup-plan-name {
+  color: #f5f0e8 !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-plan-meta {
+  color: #91aaa6 !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-plan-price,
+html[data-sayup-palette="midnight"] .sayup-privacy-note {
+  color: #2dd4bf !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-plan-card {
+  border-color: rgba(45, 212, 191, 0.16) !important;
+  background: rgba(10, 48, 49, 0.72) !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-plan-button {
+  background: #1fc8b3 !important;
+  color: #032321 !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-setting-group select {
+  border-color: rgba(45, 212, 191, 0.20);
+  background: #102c2e;
+  color: #edfdfa;
+}
+
+html[data-sayup-palette="midnight"] .sayup-enter-button {
+  background: linear-gradient(145deg, #2dd4bf, #0a9b88) !important;
+  color: #032321 !important;
+  box-shadow: 0 16px 38px rgba(45, 212, 191, 0.23) !important;
+}
+
+html[data-sayup-palette="midnight"] .private-room-chat-page {
+  --room-ink: #edfdfa;
+  --room-muted: #91aaa6;
+  --room-line: rgba(45, 212, 191, 0.13);
+  --room-accent: #2dd4bf;
+}
+
+html[data-sayup-palette="midnight"] .private-room-chat-page .private-room-call-header {
+  background: linear-gradient(180deg, #04191b, #062326) !important;
+  color: #f5f0e8 !important;
+  box-shadow: 0 9px 30px rgba(0, 0, 0, 0.38) !important;
+}
+
+html[data-sayup-palette="midnight"] .private-room-chat-page .private-room-call-header strong,
+html[data-sayup-palette="midnight"] .private-room-chat-page .private-room-call-header span,
+html[data-sayup-palette="midnight"] .private-room-chat-page .private-room-header-action svg {
+  color: #edfdfa !important;
+}
+
+html[data-sayup-palette="midnight"] .private-room-chat-page .private-room-message-area {
+  background-color: #061719 !important;
+  background-image:
+    radial-gradient(circle at 82% 18%, rgba(45, 212, 191, 0.07), transparent 26%),
+    radial-gradient(rgba(89, 153, 143, 0.075) 0.7px, transparent 0.8px) !important;
+  background-size: auto, 22px 22px !important;
+}
+
+html[data-sayup-palette="midnight"] .private-room-chat-page .private-room-message-bubble.is-other {
+  border-color: rgba(45, 212, 191, 0.12) !important;
+  background: #102c2e !important;
+  color: #edfdfa !important;
+}
+
+html[data-sayup-palette="midnight"] .private-room-chat-page .private-room-message-bubble.is-other .private-room-message-text,
+html[data-sayup-palette="midnight"] .private-room-chat-page .private-room-message-bubble.is-own .private-room-message-text {
+  color: #edfdfa !important;
+  -webkit-text-fill-color: #edfdfa !important;
+}
+
+html[data-sayup-palette="midnight"] .private-room-chat-page .private-room-message-bubble.is-own {
+  border-color: rgba(45, 212, 191, 0.18) !important;
+  background: linear-gradient(145deg, #0a665d, #07443f) !important;
+  color: #ffffff !important;
+}
+
+html[data-sayup-palette="midnight"] .private-room-chat-page .private-room-message-meta {
+  color: #8eaaa5 !important;
+}
+
+html[data-sayup-palette="midnight"] .private-room-chat-page .private-room-message-composer {
+  border-color: rgba(45, 212, 191, 0.12) !important;
+  background: rgba(4, 25, 27, 0.98) !important;
+}
+
+html[data-sayup-palette="midnight"] .private-room-chat-page .str-chat__message-input-inner {
+  border-color: rgba(45, 212, 191, 0.18) !important;
+  background: #102c2e !important;
+}
+
+html[data-sayup-palette="midnight"] .private-room-chat-page .str-chat__textarea,
+html[data-sayup-palette="midnight"] .private-room-chat-page .str-chat__textarea textarea,
+html[data-sayup-palette="midnight"] .private-room-chat-page .str-chat__textarea__textarea {
+  color: #edfdfa !important;
+  caret-color: #2dd4bf !important;
+}
+
+html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-reply {
+  background: #153537 !important;
+  color: #edfdfa !important;
+}
+
 /* SayUp — pearl, emerald and warm-gold product skin. */
 .sayup-landing-page {
   --sayup-emerald: #073f34;
@@ -3424,6 +3771,16 @@ html.private-room-admin-active textarea {
 .sayup-setting-group label span { display: grid; gap: 3px; }
 .sayup-setting-group label small { color: #73807c; }
 .sayup-setting-group input { width: 21px; height: 21px; accent-color: #087464; }
+.sayup-setting-group select {
+  max-width: 145px;
+  min-height: 36px;
+  border: 1px solid #d8e0dc;
+  border-radius: 10px;
+  background: #f8fbfa;
+  color: inherit;
+  padding: 0 9px;
+  font-weight: 750;
+}
 .sayup-hub-feature-cards { display: grid; gap: 8px; margin-top: 14px; }
 .sayup-hub-feature-cards div { padding: 13px; border: 1px solid #e4ded5; background: white; border-radius: 14px; display: grid; gap: 4px; }
 .sayup-hub-feature-cards span { color: #6c7975; font-size: 12px; line-height: 1.45; }

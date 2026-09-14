@@ -30,6 +30,7 @@ import {
   Mic,
   MicOff,
   MoreHorizontal,
+  Palette,
   Pin,
   Phone,
   PhoneOff,
@@ -44,6 +45,30 @@ const isMobile =
 
 const apiKey = import.meta.env.VITE_STREAM_API_KEY;
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+
+const SAYUP_UI_THEMES = [
+  { id: "champagne", label: "Champagne" },
+  { id: "glass", label: "Emerald Glass" },
+  { id: "midnight", label: "Midnight Jade" },
+];
+
+function SayUpThemePicker({ value, onChange }) {
+  return (
+    <label className="sayup-theme-picker" title="Change SayUp theme">
+      <Palette size={17} aria-hidden="true" />
+      <span className="sayup-theme-picker-label">Theme</span>
+      <select
+        aria-label="Choose SayUp theme"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {SAYUP_UI_THEMES.map((theme) => (
+          <option key={theme.id} value={theme.id}>{theme.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 const quotedMessageSelector = (state) => ({
   quotedMessage: state.quotedMessage,
@@ -255,6 +280,15 @@ function OpenChatAtLatestMessage({ channelId }) {
       }, 0);
     };
 
+    const handleManualMessageScroll = () => {
+      if (!keyboardOpening) return;
+      keyboardOpening = false;
+      keyboardSession += 1;
+      window.clearTimeout(settleTimer);
+      window.clearTimeout(fallbackTimer);
+      window.cancelAnimationFrame(frameId);
+    };
+
     const messageArea = document.querySelector(".private-room-message-area");
     const messageList = document.querySelector(
       ".private-room-chat-shell .str-chat__list",
@@ -269,6 +303,9 @@ function OpenChatAtLatestMessage({ channelId }) {
       if (messageList) resizeObserver.observe(messageList);
     }
 
+    messageList?.addEventListener("pointerdown", handleManualMessageScroll, { passive: true });
+    messageList?.addEventListener("touchmove", handleManualMessageScroll, { passive: true });
+
     document.addEventListener("pointerdown", beginKeyboardOpening, { passive: true });
     document.addEventListener("focusin", handleFocusIn);
     document.addEventListener("focusout", handleFocusOut);
@@ -279,6 +316,8 @@ function OpenChatAtLatestMessage({ channelId }) {
       window.clearTimeout(fallbackTimer);
       window.cancelAnimationFrame(frameId);
       resizeObserver?.disconnect();
+      messageList?.removeEventListener("pointerdown", handleManualMessageScroll);
+      messageList?.removeEventListener("touchmove", handleManualMessageScroll);
       document.removeEventListener("pointerdown", beginKeyboardOpening);
       document.removeEventListener("focusin", handleFocusIn);
       document.removeEventListener("focusout", handleFocusOut);
@@ -3207,6 +3246,18 @@ const [supportLoading, setSupportLoading] = useState(false);
   const [v2Open, setV2Open] = useState(false);
   const [bookmarkedIds, setBookmarkedIds] = useState([]);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [uiTheme, setUiTheme] = useState(() => {
+    const saved = localStorage.getItem("sayup_ui_theme");
+    return SAYUP_UI_THEMES.some((theme) => theme.id === saved)
+      ? saved
+      : "champagne";
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.sayupPalette = uiTheme;
+    document.documentElement.dataset.sayupTheme = uiTheme === "midnight" ? "dark" : "light";
+    localStorage.setItem("sayup_ui_theme", uiTheme);
+  }, [uiTheme]);
 
   useEffect(() => {
     const online = () => setIsOnline(true);
@@ -5735,24 +5786,16 @@ alert(err.message || "Join failed - see console");
                     {joining ? "Entering..." : "Enter SayUp →"}
                   </button>
 
-                  <button
-                    className="sayup-support-button"
-                    type="button"
-                    onClick={() => openPublicSupport("I want to buy a subscription")}
-                    style={{
-                      width: "100%",
-                      marginTop: 12,
-                      padding: 12,
-                      borderRadius: 14,
-                      border: "1px solid #e2e8f0",
-                      background: "#fff",
-                      color: "#0f766e",
-                      fontWeight: 900,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Support
-                  </button>
+                  <div className="sayup-support-theme-row">
+                    <button
+                      className="sayup-support-button"
+                      type="button"
+                      onClick={() => openPublicSupport("I want to buy a subscription")}
+                    >
+                      🎧 Support
+                    </button>
+                    <SayUpThemePicker value={uiTheme} onChange={setUiTheme} />
+                  </div>
 
                   <button
                     className="sayup-manage-button"
@@ -5775,7 +5818,7 @@ alert(err.message || "Join failed - see console");
                 </>
               ) : (
                 <>
-                  <div style={{ color: "#334155", fontWeight: 900, marginBottom: 12 }}>
+                  <div className="sayup-package-heading" style={{ color: "#334155", fontWeight: 900, marginBottom: 12 }}>
                     Choose your package
                   </div>
                   <div style={{ display: "grid", gap: 10 }}>
@@ -5783,6 +5826,7 @@ alert(err.message || "Join failed - see console");
                       plans.map((plan) => (
                         <div
                           key={plan.id}
+                          className="sayup-plan-card"
                           style={{
                             display: "grid",
                             gridTemplateColumns: "1fr auto",
@@ -5795,14 +5839,15 @@ alert(err.message || "Join failed - see console");
                           }}
                         >
                           <div>
-                            <div style={{ color: "#061821", fontWeight: 950 }}>{plan.name}</div>
-                            <div style={{ color: "#64748b", fontSize: 12, fontWeight: 700 }}>
+                            <div className="sayup-plan-name" style={{ color: "#061821", fontWeight: 950 }}>{plan.name}</div>
+                            <div className="sayup-plan-meta" style={{ color: "#64748b", fontSize: 12, fontWeight: 700 }}>
                               {plan.days} days · 2 devices · Support
                             </div>
                           </div>
                           <div style={{ textAlign: "right" }}>
-                            <div style={{ color: "#0f766e", fontWeight: 950, marginBottom: 7 }}>{paymentSettings.currencyCode} {plan.price}</div>
+                            <div className="sayup-plan-price" style={{ color: "#0f766e", fontWeight: 950, marginBottom: 7 }}>{paymentSettings.currencyCode} {plan.price}</div>
                             <button
+                              className="sayup-plan-button"
                               type="button"
                               onClick={() => {
                                 setSubscribePlan(plan);
@@ -5842,27 +5887,20 @@ alert(err.message || "Join failed - see console");
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => openPublicSupport("I want to buy a subscription")}
-                    style={{
-                      width: "100%",
-                      marginTop: 14,
-                      padding: 12,
-                      borderRadius: 14,
-                      border: "1px solid #e2e8f0",
-                      background: "#fff",
-                      color: "#0f766e",
-                      fontWeight: 900,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Ask support before buying
-                  </button>
+                  <div className="sayup-support-theme-row">
+                    <button
+                      className="sayup-support-button"
+                      type="button"
+                      onClick={() => openPublicSupport("I want to buy a subscription")}
+                    >
+                      🎧 Ask Support
+                    </button>
+                    <SayUpThemePicker value={uiTheme} onChange={setUiTheme} />
+                  </div>
                 </>
               )}
 
-              <div style={{ marginTop: 18, color: "#10b981", fontSize: 13, fontWeight: 800 }}>
+              <div className="sayup-privacy-note" style={{ marginTop: 18, color: "#10b981", fontSize: 13, fontWeight: 800 }}>
                 ● No tracking. No noisy notifications. Just your private conversations.
               </div>
             </div>
@@ -6214,7 +6252,7 @@ alert(err.message || "Join failed - see console");
                     backgroundPosition: "0 0, 0 0, 0 0",
                   }}
                 >
-                  <MessageList scrolledUpThreshold={24} />
+                  <MessageList scrolledUpThreshold={8} />
                 </div>
 
                 {!callUiState.active && (
@@ -6277,6 +6315,8 @@ alert(err.message || "Join failed - see console");
           bookmarkedIds={bookmarkedIds}
           onOpenMedia={openMediaPreview}
           onJumpToMessage={jumpToMessage}
+          uiTheme={uiTheme}
+          onUiThemeChange={setUiTheme}
         />
 
         {mediaPreview?.items?.length > 0 && (() => {

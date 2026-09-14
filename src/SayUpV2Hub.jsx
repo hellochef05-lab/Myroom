@@ -32,6 +32,8 @@ export default function SayUpV2Hub({
   bookmarkedIds,
   onOpenMedia,
   onJumpToMessage,
+  uiTheme,
+  onUiThemeChange,
 }) {
   const [tab, setTab] = useState("search");
   const [query, setQuery] = useState("");
@@ -68,7 +70,6 @@ export default function SayUpV2Hub({
     const value = { ...appearance, ...next };
     setAppearance(value);
     localStorage.setItem("sayup_appearance", JSON.stringify(value));
-    document.documentElement.dataset.sayupTheme = value.theme || "light";
     document.documentElement.dataset.sayupWallpaper = value.wallpaper || "classic";
     document.documentElement.style.setProperty("--sayup-chat-scale", value.largeText ? "1.12" : "1");
   };
@@ -172,7 +173,7 @@ export default function SayUpV2Hub({
           {tab === "settings" && <>
             <h3>App settings</h3>
             <div className="sayup-setting-group">
-              <label><span><strong>Dark theme</strong><small>Comfortable in low light</small></span><input type="checkbox" checked={appearance.theme === "dark"} onChange={(e) => applyAppearance({ theme: e.target.checked ? "dark" : "light" })} /></label>
+              <label><span><strong>Color theme</strong><small>Use the same premium theme everywhere</small></span><select value={uiTheme} onChange={(event) => onUiThemeChange(event.target.value)}><option value="champagne">Champagne</option><option value="glass">Emerald Glass</option><option value="midnight">Midnight Jade</option></select></label>
               <label><span><strong>Large chat text</strong><small>Improves accessibility</small></span><input type="checkbox" checked={Boolean(appearance.largeText)} onChange={(e) => applyAppearance({ largeText: e.target.checked })} /></label>
               <label><span><strong>Soft wallpaper</strong><small>A premium neutral chat background</small></span><input type="checkbox" checked={appearance.wallpaper === "soft"} onChange={(e) => applyAppearance({ wallpaper: e.target.checked ? "soft" : "classic" })} /></label>
               <label><span><strong>Mute this room</strong><small>Pause room notifications</small></span><input type="checkbox" checked={muted} onChange={(e) => toggleMute(e.target.checked)} /></label>
