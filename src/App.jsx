@@ -128,19 +128,27 @@ function OpenChatAtLatestMessage({ channelId }) {
   useEffect(() => {
     let cancelled = false;
     let frameId = 0;
-    let settleTimer = 0;
-    let initialResizeObserver;
+    let userMovedList = false;
+
+    const messageList = document.querySelector(
+      ".private-room-chat-shell .str-chat__list",
+    );
+
+    const cancelInitialPositioning = () => {
+      userMovedList = true;
+      window.cancelAnimationFrame(frameId);
+    };
 
     const scrollToLatest = () => {
-      if (cancelled) return;
+      if (cancelled || userMovedList) return;
 
-      const messageList = document.querySelector(
+      const currentMessageList = document.querySelector(
         ".private-room-chat-shell .str-chat__list",
       );
 
-      if (messageList) {
-        messageList.scrollTo({
-          top: messageList.scrollHeight,
+      if (currentMessageList) {
+        currentMessageList.scrollTo({
+          top: currentMessageList.scrollHeight,
           behavior: "auto",
         });
       }
@@ -155,26 +163,24 @@ function OpenChatAtLatestMessage({ channelId }) {
 
       if (cancelled) return;
 
-      // Position the room once after the latest message set has rendered.
-      // Keyboard, focus and viewport changes must not trigger this again.
-      frameId = window.requestAnimationFrame(scrollToLatest);
-      settleTimer = window.setTimeout(scrollToLatest, 180);
-
-      const messageArea = document.querySelector(".private-room-message-area");
-      if (messageArea && typeof ResizeObserver === "function") {
-        initialResizeObserver = new ResizeObserver(scrollToLatest);
-        initialResizeObserver.observe(messageArea);
-        window.setTimeout(() => initialResizeObserver?.disconnect(), 700);
-      }
+      // Wait for Stream's message DOM to commit, then position exactly once.
+      // Any touch/wheel interaction cancels this so the app never fights the user.
+      frameId = window.requestAnimationFrame(() => {
+        frameId = window.requestAnimationFrame(scrollToLatest);
+      });
     };
 
+    messageList?.addEventListener("pointerdown", cancelInitialPositioning, { passive: true });
+    messageList?.addEventListener("touchstart", cancelInitialPositioning, { passive: true });
+    messageList?.addEventListener("wheel", cancelInitialPositioning, { passive: true });
     openAtLatest();
 
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(frameId);
-      window.clearTimeout(settleTimer);
-      initialResizeObserver?.disconnect();
+      messageList?.removeEventListener("pointerdown", cancelInitialPositioning);
+      messageList?.removeEventListener("touchstart", cancelInitialPositioning);
+      messageList?.removeEventListener("wheel", cancelInitialPositioning);
     };
   }, [channelId]);
 
@@ -191,13 +197,10 @@ function OpenChatAtLatestMessage({ channelId }) {
     const viewport = window.visualViewport;
     let keyboardOpening = false;
     let settleTimer = 0;
-    let fallbackTimer = 0;
     let frameId = 0;
     let keyboardSession = 0;
-    let keyboardOpeningStartedAt = 0;
-    let resizeObserver;
 
-    const pinLatestMessage = () => {
+    const pinLatestMessageOnce = () => {
       window.cancelAnimationFrame(frameId);
       frameId = window.requestAnimationFrame(() => {
         const messageList = document.querySelector(
@@ -211,61 +214,32 @@ function OpenChatAtLatestMessage({ channelId }) {
       });
     };
 
-    const finishKeyboardOpening = () => {
-      if (!keyboardOpening) return;
-      pinLatestMessage();
-      keyboardOpening = false;
-      window.clearTimeout(fallbackTimer);
-    };
-
-    const scheduleSettle = () => {
+    const scheduleKeyboardSettle = (session) => {
       window.clearTimeout(settleTimer);
-      const elapsed = performance.now() - keyboardOpeningStartedAt;
-      const delay = Math.max(180, 520 - elapsed);
-      settleTimer = window.setTimeout(finishKeyboardOpening, delay);
+      settleTimer = window.setTimeout(() => {
+        if (!keyboardOpening || session !== keyboardSession) return;
+        pinLatestMessageOnce();
+        keyboardOpening = false;
+      }, 160);
     };
 
     const isComposerField = (target) => Boolean(target?.closest?.(
       ".private-room-message-composer textarea, .private-room-message-composer input, .private-room-message-composer [contenteditable='true']",
     ));
 
-    const beginKeyboardOpening = (event) => {
-      if (!isComposerField(event.target)) return;
-      if (keyboardOpening) {
-        pinLatestMessage();
-        return;
-      }
-
-      keyboardOpening = true;
-      keyboardOpeningStartedAt = performance.now();
-      const session = ++keyboardSession;
-
-      Promise.resolve(jumpToLatestRef.current?.())
-        .catch(() => {})
-        .finally(() => {
-          if (keyboardOpening && session === keyboardSession) pinLatestMessage();
-        });
-      pinLatestMessage();
-      scheduleSettle();
-      window.clearTimeout(fallbackTimer);
-      fallbackTimer = window.setTimeout(finishKeyboardOpening, 900);
-    };
-
     const handleFocusIn = (event) => {
-      const field = event.target?.closest?.(
-        ".private-room-message-composer textarea, .private-room-message-composer input, .private-room-message-composer [contenteditable='true']",
-      );
-      if (!field) return;
-      beginKeyboardOpening(event);
+      if (!isComposerField(event.target)) return;
+      keyboardOpening = true;
+      const session = ++keyboardSession;
+      // Place the latest message before Safari starts resizing, then make one
+      // final correction only after its viewport animation has settled.
+      pinLatestMessageOnce();
+      scheduleKeyboardSettle(session);
     };
 
     const handleViewportResize = () => {
       if (!keyboardOpening) return;
-      // Pin inside the message list only (never the page) during the short
-      // keyboard animation. Once resize events settle, normal manual scrolling
-      // resumes and new messages cannot pull the user around.
-      pinLatestMessage();
-      scheduleSettle();
+      scheduleKeyboardSettle(keyboardSession);
     };
 
     const handleFocusOut = () => {
@@ -275,8 +249,8 @@ function OpenChatAtLatestMessage({ channelId }) {
         );
         if (stillInComposer) return;
         keyboardOpening = false;
+        keyboardSession += 1;
         window.clearTimeout(settleTimer);
-        window.clearTimeout(fallbackTimer);
       }, 0);
     };
 
@@ -285,40 +259,27 @@ function OpenChatAtLatestMessage({ channelId }) {
       keyboardOpening = false;
       keyboardSession += 1;
       window.clearTimeout(settleTimer);
-      window.clearTimeout(fallbackTimer);
       window.cancelAnimationFrame(frameId);
     };
 
-    const messageArea = document.querySelector(".private-room-message-area");
     const messageList = document.querySelector(
       ".private-room-chat-shell .str-chat__list",
     );
-    if (typeof ResizeObserver === "function") {
-      resizeObserver = new ResizeObserver(() => {
-        if (!keyboardOpening) return;
-        pinLatestMessage();
-        scheduleSettle();
-      });
-      if (messageArea) resizeObserver.observe(messageArea);
-      if (messageList) resizeObserver.observe(messageList);
-    }
 
     messageList?.addEventListener("pointerdown", handleManualMessageScroll, { passive: true });
     messageList?.addEventListener("touchmove", handleManualMessageScroll, { passive: true });
+    messageList?.addEventListener("wheel", handleManualMessageScroll, { passive: true });
 
-    document.addEventListener("pointerdown", beginKeyboardOpening, { passive: true });
     document.addEventListener("focusin", handleFocusIn);
     document.addEventListener("focusout", handleFocusOut);
     viewport.addEventListener("resize", handleViewportResize, { passive: true });
 
     return () => {
       window.clearTimeout(settleTimer);
-      window.clearTimeout(fallbackTimer);
       window.cancelAnimationFrame(frameId);
-      resizeObserver?.disconnect();
       messageList?.removeEventListener("pointerdown", handleManualMessageScroll);
       messageList?.removeEventListener("touchmove", handleManualMessageScroll);
-      document.removeEventListener("pointerdown", beginKeyboardOpening);
+      messageList?.removeEventListener("wheel", handleManualMessageScroll);
       document.removeEventListener("focusin", handleFocusIn);
       document.removeEventListener("focusout", handleFocusOut);
       viewport.removeEventListener("resize", handleViewportResize);
