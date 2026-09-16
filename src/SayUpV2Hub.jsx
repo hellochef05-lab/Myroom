@@ -32,6 +32,7 @@ export default function SayUpV2Hub({
   bookmarkedIds,
   onOpenMedia,
   onJumpToMessage,
+  initialTab = "search",
   uiTheme,
   onUiThemeChange,
 }) {
@@ -55,6 +56,11 @@ export default function SayUpV2Hub({
     events.forEach((eventName) => channel.on(eventName, refresh));
     return () => events.forEach((eventName) => channel.off(eventName, refresh));
   }, [channel]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (tabs.some(([id]) => id === initialTab)) setTab(initialTab);
+  }, [open, initialTab]);
 
   const messages = (channel?.state?.messages || []).filter((message) => message.type !== "system");
   const members = Object.values(channel?.state?.members || {});

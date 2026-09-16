@@ -3740,18 +3740,237 @@ html.private-room-admin-active textarea {
   color: rgba(255, 255, 255, 0.72) !important;
 }
 /* SayUp 2.0 room hub */
+.private-room-header-utilities {
+  position: relative;
+  z-index: 10020;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+  isolation: isolate;
+}
+
+.private-room-header-utilities .private-room-support-button {
+  position: static !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  width: auto !important;
+  min-width: 104px !important;
+  max-width: none !important;
+  height: 42px !important;
+  padding: 0 15px !important;
+  border: 1px solid rgba(7, 63, 52, 0.16) !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  color: #073f34 !important;
+  box-shadow: 0 7px 20px rgba(68, 49, 29, 0.09) !important;
+  font-size: 13px !important;
+  font-weight: 850 !important;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .sayup-v2-open-button {
   width: 42px;
   height: 42px;
   flex: 0 0 42px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(255,255,255,.28);
+  padding: 0;
+  border: 1px solid rgba(7, 63, 52, 0.16);
   border-radius: 999px;
-  background: rgba(255,255,255,.14);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.88);
+  color: #073f34;
+  box-shadow: 0 7px 20px rgba(68, 49, 29, 0.09);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 150ms ease, background-color 150ms ease, color 150ms ease;
+}
+
+.sayup-v2-open-button:hover,
+.sayup-v2-open-button.is-open {
+  background: #073f34;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.private-room-more-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 10040;
+  width: min(286px, calc(100vw - 24px));
+  overflow: hidden;
+  border: 1px solid rgba(7, 63, 52, 0.14);
+  border-radius: 20px;
+  background: rgba(255, 253, 249, 0.98);
+  color: #17372f;
+  box-shadow: 0 24px 70px rgba(35, 29, 21, 0.24);
+  backdrop-filter: blur(24px) saturate(1.15);
+  -webkit-backdrop-filter: blur(24px) saturate(1.15);
+  animation: sayupMoreMenuIn 160ms cubic-bezier(.2,.85,.3,1);
+  transform-origin: top right;
+}
+
+@keyframes sayupMoreMenuIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+}
+
+.private-room-more-menu-heading {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px 11px;
+  background: linear-gradient(135deg, rgba(7, 63, 52, 0.08), rgba(181, 138, 72, 0.08));
+  border-bottom: 1px solid rgba(7, 63, 52, 0.09);
+  text-align: left;
+}
+
+.private-room-more-menu-heading span {
+  color: #837667;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.private-room-more-menu-heading strong {
+  color: #17372f;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.private-room-more-menu-list {
+  padding: 7px;
+}
+
+.private-room-more-menu-list button {
+  width: 100%;
+  min-height: 45px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #263b35;
+  font-size: 14px;
+  font-weight: 750;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.private-room-more-menu-list button:hover,
+.private-room-more-menu-list button:focus-visible {
+  outline: none;
+  background: rgba(7, 63, 52, 0.07);
+}
+
+.private-room-more-menu-list button > span {
+  width: 31px;
+  height: 31px;
+  flex: 0 0 31px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(7, 63, 52, 0.08);
+  color: #0b6b57;
+}
+
+.private-room-more-menu-list button.is-warning,
+.private-room-more-menu-list button.is-warning > span {
+  color: #9a671e;
+}
+
+.private-room-more-menu-list button.is-destructive,
+.private-room-more-menu-list button.is-destructive > span {
+  color: #c43139;
+}
+
+.private-room-more-menu-list button:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+}
+
+.private-room-more-menu-divider {
+  height: 1px;
+  margin: 6px 9px;
+  background: rgba(7, 63, 52, 0.10);
+}
+
+@media (max-width: 767px) {
+  .private-room-chat-page .private-room-header-utilities {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    gap: 6px;
+  }
+
+  .private-room-chat-page .private-room-header-utilities .private-room-support-button {
+    min-width: 92px !important;
+    height: 36px !important;
+    padding: 0 12px !important;
+    font-size: 12px !important;
+  }
+
+  .private-room-chat-page .sayup-v2-open-button {
+    position: static;
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  .private-room-more-menu {
+    top: calc(100% + 8px);
+  }
+}
+
+html[data-sayup-palette="midnight"] .private-room-header-utilities .private-room-support-button,
+html[data-sayup-palette="midnight"] .sayup-v2-open-button {
+  border-color: rgba(45, 212, 191, 0.22) !important;
+  background: rgba(10, 48, 49, 0.92) !important;
+  color: #d9fff8 !important;
+  box-shadow: 0 9px 24px rgba(0, 0, 0, 0.24) !important;
+}
+
+html[data-sayup-palette="midnight"] .sayup-v2-open-button.is-open {
+  background: #2dd4bf !important;
+  color: #042b28 !important;
+}
+
+html[data-sayup-palette="midnight"] .private-room-more-menu {
+  border-color: rgba(45, 212, 191, 0.18);
+  background: rgba(7, 31, 33, 0.98);
+  color: #e8fffb;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.52);
+}
+
+html[data-sayup-palette="midnight"] .private-room-more-menu-heading {
+  border-bottom-color: rgba(45, 212, 191, 0.13);
+  background: rgba(45, 212, 191, 0.08);
+}
+
+html[data-sayup-palette="midnight"] .private-room-more-menu-heading span {
+  color: #8db8b1;
+}
+
+html[data-sayup-palette="midnight"] .private-room-more-menu-heading strong,
+html[data-sayup-palette="midnight"] .private-room-more-menu-list button {
+  color: #e8fffb;
+}
+
+html[data-sayup-palette="midnight"] .private-room-more-menu-list button:hover,
+html[data-sayup-palette="midnight"] .private-room-more-menu-list button:focus-visible,
+html[data-sayup-palette="midnight"] .private-room-more-menu-list button > span {
+  background: rgba(45, 212, 191, 0.10);
+}
+
+html[data-sayup-palette="midnight"] .private-room-more-menu-divider {
+  background: rgba(45, 212, 191, 0.14);
 }
 
 .sayup-hub-backdrop {
@@ -3851,28 +4070,9 @@ html[data-sayup-wallpaper="soft"] .private-room-message-area { background-image:
 .private-room-media-tile img,.private-room-media-viewer-content { -webkit-touch-callout: none; user-select: none; }
 
 @media (max-width: 560px) {
-  .private-room-chat-page .sayup-v2-open-button {
-    position: absolute;
-    top: calc(7px + env(safe-area-inset-top));
-    right: 112px;
-    width: 36px;
-    height: 36px;
-    z-index: 2;
-  }
   .sayup-hub { width: 100%; }
   .sayup-hub-tabs span { display: none; }
   .sayup-hub-tabs button { padding: 10px 2px; }
-}
-
-@media (min-width: 561px) and (max-width: 767px) {
-  .private-room-chat-page .sayup-v2-open-button {
-    position: absolute;
-    top: calc(7px + env(safe-area-inset-top));
-    right: 116px;
-    width: 36px;
-    height: 36px;
-    z-index: 2;
-  }
 }
 
 /* WhatsApp-style composer reply: compact, readable, and part of the input. */

@@ -23,6 +23,7 @@ import SayUpV2Hub from "./SayUpV2Hub";
 import {
   Camera,
   CameraOff,
+  Bookmark,
   Check,
   ChevronDown,
   CircleDot,
@@ -36,7 +37,10 @@ import {
   Phone,
   PhoneOff,
   Reply,
+  Search,
+  Settings,
   Trash2,
+  Users,
   Video,
   SwitchCamera,
 } from "lucide-react";
@@ -508,6 +512,8 @@ function CallHeader({
   clearingChat,
   onOpenV2,
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
   const compact = typeof window !== "undefined" && window.innerWidth <= 768;
   const veryCompact = typeof window !== "undefined" && window.innerWidth <= 430;
   const roomInitial = String(room || "R").trim().slice(0, 1).toUpperCase();
@@ -546,6 +552,37 @@ function CallHeader({
       icon: <PhoneOff size={compact ? 17 : 21} color="#fff" />,
     },
   ];
+
+  const menuActions = [
+    { label: "Search messages", icon: <Search size={18} />, onClick: () => onOpenV2("search") },
+    { label: "Saved messages", icon: <Bookmark size={18} />, onClick: () => onOpenV2("saved") },
+    { label: "Media and files", icon: <Camera size={18} />, onClick: () => onOpenV2("media") },
+    { label: "Room members", icon: <Users size={18} />, onClick: () => onOpenV2("members") },
+    { label: "Appearance and settings", icon: <Settings size={18} />, onClick: () => onOpenV2("settings") },
+  ];
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+
+    const closeOnOutsidePress = (event) => {
+      if (!menuRef.current?.contains(event.target)) setMenuOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menuOpen]);
+
+  const runMenuAction = (action) => {
+    setMenuOpen(false);
+    action();
+  };
 
   return (
     <header
@@ -692,26 +729,72 @@ function CallHeader({
         </div>
       </div>
 
-      <button
-        type="button"
-        className="private-room-support-button"
-        onClick={onOpenSupport}
-        title="Open room support"
-        aria-label="Open room support"
-      >
-        <Headphones size={15} aria-hidden="true" />
-        Support
-      </button>
+      <div className="private-room-header-utilities" ref={menuRef}>
+        <button
+          type="button"
+          className="private-room-support-button"
+          onClick={onOpenSupport}
+          title="Open room support"
+          aria-label="Open room support"
+        >
+          <Headphones size={15} aria-hidden="true" />
+          <span>Support</span>
+        </button>
 
-      <button
-        type="button"
-        className="sayup-v2-open-button"
-        onClick={onOpenV2}
-        title="Open SayUp 2.0 tools"
-        aria-label="Open SayUp 2.0 tools"
-      >
-        <MoreHorizontal size={19} aria-hidden="true" />
-      </button>
+        <button
+          type="button"
+          className={`sayup-v2-open-button${menuOpen ? " is-open" : ""}`}
+          onClick={() => setMenuOpen((current) => !current)}
+          title="More room options"
+          aria-label="More room options"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+        >
+          <MoreHorizontal size={21} aria-hidden="true" />
+        </button>
+
+        {menuOpen && (
+          <div className="private-room-more-menu" role="menu" aria-label="Room options">
+            <div className="private-room-more-menu-heading">
+              <span>Room {room}</span>
+              <strong>More options</strong>
+            </div>
+            <div className="private-room-more-menu-list">
+              {menuActions.map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => runMenuAction(action.onClick)}
+                >
+                  <span>{action.icon}</span>
+                  {action.label}
+                </button>
+              ))}
+              <div className="private-room-more-menu-divider" />
+              <button
+                type="button"
+                role="menuitem"
+                className="is-warning"
+                disabled={!joinedRoom || clearingChat}
+                onClick={() => runMenuAction(onClearChat)}
+              >
+                <span><Trash2 size={18} /></span>
+                {clearingChat ? "Clearing chat…" : "Clear chat for everyone"}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="is-destructive"
+                onClick={() => runMenuAction(onExitRoom)}
+              >
+                <span><PhoneOff size={18} /></span>
+                Exit room
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div
         className="private-room-header-actions"
@@ -3210,6 +3293,7 @@ const [supportLoading, setSupportLoading] = useState(false);
   const [supportReplyText, setSupportReplyText] = useState("");
   const [clearingChat, setClearingChat] = useState(false);
   const [v2Open, setV2Open] = useState(false);
+  const [v2InitialTab, setV2InitialTab] = useState("search");
   const [bookmarkedIds, setBookmarkedIds] = useState([]);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [uiTheme, setUiTheme] = useState(() => {
@@ -3282,6 +3366,11 @@ const [supportLoading, setSupportLoading] = useState(false);
       if (channel?.cid) localStorage.setItem(`sayup_bookmarks_${channel.cid}`, JSON.stringify(next));
       return next;
     });
+  };
+
+  const openRoomTools = (tab = "search") => {
+    setV2InitialTab(tab);
+    setV2Open(true);
   };
 
   const jumpToMessage = (messageId) => {
@@ -6183,7 +6272,7 @@ alert(err.message || "Join failed - see console");
                   onCallStateChange={setCallUiState}
                   onClearChat={clearChatForEveryone}
                   clearingChat={clearingChat}
-                  onOpenV2={() => setV2Open(true)}
+                  onOpenV2={openRoomTools}
                 />
 
                 {!isOnline && (
@@ -6266,6 +6355,7 @@ alert(err.message || "Join failed - see console");
         <SayUpV2Hub
           open={v2Open}
           onClose={() => setV2Open(false)}
+          initialTab={v2InitialTab}
           channel={channel}
           currentUserId={client?.userID}
           room={room}
