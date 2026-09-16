@@ -132,8 +132,8 @@ export default function SayUpV2Hub({
     <div className="sayup-hub-backdrop" onPointerDown={onClose}>
       <aside className="sayup-hub" role="dialog" aria-modal="true" aria-label="SayUp tools" onPointerDown={(event) => event.stopPropagation()}>
         <header className="sayup-hub-header">
-          <div><span>Room {room}</span><h2>SayUp</h2></div>
-          <button onClick={onClose} aria-label="Close SayUp tools">×</button>
+          <button className="sayup-hub-back-button" type="button" onClick={onClose} aria-label="Back to chat">← Back to chat</button>
+          <div className="sayup-hub-title"><span>Room {room}</span><h2>SayUp</h2></div>
         </header>
         <nav className="sayup-hub-tabs" aria-label="Room tools">
           {tabs.map(([id, icon, label]) => (

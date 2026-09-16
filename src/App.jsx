@@ -193,108 +193,6 @@ function OpenChatAtLatestMessage({ channelId }) {
     };
   }, [channelId]);
 
-  useEffect(() => {
-    if (
-      !channelId ||
-      typeof window === "undefined" ||
-      !window.visualViewport ||
-      !window.matchMedia("(max-width: 767px)").matches
-    ) {
-      return undefined;
-    }
-
-    const viewport = window.visualViewport;
-    let keyboardOpening = false;
-    let settleTimer = 0;
-    let frameId = 0;
-    let keyboardSession = 0;
-
-    const pinLatestMessageOnce = () => {
-      window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(() => {
-        const messageList = document.querySelector(
-          ".private-room-chat-shell .str-chat__list",
-        );
-        if (!messageList) return;
-        messageList.scrollTop = Math.max(
-          0,
-          messageList.scrollHeight - messageList.clientHeight,
-        );
-      });
-    };
-
-    const scheduleKeyboardSettle = (session) => {
-      window.clearTimeout(settleTimer);
-      settleTimer = window.setTimeout(() => {
-        if (!keyboardOpening || session !== keyboardSession) return;
-        pinLatestMessageOnce();
-        keyboardOpening = false;
-      }, 160);
-    };
-
-    const isComposerField = (target) => Boolean(target?.closest?.(
-      ".private-room-message-composer textarea, .private-room-message-composer input, .private-room-message-composer [contenteditable='true']",
-    ));
-
-    const handleFocusIn = (event) => {
-      if (!isComposerField(event.target)) return;
-      keyboardOpening = true;
-      const session = ++keyboardSession;
-      // Place the latest message before Safari starts resizing, then make one
-      // final correction only after its viewport animation has settled.
-      pinLatestMessageOnce();
-      scheduleKeyboardSettle(session);
-    };
-
-    const handleViewportResize = () => {
-      if (!keyboardOpening) return;
-      scheduleKeyboardSettle(keyboardSession);
-    };
-
-    const handleFocusOut = () => {
-      window.setTimeout(() => {
-        const stillInComposer = document.activeElement?.closest?.(
-          ".private-room-message-composer",
-        );
-        if (stillInComposer) return;
-        keyboardOpening = false;
-        keyboardSession += 1;
-        window.clearTimeout(settleTimer);
-      }, 0);
-    };
-
-    const handleManualMessageScroll = () => {
-      if (!keyboardOpening) return;
-      keyboardOpening = false;
-      keyboardSession += 1;
-      window.clearTimeout(settleTimer);
-      window.cancelAnimationFrame(frameId);
-    };
-
-    const messageList = document.querySelector(
-      ".private-room-chat-shell .str-chat__list",
-    );
-
-    messageList?.addEventListener("pointerdown", handleManualMessageScroll, { passive: true });
-    messageList?.addEventListener("touchmove", handleManualMessageScroll, { passive: true });
-    messageList?.addEventListener("wheel", handleManualMessageScroll, { passive: true });
-
-    document.addEventListener("focusin", handleFocusIn);
-    document.addEventListener("focusout", handleFocusOut);
-    viewport.addEventListener("resize", handleViewportResize, { passive: true });
-
-    return () => {
-      window.clearTimeout(settleTimer);
-      window.cancelAnimationFrame(frameId);
-      messageList?.removeEventListener("pointerdown", handleManualMessageScroll);
-      messageList?.removeEventListener("touchmove", handleManualMessageScroll);
-      messageList?.removeEventListener("wheel", handleManualMessageScroll);
-      document.removeEventListener("focusin", handleFocusIn);
-      document.removeEventListener("focusout", handleFocusOut);
-      viewport.removeEventListener("resize", handleViewportResize);
-    };
-  }, [channelId]);
-
   return null;
 }
 
@@ -316,26 +214,6 @@ function createPrivateRoomId(accessKey, roomCode) {
 function createStreamUserId(accessKey, displayName, deviceId) {
   const deviceSuffix = normaliseIdentifier(deviceId, "device").slice(-18);
   return `key_${normaliseIdentifier(accessKey, "unknown")}_user_${normaliseIdentifier(displayName, "guest")}_${deviceSuffix}`;
-}
-
-function focusMobileComposerWithoutPageScroll(event) {
-  if (
-    typeof window === "undefined" ||
-    !window.matchMedia("(max-width: 767px)").matches ||
-    document.activeElement === event.currentTarget
-  ) {
-    return;
-  }
-
-  // Safari normally pans the page before opening its keyboard. Focusing from
-  // the original user gesture with preventScroll keeps the app shell fixed,
-  // leaving only the message list to resize like a native chat screen.
-  event.preventDefault();
-  try {
-    event.currentTarget.focus({ preventScroll: true });
-  } catch {
-    event.currentTarget.focus();
-  }
 }
 
 const DEFAULT_API_TIMEOUT_MS = 25000;
@@ -6298,7 +6176,7 @@ alert(err.message || "Join failed - see console");
                     backgroundPosition: "0 0, 0 0, 0 0",
                   }}
                 >
-                  <MessageList scrolledUpThreshold={8} />
+                  <MessageList suppressAutoscroll scrolledUpThreshold={0} />
                 </div>
 
                 {!callUiState.active && (
@@ -6324,7 +6202,6 @@ alert(err.message || "Join failed - see console");
                         enterKeyHint: "send",
                         autoCapitalize: "sentences",
                         autoCorrect: "on",
-                        onPointerDown: focusMobileComposerWithoutPageScroll,
                       }}
                     />
                   </div>
