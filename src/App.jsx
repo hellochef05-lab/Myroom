@@ -24,6 +24,7 @@ import {
   Camera,
   CameraOff,
   Check,
+  ChevronDown,
   CircleDot,
   Copy,
   Headphones,
@@ -53,10 +54,14 @@ const SAYUP_UI_THEMES = [
 ];
 
 function SayUpThemePicker({ value, onChange }) {
+  const selectedTheme = SAYUP_UI_THEMES.find((theme) => theme.id === value)
+    || SAYUP_UI_THEMES[0];
+
   return (
     <label className="sayup-theme-picker" title="Change SayUp theme">
       <Palette size={17} aria-hidden="true" />
-      <span className="sayup-theme-picker-label">Theme</span>
+      <span className="sayup-theme-picker-label">{selectedTheme.label}</span>
+      <ChevronDown className="sayup-theme-picker-chevron" size={16} aria-hidden="true" />
       <select
         aria-label="Choose SayUp theme"
         value={value}
@@ -5384,7 +5389,8 @@ alert(err.message || "Join failed - see console");
               type="button"
               onClick={() => openPublicSupport("I want to buy a subscription")}
             >
-              🎧 Support
+              <Headphones size={17} aria-hidden="true" />
+              <span>Support</span>
             </button>
             <SayUpThemePicker value={uiTheme} onChange={setUiTheme} />
           </div>

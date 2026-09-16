@@ -1519,53 +1519,81 @@ button {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 9px;
+  gap: 10px;
+  max-width: calc(100% - 40px);
 }
 
 .sayup-landing-top-actions .sayup-support-button,
 .sayup-landing-top-actions .sayup-theme-picker {
   min-width: 0;
-  min-height: 46px;
+  height: 46px;
   margin: 0 !important;
-  padding: 0 12px !important;
-  border: 1px solid rgba(7, 63, 52, 0.16) !important;
-  border-radius: 14px !important;
-  background: rgba(255, 255, 255, 0.78) !important;
+  padding: 0 15px !important;
+  border: 1px solid rgba(7, 63, 52, 0.18) !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.86) !important;
   color: #073f34 !important;
-  box-shadow: 0 7px 20px rgba(68, 49, 29, 0.07);
-  font-size: 13px;
+  box-shadow:
+    0 9px 26px rgba(45, 36, 24, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  font-size: 14px;
   font-weight: 900;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
 }
 
 .sayup-landing-top-actions .sayup-support-button {
-  min-width: 106px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 112px;
   cursor: pointer;
 }
 
+.sayup-landing-top-actions .sayup-support-button:hover,
+.sayup-landing-top-actions .sayup-theme-picker:hover {
+  transform: translateY(-1px);
+  border-color: rgba(7, 63, 52, 0.30) !important;
+  box-shadow:
+    0 12px 30px rgba(45, 36, 24, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
 .sayup-landing-top-actions .sayup-theme-picker {
-  width: min(190px, 42vw);
+  width: 190px;
 }
 
 .sayup-theme-picker {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  position: relative;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 9px;
+  cursor: pointer;
+  overflow: hidden;
 }
 
 .sayup-theme-picker-label {
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: nowrap;
+  text-align: left;
+}
+
+.sayup-theme-picker-chevron {
+  flex: 0 0 auto;
+  opacity: 0.66;
 }
 
 .sayup-theme-picker select {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  min-width: 0;
+  height: 100%;
   border: 0;
   outline: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 13px;
+  opacity: 0;
   cursor: pointer;
 }
 
@@ -1581,21 +1609,6 @@ button {
 @media (max-width: 390px) {
   .sayup-landing-top-actions {
     gap: 6px;
-  }
-
-  .sayup-theme-picker-label {
-    display: none;
-  }
-
-  .sayup-theme-picker {
-    grid-template-columns: auto minmax(0, 1fr);
-    padding-inline: 10px !important;
-  }
-}
-
-@media (max-width: 767px) {
-  .sayup-theme-picker select {
-    font-size: 16px;
   }
 }
 
@@ -3380,22 +3393,28 @@ html.private-room-admin-active textarea {
   .sayup-landing-top-actions {
     top: max(12px, env(safe-area-inset-top));
     right: max(12px, env(safe-area-inset-right));
+    width: calc(100% - 24px);
+    max-width: none;
     gap: 7px;
   }
 
   .sayup-landing-top-actions .sayup-support-button,
   .sayup-landing-top-actions .sayup-theme-picker {
-    min-height: 40px;
+    height: 42px;
     border-radius: 999px !important;
   }
 
   .sayup-landing-top-actions .sayup-support-button {
-    min-width: 96px;
-    padding-inline: 12px !important;
+    flex: 0 0 104px;
+    min-width: 104px;
+    padding-inline: 13px !important;
   }
 
   .sayup-landing-top-actions .sayup-theme-picker {
-    width: min(174px, 48vw);
+    flex: 0 1 184px;
+    width: 184px;
+    min-width: 158px;
+    padding-inline: 13px !important;
   }
 
   .sayup-landing-layout {
