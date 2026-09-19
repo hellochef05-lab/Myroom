@@ -133,27 +133,25 @@ function OpenChatAtLatestMessage({ channelId, currentUserId }) {
   const { messages = [] } = useChannelStateContext("OpenChatAtLatestMessage");
   const listRef = useRef(null);
   const stickToBottomRef = useRef(true);
-  const initialPositioningRef = useRef(true);
   const programmaticScrollRef = useRef(false);
-  const keyboardTransitionRef = useRef(false);
-  const animationFrameRef = useRef(0);
-  const keyboardTimerRef = useRef(0);
+  const userInteractingRef = useRef(false);
+  const releaseProgrammaticFrameRef = useRef(0);
 
-  const pinToLatest = () => {
+  const pinToLatest = (force = false) => {
     const messageList = listRef.current;
     if (!messageList) return;
+    if (!force && (!stickToBottomRef.current || userInteractingRef.current)) return;
 
-    cancelAnimationFrame(animationFrameRef.current);
-    animationFrameRef.current = requestAnimationFrame(() => {
-      programmaticScrollRef.current = true;
-      messageList.scrollTop = Math.max(
-        0,
-        messageList.scrollHeight - messageList.clientHeight,
-      );
-      requestAnimationFrame(() => {
-        programmaticScrollRef.current = false;
-        stickToBottomRef.current = true;
-      });
+    programmaticScrollRef.current = true;
+    messageList.scrollTop = Math.max(
+      0,
+      messageList.scrollHeight - messageList.clientHeight,
+    );
+    stickToBottomRef.current = true;
+
+    cancelAnimationFrame(releaseProgrammaticFrameRef.current);
+    releaseProgrammaticFrameRef.current = requestAnimationFrame(() => {
+      programmaticScrollRef.current = false;
     });
   };
 
@@ -167,96 +165,102 @@ function OpenChatAtLatestMessage({ channelId, currentUserId }) {
 
     listRef.current = messageList;
     stickToBottomRef.current = true;
-    initialPositioningRef.current = true;
-    messageList.classList.add("sayup-message-list-positioning");
+    userInteractingRef.current = false;
 
     const distanceFromLatest = () => Math.max(
       0,
       messageList.scrollHeight - messageList.clientHeight - messageList.scrollTop,
     );
 
-    const finishKeyboardTransitionSoon = () => {
-      window.clearTimeout(keyboardTimerRef.current);
-      keyboardTimerRef.current = window.setTimeout(() => {
-        keyboardTransitionRef.current = false;
-      }, 320);
-    };
-
     const handleScroll = () => {
-      if (programmaticScrollRef.current || initialPositioningRef.current) return;
-      stickToBottomRef.current = distanceFromLatest() <= 32;
+      if (programmaticScrollRef.current) return;
+      stickToBottomRef.current = distanceFromLatest() <= 48;
     };
 
-    const handleUserScrollIntent = () => {
-      initialPositioningRef.current = false;
-      messageList.classList.remove("sayup-message-list-positioning");
+    const handleUserScrollStart = () => {
+      userInteractingRef.current = true;
     };
 
-    const handleComposerFocus = (event) => {
-      if (!event.target?.closest?.(".private-room-message-composer")) return;
-      keyboardTransitionRef.current = distanceFromLatest() <= 48;
-      if (keyboardTransitionRef.current) pinToLatest();
-      finishKeyboardTransitionSoon();
+    const handleUserScrollEnd = () => {
+      userInteractingRef.current = false;
+      stickToBottomRef.current = distanceFromLatest() <= 48;
     };
 
-    const handleViewportResize = () => {
-      if (!keyboardTransitionRef.current && !stickToBottomRef.current) return;
-      keyboardTransitionRef.current = true;
-      pinToLatest();
-      finishKeyboardTransitionSoon();
+    const root = document.documentElement;
+    const viewport = window.visualViewport;
+
+    const syncComposerInset = () => {
+      const messageFieldIsFocused = Boolean(
+        document.activeElement?.closest?.(".private-room-message-composer"),
+      );
+      root.style.setProperty(
+        "--private-room-composer-bottom",
+        messageFieldIsFocused ? "0px" : "max(7px, env(safe-area-inset-bottom))",
+      );
     };
 
-    const keepLatestMessageAnchored = () => {
-      if (
-        initialPositioningRef.current ||
-        keyboardTransitionRef.current ||
-        stickToBottomRef.current
-      ) {
-        pinToLatest();
+    const syncViewportAndLatestMessage = () => {
+      const shouldStayAtLatest = stickToBottomRef.current && !userInteractingRef.current;
+
+      if (viewport) {
+        root.style.setProperty(
+          "--private-room-visible-height",
+          `${Math.round(viewport.height * 100) / 100}px`,
+        );
+        root.style.setProperty(
+          "--private-room-visible-top",
+          `${Math.max(0, Math.round(viewport.offsetTop * 100) / 100)}px`,
+        );
       }
+
+      syncComposerInset();
+
+      // Apply the viewport geometry before calculating the bottom. This keeps
+      // keyboard resizing and latest-message anchoring in the same frame.
+      void messageList.clientHeight;
+      if (shouldStayAtLatest) pinToLatest(true);
     };
 
     const content = messageList.querySelector(".str-chat__message-list-scroll")
       || messageList.firstElementChild;
-    const resizeObserver = new ResizeObserver(keepLatestMessageAnchored);
+    const resizeObserver = new ResizeObserver(() => pinToLatest());
     resizeObserver.observe(messageList);
     if (content) resizeObserver.observe(content);
 
-    const mutationObserver = new MutationObserver(keepLatestMessageAnchored);
-    mutationObserver.observe(messageList, { childList: true, subtree: true });
+    const handleComposerFocusChange = () => {
+      syncViewportAndLatestMessage();
+    };
 
     messageList.addEventListener("scroll", handleScroll, { passive: true });
-    messageList.addEventListener("touchstart", handleUserScrollIntent, { passive: true });
-    messageList.addEventListener("wheel", handleUserScrollIntent, { passive: true });
-    document.addEventListener("focusin", handleComposerFocus);
-    window.visualViewport?.addEventListener("resize", handleViewportResize, { passive: true });
+    messageList.addEventListener("touchstart", handleUserScrollStart, { passive: true });
+    messageList.addEventListener("touchend", handleUserScrollEnd, { passive: true });
+    messageList.addEventListener("touchcancel", handleUserScrollEnd, { passive: true });
+    document.addEventListener("focusin", handleComposerFocusChange);
+    document.addEventListener("focusout", handleComposerFocusChange);
+    viewport?.addEventListener("resize", syncViewportAndLatestMessage, { passive: true });
+    viewport?.addEventListener("scroll", syncViewportAndLatestMessage, { passive: true });
+    window.addEventListener("orientationchange", syncViewportAndLatestMessage);
 
-    // Position before the first visible paint, then hold the bottom while message
-    // bubbles, fonts and private media finish calculating their final heights.
-    programmaticScrollRef.current = true;
-    messageList.scrollTop = Math.max(
-      0,
-      messageList.scrollHeight - messageList.clientHeight,
-    );
-    requestAnimationFrame(() => {
-      pinToLatest();
-      requestAnimationFrame(() => {
-        initialPositioningRef.current = false;
-        messageList.classList.remove("sayup-message-list-positioning");
-      });
-    });
+    // Channel watch already contains the newest page. Establish the final
+    // viewport and bottom before paint, ahead of the history sentinel.
+    syncViewportAndLatestMessage();
+    pinToLatest(true);
 
     return () => {
-      cancelAnimationFrame(animationFrameRef.current);
-      window.clearTimeout(keyboardTimerRef.current);
+      cancelAnimationFrame(releaseProgrammaticFrameRef.current);
       resizeObserver.disconnect();
-      mutationObserver.disconnect();
       messageList.removeEventListener("scroll", handleScroll);
-      messageList.removeEventListener("touchstart", handleUserScrollIntent);
-      messageList.removeEventListener("wheel", handleUserScrollIntent);
-      document.removeEventListener("focusin", handleComposerFocus);
-      window.visualViewport?.removeEventListener("resize", handleViewportResize);
-      messageList.classList.remove("sayup-message-list-positioning");
+      messageList.removeEventListener("touchstart", handleUserScrollStart);
+      messageList.removeEventListener("touchend", handleUserScrollEnd);
+      messageList.removeEventListener("touchcancel", handleUserScrollEnd);
+      document.removeEventListener("focusin", handleComposerFocusChange);
+      document.removeEventListener("focusout", handleComposerFocusChange);
+      viewport?.removeEventListener("resize", syncViewportAndLatestMessage);
+      viewport?.removeEventListener("scroll", syncViewportAndLatestMessage);
+      window.removeEventListener("orientationchange", syncViewportAndLatestMessage);
+      root.style.removeProperty("--private-room-visible-height");
+      root.style.removeProperty("--private-room-visible-top");
+      root.style.removeProperty("--private-room-composer-bottom");
       listRef.current = null;
     };
   }, [channelId]);
@@ -268,10 +272,9 @@ function OpenChatAtLatestMessage({ channelId, currentUserId }) {
 
     if (
       sentByCurrentUser ||
-      initialPositioningRef.current ||
       stickToBottomRef.current
     ) {
-      pinToLatest();
+      pinToLatest(sentByCurrentUser);
     }
   }, [currentUserId, messages.length]);
 
@@ -3360,77 +3363,6 @@ const [supportLoading, setSupportLoading] = useState(false);
     };
   }, [channel]);
 
-  useEffect(() => {
-    if (!channel || typeof window === "undefined" || !window.visualViewport) {
-      return undefined;
-    }
-
-    const root = document.documentElement;
-    const viewport = window.visualViewport;
-    let animationFrame = 0;
-
-    const syncChatViewportSize = () => {
-      cancelAnimationFrame(animationFrame);
-      animationFrame = requestAnimationFrame(() => {
-        const visibleHeight = Math.round(viewport.height * 100) / 100;
-        const visibleTop = Math.max(
-          0,
-          Math.round(viewport.offsetTop * 100) / 100
-        );
-        root.style.setProperty(
-          "--private-room-visible-height",
-          `${visibleHeight}px`
-        );
-        root.style.setProperty(
-          "--private-room-visible-top",
-          `${visibleTop}px`
-        );
-      });
-    };
-
-    const syncComposerInset = () => {
-      const focusedElement = document.activeElement;
-      const messageFieldIsFocused = Boolean(
-        focusedElement?.closest?.(".private-room-message-composer")
-      );
-      root.style.setProperty(
-        "--private-room-composer-bottom",
-        messageFieldIsFocused
-          ? "0px"
-          : "max(7px, env(safe-area-inset-bottom))"
-      );
-    };
-
-    const handleComposerFocusIn = (event) => {
-      if (!event.target?.closest?.(".private-room-message-composer")) return;
-      syncComposerInset();
-    };
-
-    const handleComposerFocusOut = () => {
-      requestAnimationFrame(syncComposerInset);
-    };
-
-    syncChatViewportSize();
-    syncComposerInset();
-    viewport.addEventListener("resize", syncChatViewportSize, { passive: true });
-    viewport.addEventListener("scroll", syncChatViewportSize, { passive: true });
-    window.addEventListener("orientationchange", syncChatViewportSize);
-    document.addEventListener("focusin", handleComposerFocusIn);
-    document.addEventListener("focusout", handleComposerFocusOut);
-
-    return () => {
-      cancelAnimationFrame(animationFrame);
-      viewport.removeEventListener("resize", syncChatViewportSize);
-      viewport.removeEventListener("scroll", syncChatViewportSize);
-      window.removeEventListener("orientationchange", syncChatViewportSize);
-      document.removeEventListener("focusin", handleComposerFocusIn);
-      document.removeEventListener("focusout", handleComposerFocusOut);
-      root.style.removeProperty("--private-room-visible-height");
-      root.style.removeProperty("--private-room-visible-top");
-      root.style.removeProperty("--private-room-composer-bottom");
-    };
-  }, [channel]);
-
   const [subscribeOpen, setSubscribeOpen] = useState(false);
   const [subscribePlan, setSubscribePlan] = useState(null);
   const [subscribeName, setSubscribeName] = useState("");
@@ -6296,7 +6228,7 @@ async function adminUpdateTicketStatus(requestId, status) {
                     backgroundPosition: "0 0, 0 0, 0 0",
                   }}
                 >
-                  <MessageList suppressAutoscroll scrolledUpThreshold={0} />
+                  <MessageList suppressAutoscroll scrolledUpThreshold={48} />
                 </div>
 
                 {!callUiState.active && (

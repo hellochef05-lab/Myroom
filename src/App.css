@@ -2341,12 +2341,6 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
   padding-bottom: 8px !important;
 }
 
-/* Hide only the first unpositioned frame. The list becomes visible as soon as
-   its latest-message anchor has been established before paint. */
-.private-room-chat-shell .str-chat__list.sayup-message-list-positioning {
-  visibility: hidden !important;
-}
-
 .private-room-chat-shell .str-chat__message {
   max-width: 88% !important;
 }
@@ -2439,7 +2433,7 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
 
   .private-room-chat-page {
     position: fixed !important;
-    top: 0 !important;
+    top: var(--private-room-visible-top, 0px) !important;
     right: 0 !important;
     bottom: auto !important;
     left: 0 !important;
@@ -2450,9 +2444,8 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
     margin: 0 !important;
     padding: 0 !important;
     overflow: hidden !important;
-    transform: translate3d(0, var(--private-room-visible-top, 0px), 0) !important;
-    transform-origin: top left;
-    will-change: transform, height;
+    transform: none !important;
+    will-change: height, top;
     contain: layout paint size;
   }
 
