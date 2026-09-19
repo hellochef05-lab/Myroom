@@ -1947,6 +1947,21 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
   object-fit: cover;
 }
 
+.sayup-brand-mark.sayup-logo-fallback::before,
+.sayup-card-mark.sayup-logo-fallback::before {
+  content: "S";
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border-radius: inherit;
+  background: linear-gradient(145deg, #0b5f4e, #073f34);
+  color: #f5dfb3;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.72em;
+  font-weight: 800;
+}
+
 .sayup-landing-hero h1 {
   font-family: Georgia, "Times New Roman", serif;
   font-weight: 500 !important;

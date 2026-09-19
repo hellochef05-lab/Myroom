@@ -57,6 +57,34 @@ const SAYUP_UI_THEMES = [
   { id: "midnight", label: "Midnight Jade" },
 ];
 
+const SAYUP_LOGO_URL = "/sayup-icon.png?rev=20260919-desktop-logo";
+const SAYUP_LOGO_FALLBACK_URL = "/pwa-192x192.png?rev=20260919-desktop-logo";
+
+function SayUpLogo({ alt = "" }) {
+  const handleLogoError = (event) => {
+    const image = event.currentTarget;
+
+    if (!image.dataset.fallbackAttempted) {
+      image.dataset.fallbackAttempted = "true";
+      image.src = SAYUP_LOGO_FALLBACK_URL;
+      return;
+    }
+
+    image.hidden = true;
+    image.parentElement?.classList.add("sayup-logo-fallback");
+  };
+
+  return (
+    <img
+      src={SAYUP_LOGO_URL}
+      alt={alt}
+      aria-hidden={alt ? undefined : "true"}
+      decoding="sync"
+      onError={handleLogoError}
+    />
+  );
+}
+
 function SayUpThemePicker({ value, onChange }) {
   const selectedTheme = SAYUP_UI_THEMES.find((theme) => theme.id === value)
     || SAYUP_UI_THEMES[0];
@@ -5377,7 +5405,7 @@ async function adminUpdateTicketStatus(requestId, status) {
                     boxShadow: "0 12px 30px rgba(15,23,42,0.16)",
                   }}
                 >
-                  <img src="/sayup-icon.png" alt="" aria-hidden="true" />
+                  <SayUpLogo />
                 </span>
                 SayUp
               </div>
@@ -5552,7 +5580,7 @@ async function adminUpdateTicketStatus(requestId, status) {
                     boxShadow: "0 12px 30px rgba(15,23,42,0.16)",
                   }}
                 >
-                  <img src="/sayup-icon.png" alt="SayUp" />
+                  <SayUpLogo alt="SayUp" />
                 </div>
                 <div
                   className="sayup-secure-pill"
