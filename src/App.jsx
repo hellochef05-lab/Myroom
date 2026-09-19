@@ -129,28 +129,151 @@ function WhatsAppQuotedMessagePreview() {
   );
 }
 
-function OpenChatAtLatestMessage({ channelId }) {
+function OpenChatAtLatestMessage({ channelId, currentUserId }) {
   const { messages = [] } = useChannelStateContext("OpenChatAtLatestMessage");
-  const positionedChannelRef = useRef(null);
+  const listRef = useRef(null);
+  const stickToBottomRef = useRef(true);
+  const initialPositioningRef = useRef(true);
+  const programmaticScrollRef = useRef(false);
+  const keyboardTransitionRef = useRef(false);
+  const animationFrameRef = useRef(0);
+  const keyboardTimerRef = useRef(0);
+
+  const pinToLatest = () => {
+    const messageList = listRef.current;
+    if (!messageList) return;
+
+    cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current = requestAnimationFrame(() => {
+      programmaticScrollRef.current = true;
+      messageList.scrollTop = Math.max(
+        0,
+        messageList.scrollHeight - messageList.clientHeight,
+      );
+      requestAnimationFrame(() => {
+        programmaticScrollRef.current = false;
+        stickToBottomRef.current = true;
+      });
+    });
+  };
 
   useLayoutEffect(() => {
-    if (!channelId || positionedChannelRef.current === channelId || !messages.length) {
-      return;
-    }
+    if (!channelId) return undefined;
 
     const messageList = document.querySelector(
       ".private-room-chat-shell .str-chat__list",
     );
-    if (!messageList) return;
+    if (!messageList) return undefined;
 
-    // Stream autoscroll is disabled. Set the initial position exactly once,
-    // synchronously before paint, so no delayed movement is visible.
+    listRef.current = messageList;
+    stickToBottomRef.current = true;
+    initialPositioningRef.current = true;
+    messageList.classList.add("sayup-message-list-positioning");
+
+    const distanceFromLatest = () => Math.max(
+      0,
+      messageList.scrollHeight - messageList.clientHeight - messageList.scrollTop,
+    );
+
+    const finishKeyboardTransitionSoon = () => {
+      window.clearTimeout(keyboardTimerRef.current);
+      keyboardTimerRef.current = window.setTimeout(() => {
+        keyboardTransitionRef.current = false;
+      }, 320);
+    };
+
+    const handleScroll = () => {
+      if (programmaticScrollRef.current || initialPositioningRef.current) return;
+      stickToBottomRef.current = distanceFromLatest() <= 32;
+    };
+
+    const handleUserScrollIntent = () => {
+      initialPositioningRef.current = false;
+      messageList.classList.remove("sayup-message-list-positioning");
+    };
+
+    const handleComposerFocus = (event) => {
+      if (!event.target?.closest?.(".private-room-message-composer")) return;
+      keyboardTransitionRef.current = distanceFromLatest() <= 48;
+      if (keyboardTransitionRef.current) pinToLatest();
+      finishKeyboardTransitionSoon();
+    };
+
+    const handleViewportResize = () => {
+      if (!keyboardTransitionRef.current && !stickToBottomRef.current) return;
+      keyboardTransitionRef.current = true;
+      pinToLatest();
+      finishKeyboardTransitionSoon();
+    };
+
+    const keepLatestMessageAnchored = () => {
+      if (
+        initialPositioningRef.current ||
+        keyboardTransitionRef.current ||
+        stickToBottomRef.current
+      ) {
+        pinToLatest();
+      }
+    };
+
+    const content = messageList.querySelector(".str-chat__message-list-scroll")
+      || messageList.firstElementChild;
+    const resizeObserver = new ResizeObserver(keepLatestMessageAnchored);
+    resizeObserver.observe(messageList);
+    if (content) resizeObserver.observe(content);
+
+    const mutationObserver = new MutationObserver(keepLatestMessageAnchored);
+    mutationObserver.observe(messageList, { childList: true, subtree: true });
+
+    messageList.addEventListener("scroll", handleScroll, { passive: true });
+    messageList.addEventListener("touchstart", handleUserScrollIntent, { passive: true });
+    messageList.addEventListener("wheel", handleUserScrollIntent, { passive: true });
+    document.addEventListener("focusin", handleComposerFocus);
+    window.visualViewport?.addEventListener("resize", handleViewportResize, { passive: true });
+
+    // Position before the first visible paint, then hold the bottom while message
+    // bubbles, fonts and private media finish calculating their final heights.
+    programmaticScrollRef.current = true;
     messageList.scrollTop = Math.max(
       0,
       messageList.scrollHeight - messageList.clientHeight,
     );
-    positionedChannelRef.current = channelId;
-  }, [channelId, messages.length]);
+    requestAnimationFrame(() => {
+      pinToLatest();
+      requestAnimationFrame(() => {
+        initialPositioningRef.current = false;
+        messageList.classList.remove("sayup-message-list-positioning");
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(animationFrameRef.current);
+      window.clearTimeout(keyboardTimerRef.current);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      messageList.removeEventListener("scroll", handleScroll);
+      messageList.removeEventListener("touchstart", handleUserScrollIntent);
+      messageList.removeEventListener("wheel", handleUserScrollIntent);
+      document.removeEventListener("focusin", handleComposerFocus);
+      window.visualViewport?.removeEventListener("resize", handleViewportResize);
+      messageList.classList.remove("sayup-message-list-positioning");
+      listRef.current = null;
+    };
+  }, [channelId]);
+
+  useLayoutEffect(() => {
+    if (!messages.length || !listRef.current) return;
+    const latestMessage = messages[messages.length - 1];
+    const sentByCurrentUser = latestMessage?.user?.id === currentUserId;
+
+    if (
+      sentByCurrentUser ||
+      initialPositioningRef.current ||
+      stickToBottomRef.current
+    ) {
+      pinToLatest();
+    }
+  }, [currentUserId, messages.length]);
 
   return null;
 }
@@ -6123,7 +6246,10 @@ async function adminUpdateTicketStatus(requestId, status) {
             Message={MyMessage}
             QuotedMessagePreview={WhatsAppQuotedMessagePreview}
           >
-            <OpenChatAtLatestMessage channelId={channel.cid} />
+            <OpenChatAtLatestMessage
+              channelId={channel.cid}
+              currentUserId={client.userID}
+            />
             <Window>
               <div
                 style={{

@@ -2341,6 +2341,12 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
   padding-bottom: 8px !important;
 }
 
+/* Hide only the first unpositioned frame. The list becomes visible as soon as
+   its latest-message anchor has been established before paint. */
+.private-room-chat-shell .str-chat__list.sayup-message-list-positioning {
+  visibility: hidden !important;
+}
+
 .private-room-chat-shell .str-chat__message {
   max-width: 88% !important;
 }
