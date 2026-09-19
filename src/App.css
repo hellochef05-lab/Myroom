@@ -2538,6 +2538,18 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
     touch-action: pan-y;
   }
 
+  /* Stream renders an empty marker after the typing indicator. Make that
+     marker the sole native browser anchor: new messages remain visible only
+     when the user is already at the bottom, with no JavaScript autoscroller. */
+  .private-room-chat-shell .str-chat__message-list-scroll > * {
+    overflow-anchor: none;
+  }
+
+  .private-room-chat-shell .str-chat__message-list-scroll > :last-child {
+    min-height: 1px;
+    overflow-anchor: auto;
+  }
+
   .private-room-chat-shell .str-chat__message-list {
     min-height: 0 !important;
     overflow: hidden !important;
