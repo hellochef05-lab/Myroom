@@ -57,8 +57,10 @@ const SAYUP_UI_THEMES = [
   { id: "midnight", label: "Midnight Jade" },
 ];
 
-const SAYUP_LOGO_URL = "/sayup-icon.png?rev=20260919-desktop-logo";
-const SAYUP_LOGO_FALLBACK_URL = "/pwa-192x192.png?rev=20260919-desktop-logo";
+// Both files are part of the PWA precache, so the landing logo renders without
+// a network request even when the app starts offline.
+const SAYUP_LOGO_URL = "/pwa-192x192.png";
+const SAYUP_LOGO_FALLBACK_URL = "/apple-touch-icon.png";
 const DEFAULT_PAYMENT_SETTINGS = {
   upiId: "9781723138@sbi",
   upiName: "SayUp Subscription",
@@ -3413,6 +3415,7 @@ useEffect(() => {
   let cancelled = false;
 
   const refreshPaymentSettings = async () => {
+    if (!navigator.onLine) return;
     if (paymentSettingsRefreshInFlightRef.current) return;
     paymentSettingsRefreshInFlightRef.current = true;
 
@@ -3445,11 +3448,13 @@ useEffect(() => {
     if (!document.hidden) refreshPaymentSettings();
   };
   document.addEventListener("visibilitychange", refreshWhenVisible);
+  window.addEventListener("online", refreshPaymentSettings);
 
   return () => {
     cancelled = true;
     window.clearInterval(refreshId);
     document.removeEventListener("visibilitychange", refreshWhenVisible);
+    window.removeEventListener("online", refreshPaymentSettings);
   };
 }, []);
 
@@ -3457,6 +3462,7 @@ useEffect(() => {
   let cancelled = false;
 
   const refreshPlans = async () => {
+    if (!navigator.onLine) return;
     if (plansRefreshInFlightRef.current) return;
     plansRefreshInFlightRef.current = true;
 
@@ -3497,11 +3503,13 @@ useEffect(() => {
       if (!document.hidden) refreshPlans();
     };
     document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("online", refreshPlans);
 
     return () => {
       cancelled = true;
       window.clearInterval(refreshId);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("online", refreshPlans);
     };
   }, []);
 
