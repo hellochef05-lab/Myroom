@@ -4315,12 +4315,14 @@ async function adminUpdateTicketStatus(requestId, status) {
     const streamUserId = createStreamUserId(accessKey, name, currentDeviceId);
     const privateRoomIdForLogin = createPrivateRoomId(accessKey, room);
 
+    let chatClient = null;
+
     try {
-      const [location, device] = await Promise.all([
-        getClientLocationInfo(),
-        Promise.resolve(getClientDeviceInfo()),
-      ]);
-      const loginRes = await apiFetch(`${API_BASE}/api/login`, {
+      // Do not make the room transition wait for the optional IP/location lookup.
+      // The activity reporter refreshes the precise country shortly after login.
+      const location = getFallbackLocationInfo();
+      const device = getClientDeviceInfo();
+      const loginRequest = apiFetch(`${API_BASE}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -4334,40 +4336,38 @@ async function adminUpdateTicketStatus(requestId, status) {
           ...location,
         }),
       });
+      const tokenRequest = apiFetch(`${API_BASE}/api/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: streamUserId,
+          name: name || "Guest",
+          username: name || "Guest",
+          room: privateRoomIdForLogin,
+          roomCode: room,
+          accessKey,
+        }),
+      });
 
-      const loginData = await loginRes.json().catch(() => ({}));
+      // Login validation and Stream token creation are independent server calls.
+      // Starting both together removes an entire network round trip from joining.
+      const [loginRes, tokenRes] = await Promise.all([loginRequest, tokenRequest]);
+      const [loginData, tokenData] = await Promise.all([
+        loginRes.json().catch(() => ({})),
+        tokenRes.json().catch(() => ({})),
+      ]);
 
       if (!loginRes.ok) {
-        alert(loginData.error || "Login failed");
-        return;
+        throw new Error(loginData.error || "Login failed");
+      }
+      if (!tokenRes.ok) {
+        throw new Error(tokenData.error || tokenData.details || "Failed to create token");
       }
 
       setLoggedUser(loginData.user);
       localStorage.setItem("logged_user", JSON.stringify(loginData.user));
 
-      const tokenRes = await apiFetch(`${API_BASE}/api/token`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    userId: streamUserId,
-    name: name || "Guest",
-    username: name || "Guest",
-    room: privateRoomIdForLogin,
-    roomCode: room,
-    accessKey,
-  }),
-});
-
-const tokenData = await tokenRes.json().catch(() => ({}));
-
-if (!tokenRes.ok) {
-  throw new Error(tokenData.error || tokenData.details || "Failed to create token");
-}
-
-      
-      const chatClient = StreamChat.getInstance(apiKey);
+      chatClient = StreamChat.getInstance(apiKey);
       await chatClient.connectUser(
   {
     id: tokenData.userId || streamUserId,
@@ -4385,7 +4385,10 @@ if (!tokenRes.ok) {
       setClient(chatClient);
     } catch (err) {
       console.error("joinRoom error", err);
-alert(err.message || "Join failed - see console");
+      if (chatClient?.userID) {
+        await chatClient.disconnectUser().catch(() => {});
+      }
+      alert(err.message || "Join failed - see console");
     } finally {
       setJoining(false);
     }
@@ -5277,6 +5280,38 @@ alert(err.message || "Join failed - see console");
   if (!client) {
     const isMobile = viewportWidth < 768;
     const isCompact = viewportWidth < 1100;
+
+    if (joining) {
+      return (
+        <main className="sayup-instant-room" aria-live="polite" aria-busy="true">
+          <section className="sayup-instant-room-shell">
+            <header className="sayup-instant-room-header">
+              <span className="sayup-instant-room-avatar">
+                {String(room || "S").slice(0, 1).toUpperCase()}
+              </span>
+              <span className="sayup-instant-room-title">
+                <strong>Room {room}</strong>
+                <small><i /> Connecting securely…</small>
+              </span>
+              <span className="sayup-instant-room-support">
+                <Headphones size={17} aria-hidden="true" /> Support
+              </span>
+            </header>
+            <div className="sayup-instant-room-messages" aria-hidden="true">
+              <span className="sayup-instant-room-date">Opening latest messages</span>
+              <span className="sayup-instant-room-skeleton is-left" />
+              <span className="sayup-instant-room-skeleton is-left is-short" />
+              <span className="sayup-instant-room-skeleton is-right" />
+            </div>
+            <footer className="sayup-instant-room-composer">
+              <span>＋</span>
+              <div>Connecting to Room {room}…</div>
+              <span>●</span>
+            </footer>
+          </section>
+        </main>
+      );
+    }
 
     return (
       <div
