@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { StreamChat } from "stream-chat";
 import {
   Attachment,
@@ -11,6 +11,7 @@ import {
   Window,
   MessageSimple,
   useChannelActionContext,
+  useChannelStateContext,
   useMessageComposer,
   useMessageContext,
   useStateStore,
@@ -129,69 +130,27 @@ function WhatsAppQuotedMessagePreview() {
 }
 
 function OpenChatAtLatestMessage({ channelId }) {
-  const { jumpToLatestMessage } = useChannelActionContext();
-  const jumpToLatestRef = useRef(jumpToLatestMessage);
+  const { messages = [] } = useChannelStateContext("OpenChatAtLatestMessage");
+  const positionedChannelRef = useRef(null);
 
-  jumpToLatestRef.current = jumpToLatestMessage;
-
-  useEffect(() => {
-    let cancelled = false;
-    let frameId = 0;
-    let userMovedList = false;
+  useLayoutEffect(() => {
+    if (!channelId || positionedChannelRef.current === channelId || !messages.length) {
+      return;
+    }
 
     const messageList = document.querySelector(
       ".private-room-chat-shell .str-chat__list",
     );
+    if (!messageList) return;
 
-    const cancelInitialPositioning = () => {
-      userMovedList = true;
-      window.cancelAnimationFrame(frameId);
-    };
-
-    const scrollToLatest = () => {
-      if (cancelled || userMovedList) return;
-
-      const currentMessageList = document.querySelector(
-        ".private-room-chat-shell .str-chat__list",
-      );
-
-      if (currentMessageList) {
-        currentMessageList.scrollTo({
-          top: currentMessageList.scrollHeight,
-          behavior: "auto",
-        });
-      }
-    };
-
-    const openAtLatest = async () => {
-      try {
-        await jumpToLatestRef.current?.();
-      } catch {
-        // The direct scroll below still positions locally loaded messages.
-      }
-
-      if (cancelled) return;
-
-      // Wait for Stream's message DOM to commit, then position exactly once.
-      // Any touch/wheel interaction cancels this so the app never fights the user.
-      frameId = window.requestAnimationFrame(() => {
-        frameId = window.requestAnimationFrame(scrollToLatest);
-      });
-    };
-
-    messageList?.addEventListener("pointerdown", cancelInitialPositioning, { passive: true });
-    messageList?.addEventListener("touchstart", cancelInitialPositioning, { passive: true });
-    messageList?.addEventListener("wheel", cancelInitialPositioning, { passive: true });
-    openAtLatest();
-
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(frameId);
-      messageList?.removeEventListener("pointerdown", cancelInitialPositioning);
-      messageList?.removeEventListener("touchstart", cancelInitialPositioning);
-      messageList?.removeEventListener("wheel", cancelInitialPositioning);
-    };
-  }, [channelId]);
+    // Stream autoscroll is disabled. Set the initial position exactly once,
+    // synchronously before paint, so no delayed movement is visible.
+    messageList.scrollTop = Math.max(
+      0,
+      messageList.scrollHeight - messageList.clientHeight,
+    );
+    positionedChannelRef.current = channelId;
+  }, [channelId, messages.length]);
 
   return null;
 }
