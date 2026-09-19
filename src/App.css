@@ -2518,7 +2518,7 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
     overflow-x: hidden !important;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    overflow-anchor: none;
+    overflow-anchor: auto;
     scroll-behavior: auto !important;
     touch-action: pan-y;
   }

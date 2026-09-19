@@ -11,7 +11,6 @@ import {
   Window,
   MessageSimple,
   useChannelActionContext,
-  useChannelStateContext,
   useMessageComposer,
   useMessageContext,
   useStateStore,
@@ -129,32 +128,7 @@ function WhatsAppQuotedMessagePreview() {
   );
 }
 
-function OpenChatAtLatestMessage({ channelId, currentUserId }) {
-  const { messages = [] } = useChannelStateContext("OpenChatAtLatestMessage");
-  const listRef = useRef(null);
-  const stickToBottomRef = useRef(true);
-  const programmaticScrollRef = useRef(false);
-  const userInteractingRef = useRef(false);
-  const releaseProgrammaticFrameRef = useRef(0);
-
-  const pinToLatest = (force = false) => {
-    const messageList = listRef.current;
-    if (!messageList) return;
-    if (!force && (!stickToBottomRef.current || userInteractingRef.current)) return;
-
-    programmaticScrollRef.current = true;
-    messageList.scrollTop = Math.max(
-      0,
-      messageList.scrollHeight - messageList.clientHeight,
-    );
-    stickToBottomRef.current = true;
-
-    cancelAnimationFrame(releaseProgrammaticFrameRef.current);
-    releaseProgrammaticFrameRef.current = requestAnimationFrame(() => {
-      programmaticScrollRef.current = false;
-    });
-  };
-
+function OpenChatAtLatestMessage({ channelId }) {
   useLayoutEffect(() => {
     if (!channelId) return undefined;
 
@@ -162,29 +136,6 @@ function OpenChatAtLatestMessage({ channelId, currentUserId }) {
       ".private-room-chat-shell .str-chat__list",
     );
     if (!messageList) return undefined;
-
-    listRef.current = messageList;
-    stickToBottomRef.current = true;
-    userInteractingRef.current = false;
-
-    const distanceFromLatest = () => Math.max(
-      0,
-      messageList.scrollHeight - messageList.clientHeight - messageList.scrollTop,
-    );
-
-    const handleScroll = () => {
-      if (programmaticScrollRef.current) return;
-      stickToBottomRef.current = distanceFromLatest() <= 48;
-    };
-
-    const handleUserScrollStart = () => {
-      userInteractingRef.current = true;
-    };
-
-    const handleUserScrollEnd = () => {
-      userInteractingRef.current = false;
-      stickToBottomRef.current = distanceFromLatest() <= 48;
-    };
 
     const root = document.documentElement;
     const viewport = window.visualViewport;
@@ -199,9 +150,7 @@ function OpenChatAtLatestMessage({ channelId, currentUserId }) {
       );
     };
 
-    const syncViewportAndLatestMessage = () => {
-      const shouldStayAtLatest = stickToBottomRef.current && !userInteractingRef.current;
-
+    const syncViewport = () => {
       if (viewport) {
         root.style.setProperty(
           "--private-room-visible-height",
@@ -214,69 +163,42 @@ function OpenChatAtLatestMessage({ channelId, currentUserId }) {
       }
 
       syncComposerInset();
-
-      // Apply the viewport geometry before calculating the bottom. This keeps
-      // keyboard resizing and latest-message anchoring in the same frame.
-      void messageList.clientHeight;
-      if (shouldStayAtLatest) pinToLatest(true);
     };
 
-    const content = messageList.querySelector(".str-chat__message-list-scroll")
-      || messageList.firstElementChild;
-    const resizeObserver = new ResizeObserver(() => pinToLatest());
-    resizeObserver.observe(messageList);
-    if (content) resizeObserver.observe(content);
-
-    const handleComposerFocusChange = () => {
-      syncViewportAndLatestMessage();
+    const handleComposerFocusIn = () => {
+      syncComposerInset();
     };
 
-    messageList.addEventListener("scroll", handleScroll, { passive: true });
-    messageList.addEventListener("touchstart", handleUserScrollStart, { passive: true });
-    messageList.addEventListener("touchend", handleUserScrollEnd, { passive: true });
-    messageList.addEventListener("touchcancel", handleUserScrollEnd, { passive: true });
-    document.addEventListener("focusin", handleComposerFocusChange);
-    document.addEventListener("focusout", handleComposerFocusChange);
-    viewport?.addEventListener("resize", syncViewportAndLatestMessage, { passive: true });
-    viewport?.addEventListener("scroll", syncViewportAndLatestMessage, { passive: true });
-    window.addEventListener("orientationchange", syncViewportAndLatestMessage);
+    const handleComposerFocusOut = () => {
+      requestAnimationFrame(syncComposerInset);
+    };
 
-    // Channel watch already contains the newest page. Establish the final
-    // viewport and bottom before paint, ahead of the history sentinel.
-    syncViewportAndLatestMessage();
-    pinToLatest(true);
+    viewport?.addEventListener("resize", syncViewport, { passive: true });
+    viewport?.addEventListener("scroll", syncViewport, { passive: true });
+    window.addEventListener("orientationchange", syncViewport);
+    document.addEventListener("focusin", handleComposerFocusIn);
+    document.addEventListener("focusout", handleComposerFocusOut);
+
+    // This is the only message-list scroll command in SayUp. It establishes
+    // the opening position once before paint; nothing follows it afterward.
+    syncViewport();
+    void messageList.clientHeight;
+    messageList.scrollTop = Math.max(
+      0,
+      messageList.scrollHeight - messageList.clientHeight,
+    );
 
     return () => {
-      cancelAnimationFrame(releaseProgrammaticFrameRef.current);
-      resizeObserver.disconnect();
-      messageList.removeEventListener("scroll", handleScroll);
-      messageList.removeEventListener("touchstart", handleUserScrollStart);
-      messageList.removeEventListener("touchend", handleUserScrollEnd);
-      messageList.removeEventListener("touchcancel", handleUserScrollEnd);
-      document.removeEventListener("focusin", handleComposerFocusChange);
-      document.removeEventListener("focusout", handleComposerFocusChange);
-      viewport?.removeEventListener("resize", syncViewportAndLatestMessage);
-      viewport?.removeEventListener("scroll", syncViewportAndLatestMessage);
-      window.removeEventListener("orientationchange", syncViewportAndLatestMessage);
+      viewport?.removeEventListener("resize", syncViewport);
+      viewport?.removeEventListener("scroll", syncViewport);
+      window.removeEventListener("orientationchange", syncViewport);
+      document.removeEventListener("focusin", handleComposerFocusIn);
+      document.removeEventListener("focusout", handleComposerFocusOut);
       root.style.removeProperty("--private-room-visible-height");
       root.style.removeProperty("--private-room-visible-top");
       root.style.removeProperty("--private-room-composer-bottom");
-      listRef.current = null;
     };
   }, [channelId]);
-
-  useLayoutEffect(() => {
-    if (!messages.length || !listRef.current) return;
-    const latestMessage = messages[messages.length - 1];
-    const sentByCurrentUser = latestMessage?.user?.id === currentUserId;
-
-    if (
-      sentByCurrentUser ||
-      stickToBottomRef.current
-    ) {
-      pinToLatest(sentByCurrentUser);
-    }
-  }, [currentUserId, messages.length]);
 
   return null;
 }
@@ -6178,10 +6100,7 @@ async function adminUpdateTicketStatus(requestId, status) {
             Message={MyMessage}
             QuotedMessagePreview={WhatsAppQuotedMessagePreview}
           >
-            <OpenChatAtLatestMessage
-              channelId={channel.cid}
-              currentUserId={client.userID}
-            />
+            <OpenChatAtLatestMessage channelId={channel.cid} />
             <Window>
               <div
                 style={{
