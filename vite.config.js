@@ -64,17 +64,10 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
 
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/myroom-ms7g\.onrender\.com\/api\//,
-
-            handler: "NetworkOnly",
-
-            options: {
-              cacheName: "sayup-api",
-            },
-          },
-        ],
+        // API requests must bypass Workbox. Wrapping Render requests in a
+        // NetworkOnly route turns a temporary cold start into noisy rejected
+        // worker promises and duplicates the application's own retry logic.
+        runtimeCaching: [],
       },
 
 devOptions: {

@@ -59,6 +59,21 @@ const SAYUP_UI_THEMES = [
 
 const SAYUP_LOGO_URL = "/sayup-icon.png?rev=20260919-desktop-logo";
 const SAYUP_LOGO_FALLBACK_URL = "/pwa-192x192.png?rev=20260919-desktop-logo";
+const DEFAULT_PAYMENT_SETTINGS = {
+  upiId: "9781723138@sbi",
+  upiName: "SayUp Subscription",
+  currencyCode: "AED",
+  currencyName: "UAE Dirham",
+};
+
+function readLocalJson(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key));
+    return value ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 function SayUpLogo({ alt = "" }) {
   const handleLogoError = (event) => {
@@ -2307,7 +2322,11 @@ function AdminDashboard({ API_BASE, onBack }) {
   const [rooms, setRooms] = useState([]);
   const [payments, setPayments] = useState([]);
   const [support, setSupport] = useState([]);
-  const [plans, setPlans] = useState([]);
+  const [plans, setPlans] = useState(() => {
+    const savedPlans = readLocalJson("sayup_public_plans", []);
+    return Array.isArray(savedPlans) ? savedPlans : [];
+  });
+  const plansRefreshInFlightRef = useRef(false);
   const [currencySettings, setCurrencySettings] = useState({
     currencyCode: "AED",
     currencyName: "UAE Dirham",
@@ -3320,12 +3339,11 @@ const [supportLoading, setSupportLoading] = useState(false);
   const [generatedAccessKey, setGeneratedAccessKey] = useState("");
   const [subscribeUpiReference, setSubscribeUpiReference] = useState("");
   const [paymentRequestStatus, setPaymentRequestStatus] = useState(null);
-  const [paymentSettings, setPaymentSettings] = useState({
-  upiId: "9781723138@sbi",
-  upiName: "SayUp Subscription",
-  currencyCode: "AED",
-  currencyName: "UAE Dirham",
-});
+  const [paymentSettings, setPaymentSettings] = useState(() => ({
+    ...DEFAULT_PAYMENT_SETTINGS,
+    ...readLocalJson("sayup_payment_settings", {}),
+  }));
+  const paymentSettingsRefreshInFlightRef = useRef(false);
 
   const [adminPin, setAdminPin] = useState("");
   const [adminAccessKeySearch, setAdminAccessKeySearch] = useState("");
@@ -3394,28 +3412,32 @@ useEffect(() => {
 useEffect(() => {
   let cancelled = false;
 
-  const refreshPaymentSettings = () => apiFetch(`${API_BASE}/api/payment-settings`)
-    .then((res) => res.json())
-    .then((data) => {
-      if (!cancelled) {
-        setPaymentSettings({
-          upiId: data.upiId || "9781723138@sbi",
-          upiName: data.upiName || "SayUp Subscription",
-          currencyCode: data.currencyCode || "AED",
-          currencyName: data.currencyName || "UAE Dirham",
-        });
-      }
-    })
-    .catch(() => {
-      if (!cancelled) {
-        setPaymentSettings({
-          upiId: "9781723138@sbi",
-          upiName: "SayUp Subscription",
-          currencyCode: "AED",
-          currencyName: "UAE Dirham",
-        });
-      }
-    });
+  const refreshPaymentSettings = async () => {
+    if (paymentSettingsRefreshInFlightRef.current) return;
+    paymentSettingsRefreshInFlightRef.current = true;
+
+    try {
+      const res = await apiFetch(
+        `${API_BASE}/api/payment-settings`,
+        {},
+        { retries: 1, timeoutMs: 30000 },
+      );
+      if (!res.ok) throw new Error("Payment settings are temporarily unavailable");
+      const data = await res.json();
+      const nextSettings = {
+        upiId: data.upiId || DEFAULT_PAYMENT_SETTINGS.upiId,
+        upiName: data.upiName || DEFAULT_PAYMENT_SETTINGS.upiName,
+        currencyCode: data.currencyCode || DEFAULT_PAYMENT_SETTINGS.currencyCode,
+        currencyName: data.currencyName || DEFAULT_PAYMENT_SETTINGS.currencyName,
+      };
+      localStorage.setItem("sayup_payment_settings", JSON.stringify(nextSettings));
+      if (!cancelled) setPaymentSettings(nextSettings);
+    } catch {
+      // Keep the last successful settings while Render wakes up.
+    } finally {
+      paymentSettingsRefreshInFlightRef.current = false;
+    }
+  };
 
   refreshPaymentSettings();
   const refreshId = window.setInterval(refreshPaymentSettings, 10000);
@@ -3434,28 +3456,40 @@ useEffect(() => {
 useEffect(() => {
   let cancelled = false;
 
-  const refreshPlans = () => apiFetch(`${API_BASE}/api/plans`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancelled) {
-          const nextPlans = Array.isArray(data) ? data : [];
-          setPlans(nextPlans);
-          setPlanDrafts(
-            nextPlans.reduce((acc, plan) => {
-              acc[plan.id] = {
-                name: plan.name || "",
-                price: plan.price ?? 0,
-                days: plan.days ?? 30,
-              };
-              return acc;
-            }, {})
-          );
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to load plans:", err);
-        if (!cancelled) setPlans([]);
-      });
+  const refreshPlans = async () => {
+    if (plansRefreshInFlightRef.current) return;
+    plansRefreshInFlightRef.current = true;
+
+    try {
+      const res = await apiFetch(
+        `${API_BASE}/api/plans`,
+        {},
+        { retries: 1, timeoutMs: 30000 },
+      );
+      if (!res.ok) throw new Error("Plans are temporarily unavailable");
+      const data = await res.json();
+      const nextPlans = Array.isArray(data) ? data : [];
+      localStorage.setItem("sayup_public_plans", JSON.stringify(nextPlans));
+
+      if (!cancelled) {
+        setPlans(nextPlans);
+        setPlanDrafts(
+          nextPlans.reduce((acc, plan) => {
+            acc[plan.id] = {
+              name: plan.name || "",
+              price: plan.price ?? 0,
+              days: plan.days ?? 30,
+            };
+            return acc;
+          }, {})
+        );
+      }
+    } catch {
+      // Preserve cached plans instead of blanking Sign Up during a cold start.
+    } finally {
+      plansRefreshInFlightRef.current = false;
+    }
+  };
 
     refreshPlans();
     const refreshId = window.setInterval(refreshPlans, 10000);
