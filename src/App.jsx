@@ -19,7 +19,6 @@ import {
   Window,
   MessageSimple,
   useChannelActionContext,
-  useChannelStateContext,
   useMessageComposer,
   useMessageContext,
   useStateStore,
@@ -182,13 +181,7 @@ function WhatsAppQuotedMessagePreview() {
   );
 }
 
-function OpenChatAtLatestMessage({ channelId }) {
-  const { messages = [] } = useChannelStateContext(
-    "OpenChatAtLatestMessage",
-  );
-  const latestMessageId = messages[messages.length - 1]?.id || "";
-  const positionedChannelRef = useRef("");
-
+function SyncChatViewport({ channelId }) {
   useLayoutEffect(() => {
     if (!channelId) return undefined;
 
@@ -248,57 +241,26 @@ function OpenChatAtLatestMessage({ channelId }) {
     };
   }, [channelId]);
 
-  useLayoutEffect(() => {
-    if (!channelId || positionedChannelRef.current === channelId) {
-      return undefined;
-    }
-
-    const messageList = document.querySelector(
-      ".private-room-chat-shell .str-chat__list",
-    );
-    if (!messageList) return undefined;
-
-    // Stream has now supplied its final opening message set. Wait one frame
-    // for MessageList's own layout work, place the room at the latest message
-    // exactly once, and then disengage. No new message, keyboard resize,
-    // reaction, or receipt can invoke this initializer again.
-    messageList.style.visibility = "hidden";
-    const frame = requestAnimationFrame(() => {
-      const safeLatestMessageId = latestMessageId
-        ? window.CSS?.escape
-          ? window.CSS.escape(latestMessageId)
-          : latestMessageId.replace(/["\\]/g, "\\$&")
-        : "";
-      const latestMessage = safeLatestMessageId
-        ? messageList.querySelector(
-            `[data-message-id="${safeLatestMessageId}"]`,
-          )
-        : null;
-
-      // An existing room is not ready until its actual newest message is in
-      // the DOM. Leaving the ref unset allows only that readiness render to
-      // try again; it does not create an ongoing scroll observer.
-      if (latestMessageId && !latestMessage) {
-        messageList.style.visibility = "";
-        return;
-      }
-
-      void messageList.clientHeight;
-      messageList.scrollTop = Math.max(
-        0,
-        messageList.scrollHeight - messageList.clientHeight,
-      );
-      positionedChannelRef.current = channelId;
-      messageList.style.visibility = "";
-    });
-
-    return () => {
-      cancelAnimationFrame(frame);
-      messageList.style.visibility = "";
-    };
-  }, [channelId, latestMessageId, messages.length]);
-
   return null;
+}
+
+function LatestMessageList() {
+  const [openingRoom, setOpeningRoom] = useState(true);
+
+  useEffect(() => {
+    // Stream's MessageList first acquires its real scrolling element in a
+    // layout effect and performs an instant bottom placement. Disable all of
+    // its later automatic scroll commands immediately after that first mount.
+    setOpeningRoom(false);
+  }, []);
+
+  return (
+    <MessageList
+      returnAllReadData
+      suppressAutoscroll={!openingRoom}
+      scrolledUpThreshold={48}
+    />
+  );
 }
 
 const RoomReadStateContext = createContext({});
@@ -4860,12 +4822,20 @@ async function adminUpdateTicketStatus(requestId, status) {
     const senderImage = message.user?.image;
     const sentAt = message.created_at || message.updated_at;
     const messageCreatedAt = new Date(message.created_at || message.updated_at || 0).getTime();
+    const streamReaders = Array.isArray(context?.readBy)
+      ? context.readBy
+      : Array.isArray(props?.readBy)
+        ? props.readBy
+        : [];
     const readEntries = Object.entries(roomReadState);
-    const hasBeenSeen = isMine && readEntries.some(([userId, readState]) => {
-      if (!userId || userId === client?.userID) return false;
-      const lastRead = new Date(readState?.last_read || 0).getTime();
-      return Number.isFinite(lastRead) && lastRead >= messageCreatedAt;
-    });
+    const hasBeenSeen =
+      isMine &&
+      (streamReaders.some((reader) => reader?.id !== client?.userID) ||
+        readEntries.some(([userId, readState]) => {
+          if (!userId || userId === client?.userID) return false;
+          const lastRead = new Date(readState?.last_read || 0).getTime();
+          return Number.isFinite(lastRead) && lastRead >= messageCreatedAt;
+        }));
 
     const rawGroupStyle = Array.isArray(contextGroupStyles)
       ? contextGroupStyles[0]
@@ -6318,7 +6288,7 @@ async function adminUpdateTicketStatus(requestId, status) {
               channel={channel}
               clientUserId={client.userID}
             >
-              <OpenChatAtLatestMessage channelId={channel.cid} />
+              <SyncChatViewport channelId={channel.cid} />
               <Window>
               <div
                 style={{
@@ -6365,7 +6335,7 @@ async function adminUpdateTicketStatus(requestId, status) {
                     backgroundPosition: "0 0, 0 0, 0 0",
                   }}
                 >
-                  <MessageList suppressAutoscroll scrolledUpThreshold={48} />
+                  <LatestMessageList />
                 </div>
 
                 {!callUiState.active && (
