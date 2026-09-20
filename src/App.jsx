@@ -1,4 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { StreamChat } from "stream-chat";
 import {
   Attachment,
@@ -246,6 +254,95 @@ function OpenChatAtLatestMessage({ channelId }) {
   }, [channelId]);
 
   return null;
+}
+
+const RoomReadStateContext = createContext({});
+
+function RoomReadReceiptProvider({ channel, clientUserId, children }) {
+  const [readState, setReadState] = useState(() => ({
+    ...(channel?.state?.read || {}),
+  }));
+
+  useEffect(() => {
+    if (!channel) {
+      setReadState({});
+      return undefined;
+    }
+
+    let pendingReadFrame = 0;
+    const copyReadState = (event) => {
+      const nextReadState = { ...channel.state.read };
+
+      // Stream mutates channel.state.read in place. Keeping a React snapshot
+      // makes the custom double ticks repaint as soon as message.read arrives.
+      if (event?.user?.id && event.created_at) {
+        nextReadState[event.user.id] = {
+          ...(nextReadState[event.user.id] || {}),
+          last_read: new Date(event.created_at),
+          last_read_message_id: event.last_read_message_id,
+          user: event.user,
+          unread_messages: 0,
+        };
+      }
+
+      setReadState(nextReadState);
+    };
+
+    const messageListIsAtLatest = () => {
+      const messageList = document.querySelector(
+        ".private-room-chat-shell .str-chat__list",
+      );
+      if (!messageList) return false;
+
+      const distanceFromLatest =
+        messageList.scrollHeight -
+        messageList.clientHeight -
+        messageList.scrollTop;
+      return distanceFromLatest <= 48;
+    };
+
+    const markRoomRead = (openingRoom = false) => {
+      if (document.hidden || (!openingRoom && !messageListIsAtLatest())) return;
+      channel.markRead().catch(() => {
+        // A temporary connection loss must not interrupt the room UI. Stream
+        // retries receipt state after reconnection or the next visible message.
+      });
+    };
+
+    const handleNewMessage = (event) => {
+      if (event.message?.user?.id === clientUserId) return;
+      cancelAnimationFrame(pendingReadFrame);
+      pendingReadFrame = requestAnimationFrame(() => markRoomRead(false));
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) markRoomRead(false);
+    };
+
+    copyReadState();
+    const readSubscription = channel.on("message.read", copyReadState);
+    const messageSubscription = channel.on("message.new", handleNewMessage);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    // OpenChatAtLatestMessage runs in the layout phase first, so this marks
+    // the newest visible message read without introducing any auto-scrolling.
+    markRoomRead(true);
+
+    return () => {
+      cancelAnimationFrame(pendingReadFrame);
+      readSubscription.unsubscribe();
+      messageSubscription.unsubscribe();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+    };
+  }, [channel, clientUserId]);
+
+  return (
+    <RoomReadStateContext.Provider value={readState}>
+      {children}
+    </RoomReadStateContext.Provider>
+  );
 }
 
 function normaliseIdentifier(value, fallback = "item") {
@@ -4654,6 +4751,7 @@ async function adminUpdateTicketStatus(requestId, status) {
     const context = useMessageContext();
     const messageComposer = useMessageComposer();
     const { jumpToMessage: jumpToOriginalMessage } = useChannelActionContext();
+    const roomReadState = useContext(RoomReadStateContext);
     const message = context?.message || props?.message;
     const contextGroupStyles = context?.groupStyles || props?.groupStyles || [];
     const [actionsOpen, setActionsOpen] = useState(false);
@@ -4716,7 +4814,7 @@ async function adminUpdateTicketStatus(requestId, status) {
     const senderImage = message.user?.image;
     const sentAt = message.created_at || message.updated_at;
     const messageCreatedAt = new Date(message.created_at || message.updated_at || 0).getTime();
-    const readEntries = Object.entries(channel?.state?.read || {});
+    const readEntries = Object.entries(roomReadState);
     const hasBeenSeen = isMine && readEntries.some(([userId, readState]) => {
       if (!userId || userId === client?.userID) return false;
       const lastRead = new Date(readState?.last_read || 0).getTime();
@@ -6170,8 +6268,12 @@ async function adminUpdateTicketStatus(requestId, status) {
             Message={MyMessage}
             QuotedMessagePreview={WhatsAppQuotedMessagePreview}
           >
-            <OpenChatAtLatestMessage channelId={channel.cid} />
-            <Window>
+            <RoomReadReceiptProvider
+              channel={channel}
+              clientUserId={client.userID}
+            >
+              <OpenChatAtLatestMessage channelId={channel.cid} />
+              <Window>
               <div
                 style={{
                   height: "100%",
@@ -6249,9 +6351,10 @@ async function adminUpdateTicketStatus(requestId, status) {
                 </div>
                 )}
               </div>
-            </Window>
+              </Window>
 
-            <Thread />
+              <Thread />
+            </RoomReadReceiptProvider>
           </Channel>
         </Chat>
 
