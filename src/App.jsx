@@ -19,6 +19,7 @@ import {
   Window,
   MessageSimple,
   useChannelActionContext,
+  useChannelStateContext,
   useMessageComposer,
   useMessageContext,
   useStateStore,
@@ -182,13 +183,14 @@ function WhatsAppQuotedMessagePreview() {
 }
 
 function OpenChatAtLatestMessage({ channelId }) {
+  const { messages = [] } = useChannelStateContext(
+    "OpenChatAtLatestMessage",
+  );
+  const latestMessageId = messages[messages.length - 1]?.id || "";
+  const positionedChannelRef = useRef("");
+
   useLayoutEffect(() => {
     if (!channelId) return undefined;
-
-    const messageList = document.querySelector(
-      ".private-room-chat-shell .str-chat__list",
-    );
-    if (!messageList) return undefined;
 
     const root = document.documentElement;
     const viewport = window.visualViewport;
@@ -232,14 +234,7 @@ function OpenChatAtLatestMessage({ channelId }) {
     document.addEventListener("focusin", handleComposerFocusIn);
     document.addEventListener("focusout", handleComposerFocusOut);
 
-    // This is the only message-list scroll command in SayUp. It establishes
-    // the opening position once before paint; nothing follows it afterward.
     syncViewport();
-    void messageList.clientHeight;
-    messageList.scrollTop = Math.max(
-      0,
-      messageList.scrollHeight - messageList.clientHeight,
-    );
 
     return () => {
       viewport?.removeEventListener("resize", syncViewport);
@@ -252,6 +247,56 @@ function OpenChatAtLatestMessage({ channelId }) {
       root.style.removeProperty("--private-room-composer-bottom");
     };
   }, [channelId]);
+
+  useLayoutEffect(() => {
+    if (!channelId || positionedChannelRef.current === channelId) {
+      return undefined;
+    }
+
+    const messageList = document.querySelector(
+      ".private-room-chat-shell .str-chat__list",
+    );
+    if (!messageList) return undefined;
+
+    // Stream has now supplied its final opening message set. Wait one frame
+    // for MessageList's own layout work, place the room at the latest message
+    // exactly once, and then disengage. No new message, keyboard resize,
+    // reaction, or receipt can invoke this initializer again.
+    messageList.style.visibility = "hidden";
+    const frame = requestAnimationFrame(() => {
+      const safeLatestMessageId = latestMessageId
+        ? window.CSS?.escape
+          ? window.CSS.escape(latestMessageId)
+          : latestMessageId.replace(/["\\]/g, "\\$&")
+        : "";
+      const latestMessage = safeLatestMessageId
+        ? messageList.querySelector(
+            `[data-message-id="${safeLatestMessageId}"]`,
+          )
+        : null;
+
+      // An existing room is not ready until its actual newest message is in
+      // the DOM. Leaving the ref unset allows only that readiness render to
+      // try again; it does not create an ongoing scroll observer.
+      if (latestMessageId && !latestMessage) {
+        messageList.style.visibility = "";
+        return;
+      }
+
+      void messageList.clientHeight;
+      messageList.scrollTop = Math.max(
+        0,
+        messageList.scrollHeight - messageList.clientHeight,
+      );
+      positionedChannelRef.current = channelId;
+      messageList.style.visibility = "";
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      messageList.style.visibility = "";
+    };
+  }, [channelId, latestMessageId, messages.length]);
 
   return null;
 }
@@ -4783,6 +4828,7 @@ async function adminUpdateTicketStatus(requestId, status) {
     if (message.type === "system") {
       return (
         <div
+          data-message-id={message.id}
           className="private-room-system-message"
           style={{
             margin: "12px auto",
