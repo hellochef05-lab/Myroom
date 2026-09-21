@@ -1,6 +1,4 @@
 import {
-  createContext,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -19,6 +17,7 @@ import {
   Window,
   MessageSimple,
   useChannelActionContext,
+  useChannelStateContext,
   useMessageComposer,
   useMessageContext,
   useStateStore,
@@ -244,60 +243,107 @@ function SyncChatViewport({ channelId }) {
   return null;
 }
 
-function LatestMessageList() {
-  const [openingRoom, setOpeningRoom] = useState(true);
+function LatestMessageList({ channelId }) {
+  const { messages = [] } = useChannelStateContext("LatestMessageList");
+  const latestMessageId = messages[messages.length - 1]?.id || "";
+  const positionedChannelRef = useRef("");
 
-  useEffect(() => {
-    // Stream's MessageList first acquires its real scrolling element in a
-    // layout effect and performs an instant bottom placement. Disable all of
-    // its later automatic scroll commands immediately after that first mount.
-    setOpeningRoom(false);
-  }, []);
+  useLayoutEffect(() => {
+    if (!channelId || positionedChannelRef.current === channelId) {
+      return undefined;
+    }
+
+    const messageList = document.querySelector(
+      ".private-room-message-area .str-chat__list",
+    );
+    if (!messageList) return undefined;
+
+    let frame = 0;
+    let attempts = 0;
+    let stableFrames = 0;
+    let previousHeight = -1;
+    let cancelled = false;
+
+    // Do all initialization while hidden. The user sees the room once in its
+    // final position and never sees the list move up or down to get there.
+    messageList.style.visibility = "hidden";
+
+    const finishAtLatest = () => {
+      if (cancelled) return;
+      messageList.scrollTop = Math.max(
+        0,
+        messageList.scrollHeight - messageList.clientHeight,
+      );
+      positionedChannelRef.current = channelId;
+      messageList.style.visibility = "";
+    };
+
+    const waitForStableLatestMessage = () => {
+      if (cancelled) return;
+
+      attempts += 1;
+      const safeLatestMessageId = latestMessageId
+        ? window.CSS?.escape
+          ? window.CSS.escape(latestMessageId)
+          : latestMessageId.replace(/["\\]/g, "\\$&")
+        : "";
+      const latestMessageIsRendered =
+        !safeLatestMessageId ||
+        Boolean(
+          messageList.querySelector(
+            `[data-message-id="${safeLatestMessageId}"]`,
+          ),
+        );
+      const currentHeight = messageList.scrollHeight;
+      const hasUsableGeometry =
+        messageList.clientHeight > 0 && currentHeight >= messageList.clientHeight;
+
+      if (
+        latestMessageIsRendered &&
+        hasUsableGeometry &&
+        currentHeight === previousHeight
+      ) {
+        stableFrames += 1;
+      } else {
+        stableFrames = 0;
+      }
+
+      previousHeight = currentHeight;
+
+      if (stableFrames >= 2 || attempts >= 45) {
+        finishAtLatest();
+        return;
+      }
+
+      frame = requestAnimationFrame(waitForStableLatestMessage);
+    };
+
+    frame = requestAnimationFrame(waitForStableLatestMessage);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      messageList.style.visibility = "";
+    };
+  }, [channelId, latestMessageId, messages.length]);
 
   return (
     <MessageList
       returnAllReadData
-      suppressAutoscroll={!openingRoom}
+      suppressAutoscroll
       scrolledUpThreshold={48}
     />
   );
 }
 
-const RoomReadStateContext = createContext({});
-
-function RoomReadReceiptProvider({ channel, clientUserId, children }) {
-  const [readState, setReadState] = useState(() => ({
-    ...(channel?.state?.read || {}),
-  }));
-
+function RoomReadReceiptCoordinator({ channel, clientUserId, children }) {
   useEffect(() => {
-    if (!channel) {
-      setReadState({});
-      return undefined;
-    }
+    if (!channel) return undefined;
 
     let pendingReadFrame = 0;
-    const copyReadState = (event) => {
-      const nextReadState = { ...channel.state.read };
-
-      // Stream mutates channel.state.read in place. Keeping a React snapshot
-      // makes the custom double ticks repaint as soon as message.read arrives.
-      if (event?.user?.id && event.created_at) {
-        nextReadState[event.user.id] = {
-          ...(nextReadState[event.user.id] || {}),
-          last_read: new Date(event.created_at),
-          last_read_message_id: event.last_read_message_id,
-          user: event.user,
-          unread_messages: 0,
-        };
-      }
-
-      setReadState(nextReadState);
-    };
-
     const messageListIsAtLatest = () => {
       const messageList = document.querySelector(
-        ".private-room-chat-shell .str-chat__list",
+        ".private-room-message-area .str-chat__list",
       );
       if (!messageList) return false;
 
@@ -326,30 +372,23 @@ function RoomReadReceiptProvider({ channel, clientUserId, children }) {
       if (!document.hidden) markRoomRead(false);
     };
 
-    copyReadState();
-    const readSubscription = channel.on("message.read", copyReadState);
     const messageSubscription = channel.on("message.new", handleNewMessage);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleVisibilityChange);
 
-    // OpenChatAtLatestMessage runs in the layout phase first, so this marks
-    // the newest visible message read without introducing any auto-scrolling.
+    // Opening rooms always shows the newest message, so mark that visible
+    // message read without adding any scrolling behavior here.
     markRoomRead(true);
 
     return () => {
       cancelAnimationFrame(pendingReadFrame);
-      readSubscription.unsubscribe();
       messageSubscription.unsubscribe();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleVisibilityChange);
     };
   }, [channel, clientUserId]);
 
-  return (
-    <RoomReadStateContext.Provider value={readState}>
-      {children}
-    </RoomReadStateContext.Provider>
-  );
+  return <>{children}</>;
 }
 
 function normaliseIdentifier(value, fallback = "item") {
@@ -4758,7 +4797,7 @@ async function adminUpdateTicketStatus(requestId, status) {
     const context = useMessageContext();
     const messageComposer = useMessageComposer();
     const { jumpToMessage: jumpToOriginalMessage } = useChannelActionContext();
-    const roomReadState = useContext(RoomReadStateContext);
+    const { read: roomReadState = {} } = useChannelStateContext("MyMessage");
     const message = context?.message || props?.message;
     const contextGroupStyles = context?.groupStyles || props?.groupStyles || [];
     const [actionsOpen, setActionsOpen] = useState(false);
@@ -6284,7 +6323,7 @@ async function adminUpdateTicketStatus(requestId, status) {
             Message={MyMessage}
             QuotedMessagePreview={WhatsAppQuotedMessagePreview}
           >
-            <RoomReadReceiptProvider
+            <RoomReadReceiptCoordinator
               channel={channel}
               clientUserId={client.userID}
             >
@@ -6335,7 +6374,7 @@ async function adminUpdateTicketStatus(requestId, status) {
                     backgroundPosition: "0 0, 0 0, 0 0",
                   }}
                 >
-                  <LatestMessageList />
+                  <LatestMessageList channelId={channel.cid} />
                 </div>
 
                 {!callUiState.active && (
@@ -6370,7 +6409,7 @@ async function adminUpdateTicketStatus(requestId, status) {
               </Window>
 
               <Thread />
-            </RoomReadReceiptProvider>
+            </RoomReadReceiptCoordinator>
           </Channel>
         </Chat>
 
