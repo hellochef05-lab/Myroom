@@ -2471,7 +2471,6 @@ function AdminDashboard({ API_BASE, onBack }) {
     const savedPlans = readLocalJson("sayup_public_plans", []);
     return Array.isArray(savedPlans) ? savedPlans : [];
   });
-  const plansRefreshInFlightRef = useRef(false);
   const [currencySettings, setCurrencySettings] = useState({
     currencyCode: "AED",
     currencyName: "UAE Dirham",
@@ -3361,7 +3360,11 @@ useEffect(() => {
   const [accessKey, setAccessKey] = useState("");
   const [authMode, setAuthMode] = useState("login");
   const [loggedUser, setLoggedUser] = useState(null);
-  const [plans, setPlans] = useState([]);
+  const [plans, setPlans] = useState(() => {
+    const savedPlans = readLocalJson("sayup_public_plans", []);
+    return Array.isArray(savedPlans) ? savedPlans : [];
+  });
+  const plansRefreshInFlightRef = useRef(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportMode, setSupportMode] = useState("public");
   const [supportSending, setSupportSending] = useState(false);
