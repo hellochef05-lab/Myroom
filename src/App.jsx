@@ -2443,6 +2443,7 @@ function AdminDashboard({ API_BASE, onBack }) {
   const [adminPin, setAdminPin] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isAdminOnline, setIsAdminOnline] = useState(() => navigator.onLine);
   const [activeView, setActiveView] = useState("overview");
   const [search, setSearch] = useState("");
 
@@ -2491,14 +2492,37 @@ function AdminDashboard({ API_BASE, onBack }) {
     [adminPin]
   );
 
+  useEffect(() => {
+    const handleOnline = () => setIsAdminOnline(true);
+    const handleOffline = () => setIsAdminOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   async function request(path, options = {}) {
-    const response = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: {
-        ...headers,
-        ...(options.headers || {}),
+    if (!navigator.onLine) {
+      const offlineError = new Error(
+        "Admin is offline. Restore the internet connection and try again.",
+      );
+      offlineError.code = "ADMIN_OFFLINE";
+      throw offlineError;
+    }
+
+    const response = await apiFetch(
+      `${API_BASE}${path}`,
+      {
+        ...options,
+        headers: {
+          ...headers,
+          ...(options.headers || {}),
+        },
       },
-    });
+      { retries: 1, timeoutMs: 30000 },
+    );
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -2530,6 +2554,12 @@ function AdminDashboard({ API_BASE, onBack }) {
       return;
     }
 
+    if (!navigator.onLine) {
+      setIsAdminOnline(false);
+      alert("Admin is offline. In Chrome DevTools, change Offline to No throttling, then try again.");
+      return;
+    }
+
     setLoading(true);
     try {
       const [dashboardData, usersData, devicesData, roomsData, paymentsData, supportData, plansData, paymentSettingsData] =
@@ -2540,8 +2570,8 @@ function AdminDashboard({ API_BASE, onBack }) {
           request("/api/admin/rooms"),
           request("/api/admin/payments"),
           request("/api/admin/support"),
-          fetch(`${API_BASE}/api/plans`).then((res) => res.json()),
-          fetch(`${API_BASE}/api/payment-settings`).then((res) => res.json()),
+          request("/api/plans"),
+          request("/api/payment-settings"),
         ]);
 
       const nextUsers = Array.isArray(usersData) ? usersData : [];
@@ -2575,7 +2605,7 @@ function AdminDashboard({ API_BASE, onBack }) {
       );
       setAuthenticated(true);
     } catch (error) {
-      setAuthenticated(false);
+      if (error?.code !== "ADMIN_OFFLINE") setAuthenticated(false);
       alert(error.message || "Failed to load admin data");
     } finally {
       setLoading(false);
@@ -2585,6 +2615,7 @@ function AdminDashboard({ API_BASE, onBack }) {
   useEffect(() => {
     if (!authenticated) return undefined;
     const id = setInterval(() => {
+      if (!navigator.onLine) return;
       request("/api/admin/dashboard")
         .then(setDashboard)
         .catch(() => {});
@@ -2988,6 +3019,13 @@ function AdminDashboard({ API_BASE, onBack }) {
           </button>
         </header>
 
+        {!isAdminOnline && (
+          <div className="admin-offline-notice" role="alert">
+            <strong>Admin is offline.</strong>
+            <span>Restore the connection, or change Chrome DevTools from Offline to No throttling.</span>
+          </div>
+        )}
+
         <section className="admin-login-panel">
           <input
             type="password"
@@ -2998,8 +3036,14 @@ function AdminDashboard({ API_BASE, onBack }) {
               if (event.key === "Enter") loadAll();
             }}
           />
-          <button type="button" onClick={loadAll} disabled={loading}>
-            {loading ? "Loading..." : authenticated ? "Refresh Data" : "Open Dashboard"}
+          <button type="button" onClick={loadAll} disabled={loading || !isAdminOnline}>
+            {!isAdminOnline
+              ? "Offline"
+              : loading
+                ? "Loading..."
+                : authenticated
+                  ? "Refresh Data"
+                  : "Open Dashboard"}
           </button>
         </section>
 

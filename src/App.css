@@ -70,6 +70,40 @@
   box-shadow: 0 8px 28px rgba(31, 50, 70, 0.06);
 }
 
+.admin-offline-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #fdba74;
+  border-radius: 14px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.admin-offline-notice strong {
+  flex: 0 0 auto;
+}
+
+.admin-offline-notice span {
+  text-align: right;
+}
+
+@media (max-width: 600px) {
+  .admin-offline-notice {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-offline-notice span {
+    text-align: left;
+  }
+}
+
 .admin-login-panel input,
 .admin-detail-heading input {
   width: 100%;
