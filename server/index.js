@@ -4392,17 +4392,44 @@ io.on(
       ({
         roomId,
         data,
-      }) => {
+      }, ack) => {
         if (
           roomId &&
           data
         ) {
+          const roomSize =
+            io.sockets.adapter.rooms.get(roomId)?.size || 0;
+          const recipients = Math.max(0, roomSize - 1);
+
+          console.log("Call signal:", {
+            roomId,
+            type: data.type || "unknown",
+            recipients,
+          });
+
           socket
             .to(roomId)
             .emit(
               "signal",
               data
             );
+
+          if (ack) {
+            ack({
+              ok: true,
+              recipients,
+            });
+          }
+
+          return;
+        }
+
+        if (ack) {
+          ack({
+            ok: false,
+            recipients: 0,
+            error: "Room ID and signal data are required",
+          });
         }
       }
     );

@@ -244,93 +244,23 @@ function SyncChatViewport({ channelId }) {
 }
 
 function LatestMessageList({ channelId }) {
-  const { messages = [] } = useChannelStateContext("LatestMessageList");
-  const latestMessageId = messages[messages.length - 1]?.id || "";
-  const positionedChannelRef = useRef("");
+  const [suppressAutoscroll, setSuppressAutoscroll] = useState(false);
 
   useLayoutEffect(() => {
-    if (!channelId || positionedChannelRef.current === channelId) {
-      return undefined;
-    }
-
-    const messageList = document.querySelector(
-      ".private-room-message-area .str-chat__list",
-    );
-    if (!messageList) return undefined;
-
-    let frame = 0;
-    let attempts = 0;
-    let stableFrames = 0;
-    let previousHeight = -1;
-    let cancelled = false;
-
-    // Do all initialization while hidden. The user sees the room once in its
-    // final position and never sees the list move up or down to get there.
-    messageList.style.visibility = "hidden";
-
-    const finishAtLatest = () => {
-      if (cancelled) return;
-      messageList.scrollTop = Math.max(
-        0,
-        messageList.scrollHeight - messageList.clientHeight,
-      );
-      positionedChannelRef.current = channelId;
-      messageList.style.visibility = "";
-    };
-
-    const waitForStableLatestMessage = () => {
-      if (cancelled) return;
-
-      attempts += 1;
-      const safeLatestMessageId = latestMessageId
-        ? window.CSS?.escape
-          ? window.CSS.escape(latestMessageId)
-          : latestMessageId.replace(/["\\]/g, "\\$&")
-        : "";
-      const latestMessageIsRendered =
-        !safeLatestMessageId ||
-        Boolean(
-          messageList.querySelector(
-            `[data-message-id="${safeLatestMessageId}"]`,
-          ),
-        );
-      const currentHeight = messageList.scrollHeight;
-      const hasUsableGeometry =
-        messageList.clientHeight > 0 && currentHeight >= messageList.clientHeight;
-
-      if (
-        latestMessageIsRendered &&
-        hasUsableGeometry &&
-        currentHeight === previousHeight
-      ) {
-        stableFrames += 1;
-      } else {
-        stableFrames = 0;
-      }
-
-      previousHeight = currentHeight;
-
-      if (stableFrames >= 2 || attempts >= 45) {
-        finishAtLatest();
-        return;
-      }
-
-      frame = requestAnimationFrame(waitForStableLatestMessage);
-    };
-
-    frame = requestAnimationFrame(waitForStableLatestMessage);
+    // Let Stream perform its built-in initial placement at the latest message
+    // during the mount commit. From the next frame onward all automatic list
+    // scrolling is disabled. There is no scrollTop loop or delayed correction.
+    const frame = requestAnimationFrame(() => setSuppressAutoscroll(true));
 
     return () => {
-      cancelled = true;
       cancelAnimationFrame(frame);
-      messageList.style.visibility = "";
     };
-  }, [channelId, latestMessageId, messages.length]);
+  }, [channelId]);
 
   return (
     <MessageList
       returnAllReadData
-      suppressAutoscroll
+      suppressAutoscroll={suppressAutoscroll}
       scrolledUpThreshold={48}
     />
   );
@@ -537,6 +467,21 @@ async function getClientLocationInfo() {
 }
 
 
+const publicStunServers = [
+  { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+];
+const fallbackTurnServers = [
+  {
+    urls: [
+      "turn:openrelay.metered.ca:80",
+      "turn:openrelay.metered.ca:443",
+      "turn:openrelay.metered.ca:443?transport=tcp",
+      "turns:openrelay.metered.ca:443?transport=tcp",
+    ],
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+];
 let turnServers = [];
 try {
   const raw = import.meta.env.VITE_TURN_SERVERS;
@@ -968,11 +913,11 @@ function FullScreenCallOverlay({
     ? incoming.callType === "video"
       ? "Incoming video call"
       : "Incoming audio call"
-    : inCall
+    : remoteStream
       ? isVideo
         ? "Video call connected"
         : "Audio call connected"
-      : "Calling...";
+      : connectionMessage || "Calling...";
 
   return (
     <div className={`video-call-overlay ${isVideo ? "is-video" : "is-audio"}`}>
@@ -1655,18 +1600,19 @@ function WebRTCCall({
     const pc = new RTCPeerConnection({
       iceServers: [
         ...turnServers,
-        { urls: "stun:stun.l.google.com:19302" },
-        {
-          urls: "turn:openrelay.metered.ca:443?transport=tcp",
-          username: "openrelayproject",
-          credential: "openrelayproject",
-        },
+        ...publicStunServers,
+        ...(turnServers.length ? [] : fallbackTurnServers),
       ],
+      bundlePolicy: "max-bundle",
+      iceCandidatePoolSize: 8,
     });
 
     pc.ontrack = (event) => {
-      const stream = event.streams[0];
-      if (!stream) return;
+      const stream =
+        event.streams?.[0] || remoteStreamRef.current || new MediaStream();
+      if (!stream.getTracks().some((track) => track.id === event.track.id)) {
+        stream.addTrack(event.track);
+      }
       remoteStreamRef.current = stream;
       setRemoteStream(stream);
     };
@@ -1746,6 +1692,17 @@ function WebRTCCall({
     let pc = pcRef.current;
     if (!pc) {
       pc = createPC();
+    }
+
+    const currentStream = localStreamRef.current;
+    const hasLiveAudio = currentStream
+      ?.getAudioTracks?.()
+      .some((track) => track.readyState === "live");
+    const hasLiveVideo = currentStream
+      ?.getVideoTracks?.()
+      .some((track) => track.readyState === "live");
+    if (hasLiveAudio && (type !== "video" || hasLiveVideo)) {
+      return currentStream;
     }
 
     const constraints =
@@ -1873,8 +1830,11 @@ function WebRTCCall({
 
   useEffect(() => {
     const s = io(API_BASE, {
-      transports: ["polling", "websocket"],
+      transports: ["websocket", "polling"],
+      tryAllTransports: true,
       reconnection: true,
+      reconnectionDelay: 350,
+      timeout: 10000,
     });
 
     socketRef.current = s;
@@ -1961,11 +1921,9 @@ function WebRTCCall({
 
         if (data.type === "ice") {
           const pc = pcRef.current;
-          if (!pc) return;
-
           const candidate = new RTCIceCandidate(data.candidate);
 
-          if (!pc.remoteDescription) {
+          if (!pc || !pc.remoteDescription) {
             iceQueueRef.current.push(candidate);
           } else {
             await pc.addIceCandidate(candidate).catch(console.warn);
@@ -2179,27 +2137,50 @@ function WebRTCCall({
     try {
       setCallType(type);
       setRemoteName("Contact");
+      setConnectionMessage("Waiting for answer…");
+      setInCall(true);
       isCallerRef.current = true;
       acceptedRef.current = false;
       pendingOfferRef.current = null;
       iceQueueRef.current = [];
 
-      socketRef.current.emit("signal", {
-        roomId,
-        data: {
-          type: "call",
-          callType: type,
-          from: myName,
+      // Request media directly from the user's tap. iOS/Safari can reject a
+      // delayed getUserMedia call when it is started later by a socket event.
+      await startLocalMedia(type);
+
+      socketRef.current.timeout(5000).emit(
+        "signal",
+        {
+          roomId,
+          data: {
+            type: "call",
+            callType: type,
+            from: myName,
+          },
         },
-      });
+        (signalError, result) => {
+          if (signalError || !result?.ok) {
+            setConnectionMessage("Call service reconnecting…");
+            return;
+          }
+
+          setConnectionMessage(
+            result.recipients > 0
+              ? "Ringing…"
+              : "Waiting for the other person to come online…",
+          );
+        },
+      );
     } catch (err) {
       console.error("startCall failed", err);
+      cleanupCall();
     }
   };
 
   const answerCall = async () => {
     try {
       acceptedRef.current = true;
+      setConnectionMessage("Connecting…");
 
       socketRef.current?.emit("signal", {
         roomId,
@@ -4617,7 +4598,9 @@ async function adminUpdateTicketStatus(requestId, status) {
         accessKey,
         roomCode: room,
       });
-      await roomChannel.watch();
+      // Channel mounts perform their own watch. Enter the room as soon as the
+      // authenticated chat connection exists instead of waiting for a second
+      // network round trip before rendering the room.
       setChannel(roomChannel);
       setClient(chatClient);
     } catch (err) {
@@ -6421,7 +6404,7 @@ async function adminUpdateTicketStatus(requestId, status) {
                     backgroundPosition: "0 0, 0 0, 0 0",
                   }}
                 >
-                  <LatestMessageList channelId={channel.cid} />
+                  <LatestMessageList key={channel.cid} channelId={channel.cid} />
                 </div>
 
                 {!callUiState.active && (
