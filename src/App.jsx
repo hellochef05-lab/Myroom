@@ -204,10 +204,6 @@ function SyncChatViewport({ channelId }) {
           "--private-room-visible-height",
           `${Math.round(viewport.height * 100) / 100}px`,
         );
-        root.style.setProperty(
-          "--private-room-visible-top",
-          `${Math.max(0, Math.round(viewport.offsetTop * 100) / 100)}px`,
-        );
       }
 
       syncComposerInset();
@@ -222,7 +218,6 @@ function SyncChatViewport({ channelId }) {
     };
 
     viewport?.addEventListener("resize", syncViewport, { passive: true });
-    viewport?.addEventListener("scroll", syncViewport, { passive: true });
     window.addEventListener("orientationchange", syncViewport);
     document.addEventListener("focusin", handleComposerFocusIn);
     document.addEventListener("focusout", handleComposerFocusOut);
@@ -231,12 +226,10 @@ function SyncChatViewport({ channelId }) {
 
     return () => {
       viewport?.removeEventListener("resize", syncViewport);
-      viewport?.removeEventListener("scroll", syncViewport);
       window.removeEventListener("orientationchange", syncViewport);
       document.removeEventListener("focusin", handleComposerFocusIn);
       document.removeEventListener("focusout", handleComposerFocusOut);
       root.style.removeProperty("--private-room-visible-height");
-      root.style.removeProperty("--private-room-visible-top");
       root.style.removeProperty("--private-room-composer-bottom");
     };
   }, [channelId]);
@@ -245,13 +238,18 @@ function SyncChatViewport({ channelId }) {
 }
 
 function LatestMessageList({ channelId }) {
-  const [suppressAutoscroll, setSuppressAutoscroll] = useState(false);
+  const listHostRef = useRef(null);
+  const [initialPositionReady, setInitialPositionReady] = useState(false);
 
   useLayoutEffect(() => {
-    // Let Stream perform its built-in initial placement at the latest message
-    // during the mount commit. From the next frame onward all automatic list
-    // scrolling is disabled. There is no scrollTop loop or delayed correction.
-    const frame = requestAnimationFrame(() => setSuppressAutoscroll(true));
+    // Stream's autoscroller stays disabled from the very first render. Position
+    // the hidden list at the latest message once, before it becomes visible, so
+    // entering a room never shows a visible jump or a delayed scroll correction.
+    const frame = requestAnimationFrame(() => {
+      const list = listHostRef.current?.querySelector(".str-chat__list");
+      if (list) list.scrollTop = list.scrollHeight;
+      setInitialPositionReady(true);
+    });
 
     return () => {
       cancelAnimationFrame(frame);
@@ -259,11 +257,18 @@ function LatestMessageList({ channelId }) {
   }, [channelId]);
 
   return (
-    <MessageList
-      returnAllReadData
-      suppressAutoscroll={suppressAutoscroll}
-      scrolledUpThreshold={48}
-    />
+    <div
+      ref={listHostRef}
+      className="sayup-latest-message-list"
+      style={{ visibility: initialPositionReady ? "visible" : "hidden" }}
+      aria-busy={!initialPositionReady}
+    >
+      <MessageList
+        returnAllReadData
+        suppressAutoscroll
+        scrolledUpThreshold={48}
+      />
+    </div>
   );
 }
 
@@ -1525,7 +1530,9 @@ function WebRTCCall({
   const stagnantAudioChecksRef = useRef(0);
   const lastAudioRepairAtRef = useRef(0);
 
-  const [joinedRoom, setJoinedRoom] = useState(false);
+  // The room screen is available immediately. Socket.IO readiness is updated
+  // in the background and only changes this state if the join actually fails.
+  const [joinedRoom, setJoinedRoom] = useState(() => Boolean(roomId));
   const [remoteStream, setRemoteStream] = useState(null);
   const [incoming, setIncoming] = useState(null);
   const [inCall, setInCall] = useState(false);
@@ -1973,7 +1980,6 @@ function WebRTCCall({
     };
 
     s.on("connect", () => {
-      setJoinedRoom(false);
       joinCurrentRoom();
     });
 
@@ -5733,7 +5739,7 @@ async function adminUpdateTicketStatus(requestId, status) {
               </span>
               <span className="sayup-instant-room-title">
                 <strong>Room {room}</strong>
-                <small><i /> Connecting securely…</small>
+                <small><i /> Online</small>
               </span>
               <span className="sayup-instant-room-support">
                 <Headphones size={17} aria-hidden="true" /> Support
@@ -5747,7 +5753,7 @@ async function adminUpdateTicketStatus(requestId, status) {
             </div>
             <footer className="sayup-instant-room-composer">
               <span>＋</span>
-              <div>Connecting to Room {room}…</div>
+              <div>Opening Room {room}…</div>
               <span>●</span>
             </footer>
           </section>
