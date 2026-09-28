@@ -35,6 +35,7 @@ import {
   ChevronDown,
   CircleDot,
   Copy,
+  Download,
   Headphones,
   Mic,
   MicOff,
@@ -266,6 +267,125 @@ function LatestMessageList({ channelId }) {
   );
 }
 
+const SAYUP_OUTBOX_PREFIX = "sayup_outbox_v1";
+
+function ReliableMessageInput(props) {
+  const messageComposer = useMessageComposer();
+  const { updateMessage } = useChannelActionContext("ReliableMessageInput");
+  const { channel } = useChannelStateContext("ReliableMessageInput");
+  const flushInProgressRef = useRef(false);
+  const queueKey = `${SAYUP_OUTBOX_PREFIX}:${channel?.getClient?.().userID || "guest"}:${channel?.cid || "room"}`;
+
+  const readQueue = () => {
+    try {
+      const value = JSON.parse(localStorage.getItem(queueKey) || "[]");
+      return Array.isArray(value) ? value : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const writeQueue = (items) => {
+    if (items.length) localStorage.setItem(queueKey, JSON.stringify(items));
+    else localStorage.removeItem(queueKey);
+  };
+
+  const flushQueue = async () => {
+    if (!channel || !navigator.onLine || flushInProgressRef.current) return;
+    flushInProgressRef.current = true;
+
+    try {
+      const remaining = [];
+      for (const item of readQueue()) {
+        const localMessage = {
+          ...item.localMessage,
+          created_at: item.localMessage?.created_at
+            ? new Date(item.localMessage.created_at)
+            : new Date(),
+          status: "sending",
+          sayup_queued: true,
+        };
+        updateMessage?.(localMessage);
+
+        try {
+          const response = await channel.sendMessage(item.message, item.sendOptions);
+          if (response?.message) {
+            updateMessage?.({ ...response.message, status: "received", sayup_queued: false });
+          }
+        } catch {
+          remaining.push(item);
+          updateMessage?.(localMessage);
+        }
+      }
+      writeQueue(remaining);
+    } finally {
+      flushInProgressRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (!channel) return undefined;
+
+    for (const item of readQueue()) {
+      updateMessage?.({
+        ...item.localMessage,
+        created_at: item.localMessage?.created_at
+          ? new Date(item.localMessage.created_at)
+          : new Date(),
+        status: "sending",
+        sayup_queued: true,
+      });
+    }
+
+    const handleOnline = () => void flushQueue();
+    const connectionSubscription = channel
+      .getClient()
+      .on("connection.changed", (event) => {
+        if (event.online) void flushQueue();
+      });
+    window.addEventListener("online", handleOnline);
+    if (navigator.onLine) void flushQueue();
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      connectionSubscription.unsubscribe();
+    };
+    // This queue is re-established only when the user/channel identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queueKey]);
+
+  const queueAndSend = async ({ localMessage, message, sendOptions }) => {
+    const queuedLocalMessage = {
+      ...localMessage,
+      status: "sending",
+      sayup_queued: true,
+    };
+    const queuedItem = {
+      id: localMessage.id,
+      localMessage: queuedLocalMessage,
+      message: { ...message, id: message.id || localMessage.id },
+      sendOptions,
+      queuedAt: new Date().toISOString(),
+    };
+    const queue = readQueue().filter((item) => item.id !== queuedItem.id);
+    writeQueue([...queue, queuedItem]);
+    updateMessage?.(queuedLocalMessage);
+
+    // Prevent Stream's stopTyping request from restoring the previous draft
+    // when the device is offline. Typing events are restored immediately after
+    // this submit cycle, while the composer is cleared once more after submit.
+    const publishTypingEvents = messageComposer.config.text.publishTypingEvents;
+    messageComposer.updateConfig({ text: { publishTypingEvents: false } });
+    await flushQueue();
+    window.setTimeout(() => {
+      messageComposer.clear();
+      messageComposer.updateConfig({ text: { publishTypingEvents } });
+    }, 0);
+  };
+
+  return <MessageInput {...props} overrideSubmitHandler={queueAndSend} />;
+}
+
 function RoomReadReceiptCoordinator({ channel, clientUserId, children }) {
   useEffect(() => {
     if (!channel) return undefined;
@@ -342,6 +462,7 @@ function createStreamUserId(accessKey, displayName, deviceId) {
 }
 
 const DEFAULT_API_TIMEOUT_MS = 25000;
+const ROOM_OPEN_WAIT_MS = 5000;
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -3381,6 +3502,7 @@ useEffect(() => {
   const [room, setRoom] = useState("");
   const [joining, setJoining] = useState(false);
   const [mediaPreview, setMediaPreview] = useState(null);
+  const [mediaDownloads, setMediaDownloads] = useState({});
   const [callUiState, setCallUiState] = useState({ active: false, callType: null });
   const [accessKey, setAccessKey] = useState("");
   const [authMode, setAuthMode] = useState("login");
@@ -4598,9 +4720,14 @@ async function adminUpdateTicketStatus(requestId, status) {
         accessKey,
         roomCode: room,
       });
-      // Channel mounts perform their own watch. Enter the room as soon as the
-      // authenticated chat connection exists instead of waiting for a second
-      // network round trip before rendering the room.
+      // Initialize before rendering. Slower mobile connections get a five
+      // second window, then Channel can continue loading without trapping the
+      // user on the login page.
+      const watchResult = await Promise.race([
+        roomChannel.watch().then(() => ({ ready: true })).catch((error) => ({ error })),
+        wait(ROOM_OPEN_WAIT_MS).then(() => ({ timedOut: true })),
+      ]);
+      if (watchResult.error) throw watchResult.error;
       setChannel(roomChannel);
       setClient(chatClient);
     } catch (err) {
@@ -4742,6 +4869,78 @@ async function adminUpdateTicketStatus(requestId, status) {
     };
   };
 
+  const downloadMedia = async (media) => {
+    if (!media?.url || mediaDownloads[media.url]?.status === "downloading") return;
+
+    setMediaDownloads((current) => ({
+      ...current,
+      [media.url]: { status: "downloading", percent: 0, bytes: 0 },
+    }));
+
+    try {
+      const response = await fetch(media.url);
+      if (!response.ok) throw new Error(`Download failed (${response.status})`);
+
+      const total = Number(response.headers.get("content-length") || 0);
+      const reader = response.body?.getReader();
+      const chunks = [];
+      let received = 0;
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.byteLength;
+          setMediaDownloads((current) => ({
+            ...current,
+            [media.url]: {
+              status: "downloading",
+              bytes: received,
+              percent: total ? Math.min(99, Math.round((received / total) * 100)) : null,
+            },
+          }));
+        }
+      } else {
+        chunks.push(new Uint8Array(await response.arrayBuffer()));
+        received = chunks[0].byteLength;
+      }
+
+      const blob = new Blob(chunks, {
+        type: response.headers.get("content-type") || "application/octet-stream",
+      });
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = String(media.title || "sayup-media").replace(/[\\/:*?"<>|]+/g, "-");
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+
+      setMediaDownloads((current) => ({
+        ...current,
+        [media.url]: { status: "complete", percent: 100, bytes: received },
+      }));
+    } catch (error) {
+      console.error("Media download failed:", error);
+      setMediaDownloads((current) => ({
+        ...current,
+        [media.url]: { status: "error", percent: null, bytes: 0 },
+      }));
+    }
+  };
+
+  const formatDownloadProgress = (media) => {
+    const progress = mediaDownloads[media?.url];
+    if (!progress) return "Download";
+    if (progress.status === "complete") return "100%";
+    if (progress.status === "error") return "Retry";
+    if (Number.isFinite(progress.percent)) return `${progress.percent}%`;
+    return `${Math.max(1, Math.round((progress.bytes || 0) / 1024))} KB`;
+  };
+
   const openMediaPreview = (attachments, startIndex = 0) => {
     const items = (Array.isArray(attachments) ? attachments : [attachments])
       .map(normaliseMediaAttachment)
@@ -4792,26 +4991,39 @@ async function adminUpdateTicketStatus(requestId, status) {
         {visualItems.length > 0 && (
           <div className={`private-room-media-grid count-${Math.min(visualItems.length, 4)}`}>
             {visualItems.map((media, mediaIndex) => (
-              <button
-                type="button"
+              <div
                 key={`${media.url}-${mediaIndex}`}
                 className="private-room-media-tile"
-                onClick={() => openMediaPreview(source, mediaIndex)}
                 onContextMenu={(event) => event.preventDefault()}
-                aria-label={`Open ${media.type} ${mediaIndex + 1} of ${visualItems.length}`}
               >
-                {media.type === "video" ? (
-                  <>
-                    <video src={media.url} preload="metadata" muted playsInline disablePictureInPicture controlsList="nodownload" />
-                    <span className="private-room-media-play">▶</span>
-                  </>
-                ) : (
-                  <img src={media.url} alt={media.title || "Shared image"} draggable="false" />
-                )}
+                <button
+                  type="button"
+                  className="private-room-media-open"
+                  onClick={() => openMediaPreview(source, mediaIndex)}
+                  aria-label={`Open ${media.type} ${mediaIndex + 1} of ${visualItems.length}`}
+                >
+                  {media.type === "video" ? (
+                    <>
+                      <video src={media.url} preload="metadata" muted playsInline disablePictureInPicture controlsList="nodownload" />
+                      <span className="private-room-media-play">▶</span>
+                    </>
+                  ) : (
+                    <img src={media.url} alt={media.title || "Shared image"} draggable="false" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="private-room-media-download"
+                  onClick={() => downloadMedia(media)}
+                  aria-label={`Download ${media.title || "media"}`}
+                >
+                  <Download size={14} aria-hidden="true" />
+                  <span>{formatDownloadProgress(media)}</span>
+                </button>
                 {visualItems.length > 1 && (
                   <span className="private-room-media-count">{mediaIndex + 1}/{visualItems.length}</span>
                 )}
-              </button>
+              </div>
             ))}
           </div>
         )}
@@ -6420,7 +6632,7 @@ async function adminUpdateTicketStatus(requestId, status) {
                   }}
                 >
                   <div style={{ width: "100%", minWidth: 0 }}>
-                    <MessageInput
+                    <ReliableMessageInput
                       grow
                       audioRecordingEnabled
                       asyncMessagesMultiSendEnabled
@@ -6546,6 +6758,15 @@ async function adminUpdateTicketStatus(requestId, status) {
                     </button>
                   </>
                 )}
+
+                <button
+                  type="button"
+                  className="private-room-media-viewer-download"
+                  onClick={() => downloadMedia(currentMedia)}
+                >
+                  <Download size={18} aria-hidden="true" />
+                  <span>{formatDownloadProgress(currentMedia)}</span>
+                </button>
               </div>
             </div>
           );
