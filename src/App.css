@@ -3998,8 +3998,8 @@ html.private-room-admin-active textarea {
   width: 16px;
   min-width: 16px;
   height: 11px;
-  margin-left: 0;
-  color: #667781 !important;
+  margin-left: 1px;
+  color: rgba(255, 255, 255, 0.55) !important;
   vertical-align: -1px;
 }
 
@@ -4023,12 +4023,31 @@ html.private-room-admin-active textarea {
   left: 4px;
 }
 
+.private-room-chat-page .private-room-message-status .is-single {
+  left: 2px;
+}
+
+/* WhatsApp-style: single gray while sending */
+.private-room-chat-page .private-room-message-status.is-sending {
+  color: rgba(255, 255, 255, 0.45) !important;
+  width: 14px;
+  min-width: 14px;
+}
+
+/* Double gray = delivered to server/device */
+.private-room-chat-page .private-room-message-status.is-delivered {
+  color: rgba(255, 255, 255, 0.55) !important;
+}
+
+/* Double blue = read by the other person */
 .private-room-chat-page .private-room-message-status.is-seen {
   color: #53bdeb !important;
 }
 
-.private-room-chat-page .private-room-message-status.is-delivered {
-  color: rgba(255, 255, 255, 0.72) !important;
+.private-room-chat-page .private-room-message-status.is-failed {
+  color: #f87171 !important;
+  width: 14px;
+  min-width: 14px;
 }
 /* SayUp 2.0 room hub */
 .private-room-header-utilities {
@@ -4508,5 +4527,104 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
     min-height: 46px;
     max-height: 52px;
     margin-top: 4px;
+  }
+}
+
+/* =========================================================
+   WHATSAPP-LIKE MOBILE POLISH + PERFORMANCE (2026-09)
+   Keyboard stability, scroll smoothness, bubble shape, ticks
+   ========================================================= */
+
+/* Reduce layout thrash on message list (big perf win on long rooms) */
+.private-room-chat-page .str-chat__message,
+.private-room-chat-page .private-room-message-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}
+
+.private-room-chat-page .str-chat__list {
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  scroll-behavior: auto !important;
+  will-change: scroll-position;
+}
+
+/* Tighter WhatsApp-style bubble tails */
+.private-room-chat-page .private-room-message-bubble {
+  border-radius: 7.5px !important;
+  max-width: min(78%, 360px) !important;
+  padding: 6px 7px 14px 9px !important;
+  position: relative;
+}
+
+.private-room-chat-page .private-room-message-bubble.is-own {
+  border-bottom-right-radius: 0 !important;
+}
+
+.private-room-chat-page .private-room-message-bubble.is-other {
+  border-bottom-left-radius: 0 !important;
+}
+
+/* Meta (time + ticks) sits in the bottom-right padding of the bubble */
+.private-room-chat-page .private-room-message-meta {
+  position: absolute !important;
+  right: 7px !important;
+  bottom: 4px !important;
+  font-size: 11px !important;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+/* Keyboard / visualViewport: keep header pinned, no jump */
+@media (max-width: 767px) {
+  html.private-room-chat-active,
+  html.private-room-chat-active body {
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+    position: fixed !important;
+    width: 100% !important;
+    inset: 0 !important;
+  }
+
+  .private-room-chat-page {
+    height: var(--private-room-visible-height, 100dvh) !important;
+    max-height: var(--private-room-visible-height, 100dvh) !important;
+    transition: height 0.05s linear;
+  }
+
+  .private-room-call-header {
+    flex-shrink: 0 !important;
+    position: relative !important;
+    z-index: 10050 !important;
+    transform: translateZ(0);
+  }
+
+  .private-room-message-composer {
+    flex-shrink: 0 !important;
+    padding-bottom: var(--private-room-composer-bottom, max(7px, env(safe-area-inset-bottom))) !important;
+    transform: translateZ(0);
+  }
+
+  /* Prevent iOS from resizing body when keyboard opens */
+  .private-room-chat-page input,
+  .private-room-chat-page textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Slightly snappier long-press / action sheet on mobile */
+.private-room-message-actions-sheet {
+  animation: sayup-sheet-in 140ms ease-out;
+}
+
+@keyframes sayup-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }

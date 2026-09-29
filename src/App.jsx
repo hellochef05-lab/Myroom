@@ -218,6 +218,7 @@ function SyncChatViewport({ channelId }) {
     };
 
     viewport?.addEventListener("resize", syncViewport, { passive: true });
+    viewport?.addEventListener("scroll", syncViewport, { passive: true });
     window.addEventListener("orientationchange", syncViewport);
     document.addEventListener("focusin", handleComposerFocusIn);
     document.addEventListener("focusout", handleComposerFocusOut);
@@ -226,6 +227,7 @@ function SyncChatViewport({ channelId }) {
 
     return () => {
       viewport?.removeEventListener("resize", syncViewport);
+      viewport?.removeEventListener("scroll", syncViewport);
       window.removeEventListener("orientationchange", syncViewport);
       document.removeEventListener("focusin", handleComposerFocusIn);
       document.removeEventListener("focusout", handleComposerFocusOut);
@@ -4734,6 +4736,25 @@ async function adminUpdateTicketStatus(requestId, status) {
         wait(ROOM_OPEN_WAIT_MS).then(() => ({ timedOut: true })),
       ]);
       if (watchResult.error) throw watchResult.error;
+
+      // WhatsApp-style 1:1 rooms — max 2 people.
+      try {
+        const memberIds = Object.keys(roomChannel.state?.members || {});
+        const myId = chatClient.userID;
+        const alreadyIn = memberIds.includes(myId);
+        if (!alreadyIn && memberIds.length >= 2) {
+          throw new Error("Room is full. Only 2 people can join this room.");
+        }
+        if (!alreadyIn) {
+          await roomChannel.addMembers([myId]).catch(() => {});
+        }
+      } catch (memberErr) {
+        if (String(memberErr?.message || "").includes("full")) {
+          throw memberErr;
+        }
+        // Non-fatal if Stream already added us via token route.
+      }
+
       setChannel(roomChannel);
       setClient(chatClient);
     } catch (err) {
@@ -5123,6 +5144,21 @@ async function adminUpdateTicketStatus(requestId, status) {
           const lastRead = new Date(readState?.last_read || 0).getTime();
           return Number.isFinite(lastRead) && lastRead >= messageCreatedAt;
         }));
+    // WhatsApp-style status: sending → single gray, delivered → double gray, read → double blue
+    const messageStatus = String(message.status || "").toLowerCase();
+    const isSending =
+      isMine &&
+      (messageStatus === "sending" ||
+        messageStatus === "pending" ||
+        message.sayup_queued === true);
+    const isFailed = isMine && (messageStatus === "failed" || messageStatus === "error");
+    const deliveryStatus = isFailed
+      ? "is-failed"
+      : isSending
+        ? "is-sending"
+        : hasBeenSeen
+          ? "is-seen"
+          : "is-delivered";
 
     const rawGroupStyle = Array.isArray(contextGroupStyles)
       ? contextGroupStyles[0]
@@ -5578,14 +5614,34 @@ async function adminUpdateTicketStatus(requestId, status) {
                 <span>{sentAt ? formatTime(sentAt) : ""}</span>
                 {isMine && (
                   <span
-                    className={`private-room-message-status ${
-                      hasBeenSeen ? "is-seen" : "is-delivered"
-                    }`}
-                    aria-label={hasBeenSeen ? "Read" : "Delivered"}
-                    title={hasBeenSeen ? "Read" : "Delivered"}
+                    className={`private-room-message-status ${deliveryStatus}`}
+                    aria-label={
+                      deliveryStatus === "is-seen"
+                        ? "Read"
+                        : deliveryStatus === "is-sending"
+                          ? "Sending"
+                          : deliveryStatus === "is-failed"
+                            ? "Failed"
+                            : "Delivered"
+                    }
+                    title={
+                      deliveryStatus === "is-seen"
+                        ? "Read"
+                        : deliveryStatus === "is-sending"
+                          ? "Sending"
+                          : deliveryStatus === "is-failed"
+                            ? "Failed to send"
+                            : "Delivered"
+                    }
                   >
-                    <Check className="private-room-check is-first" aria-hidden="true" />
-                    <Check className="private-room-check is-second" aria-hidden="true" />
+                    {deliveryStatus === "is-sending" || deliveryStatus === "is-failed" ? (
+                      <Check className="private-room-check is-single" aria-hidden="true" />
+                    ) : (
+                      <>
+                        <Check className="private-room-check is-first" aria-hidden="true" />
+                        <Check className="private-room-check is-second" aria-hidden="true" />
+                      </>
+                    )}
                   </span>
                 )}
               </div>
