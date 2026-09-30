@@ -216,51 +216,59 @@ function SyncChatViewport({ channelId }) {
     const root = document.documentElement;
     const viewport = window.visualViewport;
 
-    const syncComposerInset = () => {
-      const messageFieldIsFocused = Boolean(
-        document.activeElement?.closest?.(".private-room-message-composer"),
+    const apply = () => {
+      const height = viewport?.height || window.innerHeight;
+      const offsetTop = viewport?.offsetTop || 0;
+      const keyboardOpen = Math.max(0, (window.innerHeight || 0) - height) > 60;
+
+      root.style.setProperty(
+        "--private-room-visible-height",
+        `${Math.round(height * 100) / 100}px`,
       );
       root.style.setProperty(
-        "--private-room-composer-bottom",
-        messageFieldIsFocused ? "0px" : "max(7px, env(safe-area-inset-bottom))",
+        "--private-room-visible-top",
+        `${Math.round(offsetTop * 100) / 100}px`,
       );
+      root.classList.toggle("private-room-keyboard-open", keyboardOpen);
+      root.style.setProperty(
+        "--private-room-composer-bottom",
+        keyboardOpen ? "2px" : "max(7px, env(safe-area-inset-bottom))",
+      );
+
+      if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+      if (root.scrollTop) root.scrollTop = 0;
+      if (document.body.scrollTop) document.body.scrollTop = 0;
     };
 
-    const syncViewport = () => {
-      if (viewport) {
-        root.style.setProperty(
-          "--private-room-visible-height",
-          `${Math.round(viewport.height * 100) / 100}px`,
-        );
-      }
-
-      syncComposerInset();
+    const onFocusIn = (event) => {
+      if (!event.target?.closest?.(".private-room-message-composer")) return;
+      apply();
+      requestAnimationFrame(apply);
+      window.setTimeout(apply, 60);
+      window.setTimeout(apply, 180);
+      window.setTimeout(apply, 360);
     };
 
-    const handleComposerFocusIn = () => {
-      syncComposerInset();
-    };
+    viewport?.addEventListener("resize", apply, { passive: true });
+    viewport?.addEventListener("scroll", apply, { passive: true });
+    window.addEventListener("resize", apply, { passive: true });
+    window.addEventListener("orientationchange", apply);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", apply);
 
-    const handleComposerFocusOut = () => {
-      requestAnimationFrame(syncComposerInset);
-    };
-
-    viewport?.addEventListener("resize", syncViewport, { passive: true });
-    viewport?.addEventListener("scroll", syncViewport, { passive: true });
-    window.addEventListener("orientationchange", syncViewport);
-    document.addEventListener("focusin", handleComposerFocusIn);
-    document.addEventListener("focusout", handleComposerFocusOut);
-
-    syncViewport();
+    apply();
 
     return () => {
-      viewport?.removeEventListener("resize", syncViewport);
-      viewport?.removeEventListener("scroll", syncViewport);
-      window.removeEventListener("orientationchange", syncViewport);
-      document.removeEventListener("focusin", handleComposerFocusIn);
-      document.removeEventListener("focusout", handleComposerFocusOut);
+      viewport?.removeEventListener("resize", apply);
+      viewport?.removeEventListener("scroll", apply);
+      window.removeEventListener("resize", apply);
+      window.removeEventListener("orientationchange", apply);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", apply);
       root.style.removeProperty("--private-room-visible-height");
+      root.style.removeProperty("--private-room-visible-top");
       root.style.removeProperty("--private-room-composer-bottom");
+      root.classList.remove("private-room-keyboard-open");
     };
   }, [channelId]);
 
@@ -6653,13 +6661,13 @@ async function adminUpdateTicketStatus(requestId, status) {
     <div
       className="private-room-chat-page"
       style={{
-        minHeight: "100dvh",
         background: "linear-gradient(145deg, #eee5d8 0%, #f8f4ed 52%, #e9dfd0 100%)",
         display: "flex",
         justifyContent: "center",
         alignItems: "stretch",
         padding: isMobile ? 0 : 16,
         boxSizing: "border-box",
+        ...(isMobile ? null : { minHeight: "100dvh" }),
       }}
     >
       <div
@@ -6667,7 +6675,6 @@ async function adminUpdateTicketStatus(requestId, status) {
         style={{
           width: "100%",
           maxWidth: 1180,
-          height: isMobile ? "100dvh" : "calc(100dvh - 32px)",
           margin: "0 auto",
           borderRadius: isMobile ? 0 : 24,
           background: "#f7f2ea",
@@ -6676,6 +6683,7 @@ async function adminUpdateTicketStatus(requestId, status) {
           flexDirection: "column",
           overflow: "hidden",
           position: "relative",
+          ...(isMobile ? null : { height: "calc(100dvh - 32px)" }),
         }}
       >
         <style>{`
