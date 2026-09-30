@@ -59,6 +59,34 @@ const isMobile =
 const apiKey = import.meta.env.VITE_STREAM_API_KEY;
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 
+function getStreamClient() {
+  return StreamChat.getInstance(apiKey, {
+    timeout: STREAM_REQUEST_TIMEOUT_MS,
+    recoverStateOnReconnect: true,
+    enableInsights: false,
+  });
+}
+
+async function connectStreamUserWithRetry(chatClient, user, token) {
+  let lastError;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      if (chatClient.userID && chatClient.userID !== user.id) {
+        await chatClient.disconnectUser().catch(() => {});
+      }
+      if (chatClient.userID === user.id) return;
+      await chatClient.connectUser(user, token);
+      return;
+    } catch (error) {
+      lastError = error;
+      await wait(1000 * (attempt + 1));
+    }
+  }
+
+  throw lastError || new Error("Could not connect on this slow network. Keep trying.");
+}
+
 const SAYUP_UI_THEMES = [
   { id: "champagne", label: "Champagne" },
   { id: "glass", label: "Emerald Glass" },
@@ -298,7 +326,7 @@ function ReliableMessageInput(props) {
   };
 
   const flushQueue = async () => {
-    if (!channel || !navigator.onLine || flushInProgressRef.current) return;
+    if (!channel || flushInProgressRef.current) return;
     flushInProgressRef.current = true;
 
     try {
@@ -464,19 +492,39 @@ function createPrivateRoomId(accessKey, roomCode) {
 }
 
 function createStreamUserId(accessKey, displayName, deviceId) {
-  const deviceSuffix = normaliseIdentifier(deviceId, "device").slice(-18);
-  return `key_${normaliseIdentifier(accessKey, "unknown")}_user_${normaliseIdentifier(displayName, "guest")}_${deviceSuffix}`;
+  // Identity is per device so two people can share the same display name
+  // in one room. Username is only a label on the Stream user profile.
+  void displayName;
+  return `key_${normaliseIdentifier(accessKey, "unknown")}_user_${normaliseIdentifier(deviceId, "device")}`;
 }
 
-const DEFAULT_API_TIMEOUT_MS = 25000;
-const ROOM_OPEN_WAIT_MS = 5000;
+function getChannelMemberIds(members) {
+  if (!members) return [];
+  const values = Array.isArray(members) ? members : Object.values(members);
+  const ids = values
+    .map((member) => {
+      if (!member) return "";
+      if (typeof member === "string") return member;
+      return member.user_id || member.userId || member.user?.id || member.id || "";
+    })
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  if (!ids.length && members && !Array.isArray(members)) {
+    return Object.keys(members).filter((key) => !/^\d+$/.test(key));
+  }
+  return [...new Set(ids)];
+}
+
+const DEFAULT_API_TIMEOUT_MS = 45000;
+const ROOM_OPEN_WAIT_MS = 18000;
+const STREAM_REQUEST_TIMEOUT_MS = 20000;
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function apiFetch(url, options = {}, config = {}) {
-  const { retries = 2, timeoutMs = DEFAULT_API_TIMEOUT_MS } = config;
+  const { retries = 4, timeoutMs = DEFAULT_API_TIMEOUT_MS } = config;
   let lastError;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -492,7 +540,7 @@ async function apiFetch(url, options = {}, config = {}) {
       clearTimeout(timeoutId);
 
       if (!response.ok && response.status >= 500 && attempt < retries) {
-        await wait(700 * (attempt + 1));
+        await wait(900 * (attempt + 1));
         continue;
       }
 
@@ -502,14 +550,14 @@ async function apiFetch(url, options = {}, config = {}) {
       lastError = err;
 
       if (attempt < retries) {
-        await wait(700 * (attempt + 1));
+        await wait(900 * (attempt + 1));
         continue;
       }
     }
   }
 
   if (lastError?.name === "AbortError") {
-    throw new Error("Network is slow. Please wait and try again.");
+    throw new Error("Still connecting on a slow network. Keep the app open — it will retry.");
   }
 
   throw lastError || new Error("Network request failed. Please check your internet connection.");
@@ -669,7 +717,7 @@ function CallHeader({
       label: "Call",
       title: "Start audio call",
       onClick: onStartAudio,
-      disabled: !joinedRoom || inCall,
+      disabled: inCall,
       background: "rgba(255,255,255,0.18)",
       icon: <Phone size={compact ? 17 : 21} color="#fff" />,
     },
@@ -677,7 +725,7 @@ function CallHeader({
       label: "Video",
       title: "Start video call",
       onClick: onStartVideo,
-      disabled: !joinedRoom || inCall,
+      disabled: inCall,
       background: "rgba(255,255,255,0.22)",
       icon: <Video size={compact ? 17 : 21} color="#fff" />,
     },
@@ -1731,10 +1779,11 @@ function WebRTCCall({
       iceServers: [
         ...turnServers,
         ...publicStunServers,
-        ...(turnServers.length ? [] : fallbackTurnServers),
+        ...fallbackTurnServers,
       ],
       bundlePolicy: "max-bundle",
-      iceCandidatePoolSize: 8,
+      iceTransportPolicy: "all",
+      iceCandidatePoolSize: 4,
     });
 
     pc.ontrack = (event) => {
@@ -1767,23 +1816,42 @@ function WebRTCCall({
         return;
       }
 
+      if (pc.connectionState === "connecting" || pc.connectionState === "new") {
+        setConnectionMessage("Connecting on a weak network…");
+        return;
+      }
+
       if (pc.connectionState === "disconnected") {
-        setConnectionMessage("Reconnecting...");
+        setConnectionMessage("Reconnecting…");
+        try {
+          pc.restartIce?.();
+        } catch {
+          // restartIce is best-effort on older WebViews.
+        }
 
         if (disconnectTimeoutRef.current) {
           clearTimeout(disconnectTimeoutRef.current);
         }
 
         disconnectTimeoutRef.current = setTimeout(() => {
-          cleanupCall();
-        }, 10000);
+          try {
+            pc.restartIce?.();
+            setConnectionMessage("Still reconnecting…");
+          } catch {
+            cleanupCall();
+          }
+        }, 25000);
 
         return;
       }
 
       if (pc.connectionState === "failed") {
-        setConnectionMessage("Connection failed");
-        cleanupCall();
+        setConnectionMessage("Reconnecting call…");
+        try {
+          pc.restartIce?.();
+        } catch {
+          cleanupCall();
+        }
         return;
       }
 
@@ -1797,7 +1865,14 @@ function WebRTCCall({
         pc.iceConnectionState === "checking" ||
         pc.iceConnectionState === "disconnected"
       ) {
-        setConnectionMessage("Weak connection");
+        setConnectionMessage("Connecting…");
+        if (pc.iceConnectionState === "disconnected") {
+          try {
+            pc.restartIce?.();
+          } catch {
+            // ignore
+          }
+        }
         return;
       }
 
@@ -1810,7 +1885,12 @@ function WebRTCCall({
       }
 
       if (pc.iceConnectionState === "failed") {
-        setConnectionMessage("Connection failed");
+        setConnectionMessage("Reconnecting call…");
+        try {
+          pc.restartIce?.();
+        } catch {
+          // ignore
+        }
       }
     };
 
@@ -1963,8 +2043,12 @@ function WebRTCCall({
       transports: ["websocket", "polling"],
       tryAllTransports: true,
       reconnection: true,
-      reconnectionDelay: 350,
-      timeout: 10000,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 400,
+      reconnectionDelayMax: 6000,
+      randomizationFactor: 0.4,
+      timeout: 30000,
+      forceNew: false,
     });
 
     socketRef.current = s;
@@ -1985,8 +2069,17 @@ function WebRTCCall({
       joinCurrentRoom();
     });
 
-    s.on("disconnect", () => {
-      setJoinedRoom(false);
+    s.on("reconnect", () => {
+      joinCurrentRoom();
+    });
+
+    s.on("disconnect", (reason) => {
+      if (reason === "io client disconnect") {
+        setJoinedRoom(false);
+        return;
+      }
+      // Stay joinable during brief drops so calls/chat can recover on 2G/3G.
+      joinCurrentRoom();
     });
 
     return () => {
@@ -2254,8 +2347,8 @@ function WebRTCCall({
   }, [overlayVisible, inCall, callType, cameraOff]);
 
   const startCall = async (type) => {
-    if (!socketRef.current || !joinedRoom) {
-      alert("Please wait a moment and try again.");
+    if (!socketRef.current) {
+      alert("Connecting… tap Call again in a moment.");
       return;
     }
 
@@ -2277,28 +2370,49 @@ function WebRTCCall({
       // delayed getUserMedia call when it is started later by a socket event.
       await startLocalMedia(type);
 
-      socketRef.current.timeout(5000).emit(
-        "signal",
-        {
-          roomId,
-          data: {
-            type: "call",
-            callType: type,
-            from: myName,
-          },
-        },
-        (signalError, result) => {
-          if (signalError || !result?.ok) {
-            setConnectionMessage("Call service reconnecting…");
+      const ringOnce = () =>
+        new Promise((resolve) => {
+          const socket = socketRef.current;
+          if (!socket) {
+            resolve({ ok: false });
             return;
           }
-
-          setConnectionMessage(
-            result.recipients > 0
-              ? "Ringing…"
-              : "Waiting for the other person to come online…",
+          socket.timeout(20000).emit(
+            "signal",
+            {
+              roomId,
+              data: {
+                type: "call",
+                callType: type,
+                from: myName,
+              },
+            },
+            (signalError, result) => {
+              if (signalError || !result?.ok) {
+                resolve({ ok: false });
+                return;
+              }
+              resolve(result);
+            },
           );
-        },
+        });
+
+      let result = await ringOnce();
+      if (!result.ok) {
+        setConnectionMessage("Slow network — retrying call…");
+        await wait(1200);
+        result = await ringOnce();
+      }
+
+      if (!result.ok) {
+        setConnectionMessage("Still ringing on a slow network…");
+        return;
+      }
+
+      setConnectionMessage(
+        result.recipients > 0
+          ? "Ringing…"
+          : "Waiting for the other person… they can join on a slow network too",
       );
     } catch (err) {
       console.error("startCall failed", err);
@@ -3545,15 +3659,31 @@ const [supportLoading, setSupportLoading] = useState(false);
   }, [uiTheme]);
 
   useEffect(() => {
-    const online = () => setIsOnline(true);
-    const offline = () => setIsOnline(false);
-    window.addEventListener("online", online);
-    window.addEventListener("offline", offline);
+    let hideTimer = 0;
+    const markOnline = () => {
+      window.clearTimeout(hideTimer);
+      setIsOnline(true);
+    };
+    const markOfflineSoon = () => {
+      window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(() => setIsOnline(false), 8000);
+    };
+    window.addEventListener("online", markOnline);
+    window.addEventListener("offline", markOfflineSoon);
     return () => {
-      window.removeEventListener("online", online);
-      window.removeEventListener("offline", offline);
+      window.clearTimeout(hideTimer);
+      window.removeEventListener("online", markOnline);
+      window.removeEventListener("offline", markOfflineSoon);
     };
   }, []);
+
+  useEffect(() => {
+    if (!client) return undefined;
+    const sub = client.on("connection.changed", (event) => {
+      if (event.online) setIsOnline(true);
+    });
+    return () => sub.unsubscribe();
+  }, [client]);
 
   useEffect(() => {
     if (!channel) return undefined;
@@ -4715,34 +4845,38 @@ async function adminUpdateTicketStatus(requestId, status) {
       setLoggedUser(loginData.user);
       localStorage.setItem("logged_user", JSON.stringify(loginData.user));
 
-      chatClient = StreamChat.getInstance(apiKey);
-      await chatClient.connectUser(
-  {
-    id: tokenData.userId || streamUserId,
-    name: tokenData.name || name || "Guest",
-  },
-  tokenData.token
-);
+      chatClient = getStreamClient();
+      await connectStreamUserWithRetry(
+        chatClient,
+        {
+          id: tokenData.userId || streamUserId,
+          name: tokenData.name || name || "Guest",
+        },
+        tokenData.token,
+      );
       const roomChannel = chatClient.channel("messaging", privateRoomIdForLogin, {
         name: `Room ${room}`,
         accessKey,
         roomCode: room,
       });
-      // Initialize before rendering. Slower mobile connections get a five
-      // second window, then Channel can continue loading without trapping the
-      // user on the login page.
+      // Open the room even if watch is slow. Messages catch up in the background.
       const watchResult = await Promise.race([
         roomChannel.watch().then(() => ({ ready: true })).catch((error) => ({ error })),
         wait(ROOM_OPEN_WAIT_MS).then(() => ({ timedOut: true })),
       ]);
-      if (watchResult.error) throw watchResult.error;
+      if (watchResult.error && !/timeout/i.test(String(watchResult.error?.message || ""))) {
+        // Non-timeout failures still retry once, then enter the room anyway.
+        await wait(1200);
+        await roomChannel.watch().catch(() => {});
+      }
 
-      // WhatsApp-style 1:1 rooms — max 2 people.
+      // WhatsApp-style 1:1 rooms — max 2 people, same display name allowed.
       try {
-        const memberIds = Object.keys(roomChannel.state?.members || {});
+        const memberIds = getChannelMemberIds(roomChannel.state?.members);
         const myId = chatClient.userID;
         const alreadyIn = memberIds.includes(myId);
-        if (!alreadyIn && memberIds.length >= 2) {
+        const others = memberIds.filter((id) => id !== myId);
+        if (!alreadyIn && others.length >= 2) {
           throw new Error("Room is full. Only 2 people can join this room.");
         }
         if (!alreadyIn) {
@@ -6657,7 +6791,7 @@ async function adminUpdateTicketStatus(requestId, status) {
 
                 {!isOnline && (
                   <div className="sayup-offline-banner" role="status">
-                    Offline · SayUp will reconnect when your internet returns
+                    Weak network · staying online and retrying in the background
                   </div>
                 )}
 

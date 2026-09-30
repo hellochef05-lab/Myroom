@@ -216,6 +216,29 @@ function sameValue(a, b) {
   return normalize(a) === normalize(b);
 }
 
+function getChannelMemberIds(members) {
+  if (!members) return [];
+
+  const values = Array.isArray(members)
+    ? members
+    : Object.values(members);
+
+  const ids = values
+    .map((member) => {
+      if (!member) return "";
+      if (typeof member === "string") return member;
+      return member.user_id || member.userId || member.user?.id || member.id || "";
+    })
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+
+  if (!ids.length && members && !Array.isArray(members)) {
+    return Object.keys(members).filter((key) => !/^\d+$/.test(key));
+  }
+
+  return [...new Set(ids)];
+}
+
 function getDeviceType(deviceName = "") {
   const value = String(deviceName || "").toLowerCase();
   if (/iphone|ipad|ios/.test(value)) return "iOS";
@@ -836,7 +859,8 @@ app.post("/api/token", async (req, res) => {
       }
     }
 
-    // Enforce WhatsApp-style 1:1 rooms: max 2 members.
+    // Enforce WhatsApp-style 1:1 rooms: max 2 distinct people.
+    // Display names may be the same — identity is per device, not username.
     try {
       const state = await channel.query({
         state: true,
@@ -844,14 +868,46 @@ app.post("/api/token", async (req, res) => {
         presence: false,
         messages: { limit: 0 },
       });
-      const existingMembers = Object.keys(state?.members || {});
+      let existingMembers = getChannelMemberIds(
+        state?.members || state?.channel?.members
+      );
+
+      const activeStreamIds = db.devices
+        .filter(
+          (device) =>
+            sameValue(device.accessKey, finalAccessKey) &&
+            device.status === "active" &&
+            device.streamUserId
+        )
+        .map((device) => String(device.streamUserId));
+
+      const staleMembers = existingMembers.filter(
+        (id) => id !== providedUserId && !activeStreamIds.includes(id)
+      );
+
+      if (staleMembers.length) {
+        try {
+          await channel.removeMembers(staleMembers);
+          existingMembers = existingMembers.filter(
+            (id) => !staleMembers.includes(id)
+          );
+        } catch (pruneError) {
+          console.warn("Stale member prune warning:", pruneError?.message);
+        }
+      }
+
       const alreadyMember = existingMembers.includes(providedUserId);
-      if (!alreadyMember && existingMembers.length >= 2) {
+      const uniqueOthers = existingMembers.filter((id) => id !== providedUserId);
+
+      if (!alreadyMember && uniqueOthers.length >= 2) {
         return res.status(403).json({
           error: "Room is full. Only 2 people can join this room.",
         });
       }
     } catch (queryError) {
+      if (queryError?.status === 403) {
+        throw queryError;
+      }
       console.warn("Member count check warning:", queryError?.message);
     }
 
@@ -4332,6 +4388,9 @@ const httpServer =
 const io = new Server(
   httpServer,
   {
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    connectTimeout: 30000,
     cors: {
       origin: (
         origin,
