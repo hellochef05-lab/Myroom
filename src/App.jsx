@@ -216,42 +216,40 @@ function SyncChatViewport({ channelId }) {
     const root = document.documentElement;
     const viewport = window.visualViewport;
 
-    const apply = () => {
-      const height = viewport?.height || window.innerHeight;
-      const offsetTop = viewport?.offsetTop || 0;
-      const keyboardOpen = Math.max(0, (window.innerHeight || 0) - height) > 60;
+    const lockPageScroll = () => {
+      window.scrollTo(0, 0);
+      root.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
 
-      root.style.setProperty(
-        "--private-room-visible-height",
-        `${Math.round(height * 100) / 100}px`,
-      );
-      root.style.setProperty(
-        "--private-room-visible-top",
-        `${Math.round(offsetTop * 100) / 100}px`,
-      );
+    const apply = () => {
+      const height = Math.round((viewport?.height || window.innerHeight) * 100) / 100;
+      const keyboardOpen = Math.max(0, window.innerHeight - height) > 80;
+
+      root.style.setProperty("--private-room-visible-height", `${height}px`);
       root.classList.toggle("private-room-keyboard-open", keyboardOpen);
       root.style.setProperty(
         "--private-room-composer-bottom",
         keyboardOpen ? "2px" : "max(7px, env(safe-area-inset-bottom))",
       );
-
-      if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
-      if (root.scrollTop) root.scrollTop = 0;
-      if (document.body.scrollTop) document.body.scrollTop = 0;
+      lockPageScroll();
     };
 
     const onFocusIn = (event) => {
-      if (!event.target?.closest?.(".private-room-message-composer")) return;
+      if (!event.target?.closest?.(".private-room-message-composer, textarea, input")) {
+        return;
+      }
       apply();
       requestAnimationFrame(apply);
-      window.setTimeout(apply, 60);
-      window.setTimeout(apply, 180);
-      window.setTimeout(apply, 360);
+      window.setTimeout(apply, 50);
+      window.setTimeout(apply, 200);
+      window.setTimeout(apply, 450);
     };
 
     viewport?.addEventListener("resize", apply, { passive: true });
     viewport?.addEventListener("scroll", apply, { passive: true });
     window.addEventListener("resize", apply, { passive: true });
+    window.addEventListener("scroll", lockPageScroll, { passive: true });
     window.addEventListener("orientationchange", apply);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", apply);
@@ -262,11 +260,11 @@ function SyncChatViewport({ channelId }) {
       viewport?.removeEventListener("resize", apply);
       viewport?.removeEventListener("scroll", apply);
       window.removeEventListener("resize", apply);
+      window.removeEventListener("scroll", lockPageScroll);
       window.removeEventListener("orientationchange", apply);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", apply);
       root.style.removeProperty("--private-room-visible-height");
-      root.style.removeProperty("--private-room-visible-top");
       root.style.removeProperty("--private-room-composer-bottom");
       root.classList.remove("private-room-keyboard-open");
     };
@@ -278,19 +276,72 @@ function SyncChatViewport({ channelId }) {
 function LatestMessageList({ channelId }) {
   const listHostRef = useRef(null);
   const [initialPositionReady, setInitialPositionReady] = useState(false);
+  const stickToLatestRef = useRef(true);
 
   useLayoutEffect(() => {
-    // Stream's autoscroller stays disabled from the very first render. Position
-    // the hidden list at the latest message once, before it becomes visible, so
-    // entering a room never shows a visible jump or a delayed scroll correction.
-    const frame = requestAnimationFrame(() => {
-      const list = listHostRef.current?.querySelector(".str-chat__list");
-      if (list) list.scrollTop = list.scrollHeight;
-      setInitialPositionReady(true);
+    setInitialPositionReady(false);
+    stickToLatestRef.current = true;
+
+    const getList = () => listHostRef.current?.querySelector(".str-chat__list");
+
+    const jumpToLatest = () => {
+      const list = getList();
+      if (!list) return false;
+      list.scrollTop = list.scrollHeight;
+      return list.scrollHeight - list.clientHeight - list.scrollTop <= 64;
+    };
+
+    let tries = 0;
+    let retryId = 0;
+    const pinUntilReady = () => {
+      const atLatest = jumpToLatest();
+      const list = getList();
+      const hasMessages = (list?.scrollHeight || 0) > 24;
+      if ((atLatest && hasMessages) || tries++ > 50) {
+        setInitialPositionReady(true);
+        jumpToLatest();
+        return;
+      }
+      retryId = window.setTimeout(pinUntilReady, 50);
+    };
+
+    const frame = requestAnimationFrame(pinUntilReady);
+
+    const onListScroll = (event) => {
+      const list = event.currentTarget;
+      stickToLatestRef.current =
+        list.scrollHeight - list.scrollTop - list.clientHeight <= 80;
+    };
+
+    const observer = new MutationObserver(() => {
+      if (stickToLatestRef.current) jumpToLatest();
     });
+
+    let listEl = null;
+    const attachId = window.setTimeout(() => {
+      listEl = getList();
+      if (!listEl) return;
+      listEl.addEventListener("scroll", onListScroll, { passive: true });
+      observer.observe(listEl, { childList: true, subtree: true });
+    }, 80);
+
+    const onViewportChange = () => {
+      if (stickToLatestRef.current) {
+        requestAnimationFrame(jumpToLatest);
+        window.setTimeout(jumpToLatest, 80);
+      }
+    };
+    window.visualViewport?.addEventListener("resize", onViewportChange);
+    window.addEventListener("resize", onViewportChange);
 
     return () => {
       cancelAnimationFrame(frame);
+      window.clearTimeout(retryId);
+      window.clearTimeout(attachId);
+      observer.disconnect();
+      listEl?.removeEventListener("scroll", onListScroll);
+      window.visualViewport?.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("resize", onViewportChange);
     };
   }, [channelId]);
 
