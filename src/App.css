@@ -4699,7 +4699,10 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
   }
 
   html.private-room-keyboard-open .private-room-message-composer {
-    padding-bottom: 6px !important;
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+    border-bottom: 0 !important;
+    box-shadow: none !important;
   }
 
   .private-room-chat-page input,

@@ -252,25 +252,26 @@ function SyncChatViewport({ channelId }) {
       const composer = document.querySelector(".private-room-message-composer");
       const messages = document.querySelector(".private-room-message-area");
       const vvHeight = viewport?.height || window.innerHeight;
-      const screenH = window.screen?.height || window.innerHeight;
-      const shrunk = vvHeight < screenH * 0.72;
-      let visibleHeight = vvHeight;
+      const vvTop = viewport?.offsetTop || 0;
+      lockPageScroll();
 
-      if (composerFocused && !shrunk) {
-        visibleHeight = Math.max(240, window.innerHeight - estimatedKeyboard());
+      let keyboardInset = Math.max(0, window.innerHeight - vvHeight - vvTop);
+      if (composerFocused && keyboardInset < 80) {
+        keyboardInset = estimatedKeyboard();
+      } else if (!composerFocused && keyboardInset < 80) {
+        keyboardInset = 0;
+      }
+
+      try {
+        window.Capacitor?.Plugins?.Keyboard?.setAccessoryBarVisible?.({ isVisible: false });
+      } catch {
+        /* web / older iOS */
       }
 
       const headerH = header?.getBoundingClientRect().height || 64;
-      const composerH = composer?.offsetHeight || 58;
 
-      root.style.setProperty(
-        "--sayup-keyboard-inset",
-        `${Math.max(0, window.innerHeight - visibleHeight)}px`,
-      );
-      root.classList.toggle(
-        "private-room-keyboard-open",
-        composerFocused || window.innerHeight - visibleHeight > 80,
-      );
+      root.style.setProperty("--sayup-keyboard-inset", `${Math.round(keyboardInset)}px`);
+      root.classList.toggle("private-room-keyboard-open", composerFocused || keyboardInset > 80);
 
       if (header) {
         clearContainingBlock(header);
@@ -291,16 +292,26 @@ function SyncChatViewport({ channelId }) {
           position: "fixed",
           left: "0px",
           right: "0px",
-          bottom: "0px",
           top: "auto",
+          bottom: `${Math.round(keyboardInset)}px`,
           width: "100%",
           height: "auto",
+          margin: "0px",
           "z-index": "2147483001",
           transform: "none",
-          "padding-bottom": composerFocused ? "2px" : "max(6px, env(safe-area-inset-bottom))",
+          padding: composerFocused ? "6px 8px 0px" : "6px 8px max(6px, env(safe-area-inset-bottom))",
         });
+
+        const rect = composer.getBoundingClientRect();
+        const visibleBottom = vvTop + vvHeight;
+        const gap = visibleBottom - rect.bottom;
+        if (Math.abs(gap) > 2 && Math.abs(gap) < 160) {
+          keyboardInset = Math.max(0, keyboardInset - gap);
+          composer.style.setProperty("bottom", `${Math.round(keyboardInset)}px`, "important");
+        }
       }
 
+      const composerH = composer?.getBoundingClientRect().height || 58;
       if (messages) {
         pin(messages, {
           position: "fixed",
@@ -308,7 +319,7 @@ function SyncChatViewport({ channelId }) {
           left: "0px",
           right: "0px",
           width: "100%",
-          bottom: `${Math.round(composerH)}px`,
+          bottom: `${Math.round(keyboardInset + composerH)}px`,
           height: "auto",
           "z-index": "1",
         });
@@ -319,8 +330,6 @@ function SyncChatViewport({ channelId }) {
         list.scrollTop = list.scrollHeight;
         list.dataset.sayupPinned = "1";
       }
-
-      lockPageScroll();
     };
 
     const onFocusIn = (event) => {
@@ -360,6 +369,13 @@ function SyncChatViewport({ channelId }) {
 
     apply();
     window.setTimeout(apply, 120);
+    try {
+      if (navigator.virtualKeyboard) {
+        navigator.virtualKeyboard.overlaysContent = true;
+      }
+    } catch {
+      /* Safari may not expose VirtualKeyboard */
+    }
 
     return () => {
       viewport?.removeEventListener("resize", apply);
@@ -7009,6 +7025,8 @@ async function adminUpdateTicketStatus(requestId, status) {
                         enterKeyHint: "send",
                         autoCapitalize: "sentences",
                         autoCorrect: "on",
+                        autoComplete: "off",
+                        spellCheck: true,
                       }}
                     />
                   </div>
