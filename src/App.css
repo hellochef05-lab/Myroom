@@ -2497,17 +2497,18 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
   }
 
   html.private-room-chat-active #root {
-    position: fixed !important;
+    position: relative !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
     bottom: auto !important;
     width: 100% !important;
-    height: calc(100dvh - var(--sayup-keyboard-inset, 0px)) !important;
-    max-height: calc(100dvh - var(--sayup-keyboard-inset, 0px)) !important;
+    height: 100% !important;
+    max-height: 100% !important;
     padding-bottom: 0 !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
+    transform: none !important;
   }
 
   .private-room-chat-page {
@@ -4640,10 +4641,31 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
   }
 
   html.private-room-chat-active #root {
-    height: calc(100dvh - var(--sayup-keyboard-inset, 0px)) !important;
-    max-height: calc(100dvh - var(--sayup-keyboard-inset, 0px)) !important;
+    position: relative !important;
+    height: 100% !important;
+    max-height: 100% !important;
     padding-bottom: 0 !important;
     box-sizing: border-box !important;
+    transform: none !important;
+  }
+
+  html.private-room-keyboard-open .private-room-chat-page,
+  html.private-room-keyboard-open .private-room-chat-shell,
+  html.private-room-keyboard-open .str-chat,
+  html.private-room-keyboard-open .str-chat__channel,
+  html.private-room-keyboard-open .str-chat__main-panel,
+  html.private-room-keyboard-open .str-chat__window {
+    overflow: visible !important;
+    transform: none !important;
+  }
+
+  html.private-room-keyboard-open .private-room-call-header,
+  html.private-room-keyboard-open .private-room-header-utilities,
+  html.private-room-keyboard-open .private-room-support-button,
+  html.private-room-keyboard-open .private-room-message-composer {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
   }
 
   .private-room-chat-page,

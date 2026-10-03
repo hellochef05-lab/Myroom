@@ -223,68 +223,134 @@ function SyncChatViewport({ channelId }) {
       document.body.scrollTop = 0;
     };
 
-    const readEnvKeyboardInset = () => {
-      const probe = document.createElement("div");
-      probe.style.cssText =
-        "position:absolute;visibility:hidden;pointer-events:none;padding-bottom:env(keyboard-inset-height, 0px)";
-      document.body.appendChild(probe);
-      const value = Number.parseFloat(getComputedStyle(probe).paddingBottom) || 0;
-      probe.remove();
-      return value;
+    const pin = (el, styles) => {
+      if (!el) return;
+      Object.entries(styles).forEach(([key, value]) => {
+        el.style.setProperty(key, value, "important");
+      });
+    };
+
+    const clearContainingBlock = (node) => {
+      let el = node?.parentElement;
+      while (el && el !== document.body) {
+        const style = getComputedStyle(el);
+        if (style.transform !== "none") el.style.setProperty("transform", "none", "important");
+        if (style.filter !== "none") el.style.setProperty("filter", "none", "important");
+        el = el.parentElement;
+      }
+    };
+
+    const estimatedKeyboard = () => {
+      const portrait = window.innerHeight >= window.innerWidth;
+      return portrait
+        ? Math.round(Math.min(520, Math.max(390, window.innerHeight * 0.5)))
+        : Math.round(Math.min(300, window.innerHeight * 0.42));
     };
 
     const apply = () => {
-      const visualHeight = viewport?.height || window.innerHeight;
-      const visualTop = viewport?.offsetTop || 0;
-      const visualOverlap = Math.max(0, window.innerHeight - visualHeight - visualTop);
-      const envInset = readEnvKeyboardInset();
-      let inset = Math.max(visualOverlap, envInset);
-      const isIOS =
-        /iP(hone|ad|od)/.test(navigator.userAgent) ||
-        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      const header = document.querySelector(".private-room-call-header");
+      const composer = document.querySelector(".private-room-message-composer");
+      const messages = document.querySelector(".private-room-message-area");
+      const vvHeight = viewport?.height || window.innerHeight;
+      const screenH = window.screen?.height || window.innerHeight;
+      const shrunk = vvHeight < screenH * 0.72;
+      let visibleHeight = vvHeight;
 
-      if (composerFocused) {
-        if (inset < 90) {
-          const portrait = window.innerHeight >= window.innerWidth;
-          inset = portrait
-            ? Math.round(Math.min(480, Math.max(380, window.innerHeight * 0.48)))
-            : Math.round(Math.min(280, window.innerHeight * 0.4));
-        } else if (isIOS) {
-          inset += 48;
-        }
-      } else if (inset < 90) {
-        inset = 0;
+      if (composerFocused && !shrunk) {
+        visibleHeight = Math.max(240, window.innerHeight - estimatedKeyboard());
+      } else if (composerFocused) {
+        visibleHeight = Math.max(240, vvHeight - 48);
       }
 
-      root.style.setProperty("--sayup-keyboard-inset", `${Math.round(inset)}px`);
-      root.classList.toggle("private-room-keyboard-open", composerFocused || inset > 80);
+      const headerH = header?.getBoundingClientRect().height || 64;
+      const composerH = composer?.getBoundingClientRect().height || 58;
+      const composerTop = Math.max(headerH + 72, visibleHeight - composerH);
+      const messageHeight = Math.max(80, composerTop - headerH);
+
       root.style.setProperty(
-        "--private-room-composer-bottom",
-        composerFocused || inset > 80 ? "6px" : "max(7px, env(safe-area-inset-bottom))",
+        "--sayup-keyboard-inset",
+        `${Math.max(0, window.innerHeight - visibleHeight)}px`,
       );
+      root.classList.toggle(
+        "private-room-keyboard-open",
+        composerFocused || window.innerHeight - visibleHeight > 80,
+      );
+
+      if (header) {
+        clearContainingBlock(header);
+        pin(header, {
+          position: "fixed",
+          top: "0px",
+          left: "0px",
+          right: "0px",
+          width: "100%",
+          "z-index": "2147483000",
+          transform: "none",
+        });
+      }
+
+      if (composer) {
+        clearContainingBlock(composer);
+        pin(composer, {
+          position: "fixed",
+          top: `${Math.round(composerTop)}px`,
+          bottom: "auto",
+          left: "0px",
+          right: "0px",
+          width: "100%",
+          "z-index": "2147483001",
+          transform: "none",
+          "padding-bottom": "6px",
+        });
+      }
+
+      if (messages) {
+        pin(messages, {
+          position: "fixed",
+          top: `${Math.round(headerH)}px`,
+          left: "0px",
+          right: "0px",
+          width: "100%",
+          height: `${Math.round(messageHeight)}px`,
+          bottom: "auto",
+          "z-index": "1",
+        });
+      }
+
+      const list = messages?.querySelector(".str-chat__list");
+      if (list && (composerFocused || !list.dataset.sayupPinned)) {
+        list.scrollTop = list.scrollHeight;
+        list.dataset.sayupPinned = "1";
+      }
+
       lockPageScroll();
     };
 
     const onFocusIn = (event) => {
-      if (!event.target?.closest?.(".private-room-message-composer, textarea, input")) {
-        return;
-      }
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const isField = target.tagName === "TEXTAREA" || target.tagName === "INPUT";
+      if (!isField && !target.closest(".private-room-message-composer")) return;
       composerFocused = true;
       apply();
       requestAnimationFrame(apply);
-      window.setTimeout(apply, 80);
-      window.setTimeout(apply, 240);
-      window.setTimeout(apply, 480);
+      window.setTimeout(apply, 50);
+      window.setTimeout(apply, 200);
+      window.setTimeout(apply, 450);
+      window.setTimeout(apply, 800);
     };
 
     const onFocusOut = () => {
       window.setTimeout(() => {
         const active = document.activeElement;
         composerFocused = Boolean(
-          active?.closest?.(".private-room-message-composer, textarea, input"),
+          active instanceof HTMLElement &&
+            (active.closest(".private-room-message-composer") ||
+              active.tagName === "TEXTAREA" ||
+              active.tagName === "INPUT"),
         );
         apply();
-      }, 80);
+      }, 60);
     };
 
     viewport?.addEventListener("resize", apply, { passive: true });
@@ -296,6 +362,7 @@ function SyncChatViewport({ channelId }) {
     document.addEventListener("focusout", onFocusOut);
 
     apply();
+    window.setTimeout(apply, 120);
 
     return () => {
       viewport?.removeEventListener("resize", apply);
@@ -305,6 +372,13 @@ function SyncChatViewport({ channelId }) {
       window.removeEventListener("orientationchange", apply);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
+      [".private-room-call-header", ".private-room-message-composer", ".private-room-message-area"].forEach((selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        ["position", "top", "left", "right", "width", "height", "bottom", "z-index", "transform", "padding-bottom"].forEach((prop) => {
+          el.style.removeProperty(prop);
+        });
+      });
       root.style.removeProperty("--sayup-keyboard-inset");
       root.style.removeProperty("--private-room-composer-bottom");
       root.classList.remove("private-room-keyboard-open");
