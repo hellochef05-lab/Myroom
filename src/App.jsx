@@ -258,14 +258,10 @@ function SyncChatViewport({ channelId }) {
 
       if (composerFocused && !shrunk) {
         visibleHeight = Math.max(240, window.innerHeight - estimatedKeyboard());
-      } else if (composerFocused) {
-        visibleHeight = Math.max(240, vvHeight - 48);
       }
 
       const headerH = header?.getBoundingClientRect().height || 64;
-      const composerH = composer?.getBoundingClientRect().height || 58;
-      const composerTop = Math.max(headerH + 72, visibleHeight - composerH);
-      const messageHeight = Math.max(80, composerTop - headerH);
+      const composerH = composer?.offsetHeight || 58;
 
       root.style.setProperty(
         "--sayup-keyboard-inset",
@@ -293,14 +289,15 @@ function SyncChatViewport({ channelId }) {
         clearContainingBlock(composer);
         pin(composer, {
           position: "fixed",
-          top: `${Math.round(composerTop)}px`,
-          bottom: "auto",
           left: "0px",
           right: "0px",
+          bottom: "0px",
+          top: "auto",
           width: "100%",
+          height: "auto",
           "z-index": "2147483001",
           transform: "none",
-          "padding-bottom": "6px",
+          "padding-bottom": composerFocused ? "2px" : "max(6px, env(safe-area-inset-bottom))",
         });
       }
 
@@ -311,8 +308,8 @@ function SyncChatViewport({ channelId }) {
           left: "0px",
           right: "0px",
           width: "100%",
-          height: `${Math.round(messageHeight)}px`,
-          bottom: "auto",
+          bottom: `${Math.round(composerH)}px`,
+          height: "auto",
           "z-index": "1",
         });
       }
