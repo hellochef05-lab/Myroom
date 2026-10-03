@@ -2501,9 +2501,12 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
+    bottom: auto !important;
     width: 100% !important;
-    height: var(--private-room-visible-height, 100dvh) !important;
-    max-height: var(--private-room-visible-height, 100dvh) !important;
+    height: calc(100dvh - var(--sayup-keyboard-inset, 0px)) !important;
+    max-height: calc(100dvh - var(--sayup-keyboard-inset, 0px)) !important;
+    padding-bottom: 0 !important;
+    box-sizing: border-box !important;
     overflow: hidden !important;
   }
 
@@ -2537,18 +2540,19 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
   }
 
   .private-room-call-header {
-    position: sticky !important;
+    position: relative !important;
     top: 0 !important;
     flex: 0 0 auto !important;
     flex-shrink: 0 !important;
     width: 100% !important;
-    min-height: calc(68px + env(safe-area-inset-top)) !important;
+    min-height: calc(56px + env(safe-area-inset-top)) !important;
     padding:
-      calc(7px + env(safe-area-inset-top))
+      calc(8px + env(safe-area-inset-top))
       8px
-      7px !important;
+      8px !important;
     z-index: 9999 !important;
     transform: none !important;
+    overflow: visible !important;
   }
 
   .private-room-support-button {
@@ -3037,49 +3041,68 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
 
 @media (max-width: 767px) {
   .private-room-chat-page .private-room-call-header {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    grid-template-rows: auto 42px !important;
-    gap: 5px 8px !important;
-    min-height: calc(111px + env(safe-area-inset-top)) !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 6px !important;
+    min-height: calc(56px + env(safe-area-inset-top)) !important;
+    height: auto !important;
+    max-height: none !important;
     padding:
-      calc(7px + env(safe-area-inset-top))
-      12px
-      7px !important;
+      calc(8px + env(safe-area-inset-top))
+      8px
+      8px !important;
+    overflow: visible !important;
   }
 
   .private-room-chat-page .private-room-header-user {
-    grid-column: 1 !important;
-    grid-row: 1 !important;
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
   }
 
-  .private-room-chat-page .private-room-support-button {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-    min-width: 94px !important;
+  .private-room-chat-page .private-room-header-utilities {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex: 0 0 auto !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    z-index: 10020 !important;
+  }
+
+  .private-room-chat-page .private-room-support-button,
+  .private-room-chat-page .private-room-header-utilities .private-room-support-button {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    min-width: 78px !important;
     max-width: none !important;
-    height: 36px !important;
-    padding: 0 13px !important;
-    font-size: 12px !important;
+    height: 32px !important;
+    padding: 0 10px !important;
+    font-size: 11px !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
   }
 
   .private-room-chat-page .private-room-header-actions {
-    grid-column: 1 / -1 !important;
-    grid-row: 2 !important;
-    display: grid !important;
-    grid-template-columns: repeat(3, 1fr) !important;
-    width: 100% !important;
-    gap: 0 !important;
+    display: flex !important;
+    flex: 0 0 auto !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: auto !important;
+    gap: 2px !important;
   }
 
   .private-room-chat-page .private-room-header-actions > div {
-    flex-direction: row !important;
-    gap: 7px !important;
+    flex-direction: column !important;
+    gap: 2px !important;
   }
 
   .private-room-chat-page .private-room-header-action {
-    width: 28px !important;
-    height: 28px !important;
+    width: 32px !important;
+    height: 32px !important;
     border: 0 !important;
     background: transparent !important;
     box-shadow: none !important;
@@ -3098,7 +3121,7 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
 
   .private-room-chat-page .private-room-header-actions > div > span {
     color: #c4ddda !important;
-    font-size: 11px !important;
+    font-size: 9px !important;
     font-weight: 700 !important;
     text-shadow: none !important;
   }
@@ -4231,8 +4254,12 @@ html.private-room-admin-active textarea {
 
 @media (max-width: 767px) {
   .private-room-chat-page .private-room-header-utilities {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    flex: 0 0 auto !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
     gap: 6px;
   }
 
@@ -4610,32 +4637,45 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
   html.private-room-chat-active #root,
   .private-room-chat-page {
     top: 0 !important;
-    height: var(--private-room-visible-height, 100dvh) !important;
-    max-height: var(--private-room-visible-height, 100dvh) !important;
   }
 
-  .private-room-chat-page {
-    top: 0 !important;
+  html.private-room-chat-active #root {
+    height: calc(100dvh - var(--sayup-keyboard-inset, 0px)) !important;
+    max-height: calc(100dvh - var(--sayup-keyboard-inset, 0px)) !important;
+    padding-bottom: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .private-room-chat-page,
+  .private-room-chat-shell {
     height: 100% !important;
     max-height: 100% !important;
-  }
-
-  html.private-room-keyboard-open .private-room-call-header {
-    min-height: 52px !important;
-    padding-top: 6px !important;
-    padding-bottom: 4px !important;
+    min-height: 0 !important;
   }
 
   .private-room-call-header {
     flex-shrink: 0 !important;
-    position: sticky !important;
+    position: relative !important;
     top: 0 !important;
     z-index: 10050 !important;
+    padding-top: calc(8px + env(safe-area-inset-top)) !important;
+    overflow: visible !important;
+  }
+
+  .private-room-header-utilities,
+  .private-room-support-button {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
   }
 
   .private-room-message-composer {
     flex-shrink: 0 !important;
-    padding-bottom: var(--private-room-composer-bottom, max(7px, env(safe-area-inset-bottom))) !important;
+    position: relative !important;
+    bottom: auto !important;
+    padding-bottom: var(--private-room-composer-bottom, 6px) !important;
+    background: #fff !important;
+    z-index: 10040 !important;
   }
 
   html.private-room-keyboard-open .private-room-message-composer {
@@ -4645,6 +4685,8 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
   .private-room-chat-page input,
   .private-room-chat-page textarea {
     font-size: 16px !important;
+    position: relative !important;
+    z-index: 10041 !important;
   }
 
   .sayup-latest-message-list {
