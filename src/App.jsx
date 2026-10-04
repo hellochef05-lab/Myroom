@@ -1015,7 +1015,6 @@ function CallHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const compact = typeof window !== "undefined" && window.innerWidth <= 768;
-  const veryCompact = typeof window !== "undefined" && window.innerWidth <= 430;
   const roomInitial = String(room || "R").trim().slice(0, 1).toUpperCase();
 
   const actions = [
@@ -1143,8 +1142,7 @@ function CallHeader({
           ‹
         </button>
 
-        {!veryCompact && (
-          <div
+        <div
             className="private-room-header-avatar"
             style={{
               position: "relative",
@@ -1175,8 +1173,7 @@ function CallHeader({
                 border: "2px solid #fff",
               }}
             />
-          </div>
-        )}
+        </div>
 
         <div style={{ minWidth: 0, overflow: "hidden" }}>
           <div
