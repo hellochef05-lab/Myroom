@@ -2351,9 +2351,13 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
   width: 100%;
   height: 100%;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .sayup-latest-message-list > .str-chat__message-list {
+  flex: 1 1 0;
   height: 100%;
   min-height: 0;
 }
@@ -2512,15 +2516,15 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
   }
 
   .private-room-chat-page {
-    position: absolute !important;
-    top: 0 !important;
+    position: fixed !important;
+    top: var(--private-room-visible-top, 0px) !important;
     right: 0 !important;
-    bottom: 0 !important;
+    bottom: auto !important;
     left: 0 !important;
     width: 100% !important;
-    height: 100% !important;
+    height: var(--private-room-visible-height, 100dvh) !important;
     min-height: 0 !important;
-    max-height: 100% !important;
+    max-height: var(--private-room-visible-height, 100dvh) !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: hidden !important;
@@ -4633,9 +4637,12 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
     background: #f7f2ea !important;
   }
 
-  html.private-room-chat-active #root,
-  .private-room-chat-page {
+  html.private-room-chat-active #root {
     top: 0 !important;
+  }
+
+  .private-room-chat-page {
+    top: var(--private-room-visible-top, 0px) !important;
   }
 
   html.private-room-chat-active #root {
@@ -4653,7 +4660,7 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
   html.private-room-keyboard-open .str-chat__channel,
   html.private-room-keyboard-open .str-chat__main-panel,
   html.private-room-keyboard-open .str-chat__window {
-    overflow: visible !important;
+    overflow: hidden !important;
     transform: none !important;
   }
 
@@ -4666,7 +4673,12 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
     opacity: 1 !important;
   }
 
-  .private-room-chat-page,
+  .private-room-chat-page {
+    height: var(--private-room-visible-height, 100dvh) !important;
+    max-height: var(--private-room-visible-height, 100dvh) !important;
+    min-height: 0 !important;
+  }
+
   .private-room-chat-shell {
     height: 100% !important;
     max-height: 100% !important;
