@@ -38,7 +38,7 @@ export default function SayUpV2Hub({
 }) {
   const [tab, setTab] = useState("search");
   const [query, setQuery] = useState("");
-  const [version, setVersion] = useState(0);
+  const [, setVersion] = useState(0);
   const [statusText, setStatusText] = useState("");
   const [muted, setMuted] = useState(false);
   const [appearance, setAppearance] = useState(() => {

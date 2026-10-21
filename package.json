@@ -8,8 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "node index.js",
-    "server": "node index.js",
+    "start": "node server/index.js",
+    "server": "node server/index.js",
     "android:sync": "npm run build && cap sync android",
     "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug"
   },

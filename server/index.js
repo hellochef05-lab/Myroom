@@ -49,6 +49,26 @@ function createEmptyDB() {
     supportRequests: [],
     supportMessages: [],
     loginHistory: [],
+    paymentSettings: {
+      currencyCode: "AED",
+      currencyName: "UAE Dirham",
+    },
+  };
+}
+
+function normalizePaymentSettings(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const rawCode = String(source.currencyCode || "AED").trim().toUpperCase();
+  const rawName = String(source.currencyName || "UAE Dirham").trim();
+  const hasLegacyRupeeTypo =
+    rawCode === "RES" && /^indian rupes$/i.test(rawName);
+
+  return {
+    ...source,
+    currencyCode: hasLegacyRupeeTypo ? "INR" : rawCode || "AED",
+    currencyName: hasLegacyRupeeTypo
+      ? "Indian Rupees"
+      : rawName || "UAE Dirham",
   };
 }
 
@@ -62,10 +82,13 @@ function normalizeDatabase(value) {
   const defaults = createEmptyDB();
 
   for (const key of Object.keys(defaults)) {
+    if (key === "paymentSettings") continue;
     if (!Array.isArray(db[key])) {
       db[key] = [];
     }
   }
+
+  db.paymentSettings = normalizePaymentSettings(db.paymentSettings);
 
   return db;
 }
@@ -87,6 +110,8 @@ async function initializeDatabase() {
       `Failed to load Supabase data: ${error.message}`
     );
   }
+
+  const storedPaymentSettings = data?.data?.paymentSettings;
 
   if (data?.data) {
     databaseCache = normalizeDatabase(data.data);
@@ -112,8 +137,15 @@ async function initializeDatabase() {
   }
 
   const recoveryResult = recoverMissingUsersFromApprovedPayments(databaseCache);
+  const paymentSettingsChanged =
+    JSON.stringify(storedPaymentSettings || {}) !==
+    JSON.stringify(databaseCache.paymentSettings);
 
-  if (recoveryResult.created > 0 || recoveryResult.linked > 0) {
+  if (
+    paymentSettingsChanged ||
+    recoveryResult.created > 0 ||
+    recoveryResult.linked > 0
+  ) {
     const { error: recoverySaveError } = await supabase
       .from("app_data")
       .upsert(
@@ -127,7 +159,7 @@ async function initializeDatabase() {
 
     if (recoverySaveError) {
       throw new Error(
-        `Failed to save recovered users: ${recoverySaveError.message}`
+        `Failed to save normalized database data: ${recoverySaveError.message}`
       );
     }
   }
@@ -1587,10 +1619,7 @@ app.get(
   "/api/payment-settings",
   (_req, res) => {
     const db = readDB();
-    const savedSettings =
-      db.paymentSettings && typeof db.paymentSettings === "object"
-        ? db.paymentSettings
-        : {};
+    const savedSettings = normalizePaymentSettings(db.paymentSettings);
 
     res.json({
       upiId:
@@ -1602,11 +1631,10 @@ app.get(
         "SayUp Subscription",
 
       currencyCode:
-        String(savedSettings.currencyCode || "AED").trim() || "AED",
+        savedSettings.currencyCode,
 
       currencyName:
-        String(savedSettings.currencyName || "UAE Dirham").trim() ||
-        "UAE Dirham",
+        savedSettings.currencyName,
     });
   }
 );
@@ -1631,12 +1659,12 @@ app.patch(
     }
 
     const db = readDB();
-    db.paymentSettings = {
+    db.paymentSettings = normalizePaymentSettings({
       ...(db.paymentSettings || {}),
       currencyCode,
       currencyName,
       updatedAt: new Date().toISOString(),
-    };
+    });
     writeDB(db);
 
     return res.json({
@@ -4257,7 +4285,7 @@ app.get("/api/admin/maintenance/backup", (req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename=\"${filename}\"`
+    `attachment; filename="${filename}"`
   );
   return res.send(JSON.stringify(db, null, 2));
 });
@@ -4305,7 +4333,7 @@ app.get("/api/admin/maintenance/export/:type", (req, res) => {
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename=\"sayup-${type}-${getTodayDate()}.csv\"`
+    `attachment; filename="sayup-${type}-${getTodayDate()}.csv"`
   );
   return res.send(csv);
 });

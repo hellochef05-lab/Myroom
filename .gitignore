@@ -36,3 +36,5 @@ server/migrate-to-supabase.js
 .env
 .env.*
 server/.env
+!.env.example
+!server/.env.example

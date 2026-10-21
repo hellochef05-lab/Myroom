@@ -90,10 +90,22 @@ devOptions: {
     },
   ],
   build: {
+    // Stream's complete messaging UI is intentionally isolated from the
+    // lightweight SayUp shell; its vendor chunk is large but independently
+    // cached and no longer inflates the application entry bundle.
+    chunkSizeWarningLimit: 1200,
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
         admin: fileURLToPath(new URL("./admin/index.html", import.meta.url)),
+      },
+      output: {
+        manualChunks(id) {
+          if (id.includes("stream-chat-react")) return "chat-ui-vendor";
+          if (id.includes("/node_modules/stream-chat/")) return "chat-core-vendor";
+          if (id.includes("@daily-co")) return "call-vendor";
+          return undefined;
+        },
       },
     },
   },

@@ -2249,6 +2249,8 @@ function WebRTCCall({
 
     s.on("signal", onSignal);
     return () => s.off("signal", onSignal);
+    // Signal handlers read the current call refs; reconnect only when identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, myName]);
 
   const overlayVisible = Boolean(incoming || inCall);
@@ -2350,6 +2352,8 @@ function WebRTCCall({
         audioWatchdogRef.current = null;
       }
     };
+    // The microphone repair routine intentionally reads live call refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inCall]);
 
   useEffect(() => {
@@ -2931,6 +2935,9 @@ function AdminDashboard({ API_BASE, onBack }) {
         .catch(() => {});
     }, 30000);
     return () => clearInterval(id);
+    // request uses the current PIN already listed above; recreating the timer on
+    // every render would make the dashboard refresh unstable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authenticated, adminPin]);
 
   const normalizedSearch = search.trim().toLowerCase();
