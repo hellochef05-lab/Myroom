@@ -216,10 +216,26 @@ function SyncChatViewport({ channelId }) {
     const root = document.documentElement;
     const viewport = window.visualViewport;
     let viewportFrame = 0;
+    let scrollGuardFrame = 0;
+    let releaseKeyboardAnchorTimer = 0;
+    let ignoreNextListScroll = false;
+    let preserveLatestDuringKeyboard = false;
 
     const composerIsFocused = () => Boolean(
       document.activeElement?.closest?.(".private-room-message-composer"),
     );
+
+    const getMessageList = () => document.querySelector(
+      ".private-room-message-area .str-chat__list",
+    );
+
+    const captureKeyboardAnchor = () => {
+      const list = getMessageList();
+      if (!list) return;
+      const distanceFromLatest =
+        list.scrollHeight - list.clientHeight - list.scrollTop;
+      preserveLatestDuringKeyboard = distanceFromLatest <= 48;
+    };
 
     const writeViewport = () => {
       viewportFrame = 0;
@@ -242,6 +258,20 @@ function SyncChatViewport({ channelId }) {
       );
       root.classList.toggle("private-room-keyboard-open", focused);
 
+      if (preserveLatestDuringKeyboard) {
+        const list = getMessageList();
+        if (list) {
+          // Reading clientHeight after updating the viewport variable forces
+          // the new keyboard layout to settle in this same frame. Keeping the
+          // bottom distance at zero prevents a visible jump or bounce.
+          ignoreNextListScroll = true;
+          list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
+          cancelAnimationFrame(scrollGuardFrame);
+          scrollGuardFrame = requestAnimationFrame(() => {
+            ignoreNextListScroll = false;
+          });
+        }
+      }
     };
 
     const scheduleViewportWrite = () => {
@@ -249,20 +279,50 @@ function SyncChatViewport({ channelId }) {
       viewportFrame = requestAnimationFrame(writeViewport);
     };
 
+    const onFocusIn = (event) => {
+      if (!event.target?.closest?.(".private-room-message-composer")) return;
+      window.clearTimeout(releaseKeyboardAnchorTimer);
+      captureKeyboardAnchor();
+      scheduleViewportWrite();
+    };
+
+    const onFocusOut = () => {
+      scheduleViewportWrite();
+      window.clearTimeout(releaseKeyboardAnchorTimer);
+      releaseKeyboardAnchorTimer = window.setTimeout(() => {
+        preserveLatestDuringKeyboard = false;
+      }, 700);
+    };
+
+    const onListScroll = (event) => {
+      if (
+        ignoreNextListScroll ||
+        !composerIsFocused() ||
+        !event.target?.matches?.(".private-room-message-area .str-chat__list")
+      ) {
+        return;
+      }
+      captureKeyboardAnchor();
+    };
+
     viewport?.addEventListener("resize", scheduleViewportWrite, { passive: true });
     viewport?.addEventListener("scroll", scheduleViewportWrite, { passive: true });
     window.addEventListener("orientationchange", scheduleViewportWrite);
-    document.addEventListener("focusin", scheduleViewportWrite);
-    document.addEventListener("focusout", scheduleViewportWrite);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    document.addEventListener("scroll", onListScroll, { capture: true, passive: true });
     writeViewport();
 
     return () => {
       cancelAnimationFrame(viewportFrame);
+      cancelAnimationFrame(scrollGuardFrame);
+      window.clearTimeout(releaseKeyboardAnchorTimer);
       viewport?.removeEventListener("resize", scheduleViewportWrite);
       viewport?.removeEventListener("scroll", scheduleViewportWrite);
       window.removeEventListener("orientationchange", scheduleViewportWrite);
-      document.removeEventListener("focusin", scheduleViewportWrite);
-      document.removeEventListener("focusout", scheduleViewportWrite);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+      document.removeEventListener("scroll", onListScroll, true);
       root.style.removeProperty("--private-room-visible-height");
       root.style.removeProperty("--private-room-visible-top");
       root.style.removeProperty("--private-room-composer-bottom");

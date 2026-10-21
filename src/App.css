@@ -4685,6 +4685,13 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
     min-height: 0 !important;
   }
 
+  /* The room root carries both classes. Keep the visualViewport height from
+     being overwritten by the generic shell rule when the keyboard opens. */
+  .private-room-chat-page.private-room-chat-shell {
+    height: var(--private-room-visible-height, 100dvh) !important;
+    max-height: var(--private-room-visible-height, 100dvh) !important;
+  }
+
   .private-room-call-header {
     flex-shrink: 0 !important;
     position: relative !important;
@@ -4727,6 +4734,40 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
   .sayup-latest-message-list {
     height: 100%;
     min-height: 0;
+  }
+}
+
+/* iPhones wider than 767px in landscape must use the same visualViewport
+   geometry or the composer remains underneath the keyboard. */
+@media (min-width: 768px) and (max-width: 950px) and (max-height: 600px) {
+  html.private-room-chat-active,
+  html.private-room-chat-active body {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  html.private-room-chat-active #root {
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .private-room-chat-page.private-room-chat-shell {
+    position: fixed !important;
+    top: var(--private-room-visible-top, 0px) !important;
+    right: 0 !important;
+    bottom: auto !important;
+    left: 0 !important;
+    height: var(--private-room-visible-height, 100dvh) !important;
+    min-height: 0 !important;
+    max-height: var(--private-room-visible-height, 100dvh) !important;
+    overflow: hidden !important;
   }
 }
 
