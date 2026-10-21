@@ -276,23 +276,40 @@ function SyncChatViewport({ channelId }) {
 function LatestMessageList({ channelId }) {
   const listHostRef = useRef(null);
   const [initialPositionReady, setInitialPositionReady] = useState(false);
-  const { loading, messages = [] } = useChannelStateContext("LatestMessageList");
+  const [historyPaginationEnabled, setHistoryPaginationEnabled] = useState(false);
+  const {
+    channel,
+    hasMore = false,
+    hasMoreNewer = false,
+    loading,
+    messages = [],
+  } = useChannelStateContext("LatestMessageList");
 
   useLayoutEffect(() => {
-    if (loading || initialPositionReady) return undefined;
+    if (!channel?.initialized || loading || initialPositionReady) return undefined;
 
     // Stream autoscroll is disabled before the first visible frame. Place the
     // fully rendered hidden list at the latest message exactly once, then
     // permanently leave its scroll position under the user's control.
-    const frame = requestAnimationFrame(() => {
+    let revealFrame = 0;
+    const positionFrame = requestAnimationFrame(() => {
       const list = listHostRef.current?.querySelector(".str-chat__list");
       if (!list) return;
       list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
-      setInitialPositionReady(true);
+      revealFrame = requestAnimationFrame(() => setInitialPositionReady(true));
     });
 
-    return () => cancelAnimationFrame(frame);
-  }, [channelId, initialPositionReady, loading, messages.length]);
+    return () => {
+      cancelAnimationFrame(positionFrame);
+      cancelAnimationFrame(revealFrame);
+    };
+  }, [channel, channelId, initialPositionReady, loading, messages.length]);
+
+  const enableHistoryPagination = () => {
+    if (initialPositionReady && !historyPaginationEnabled) {
+      setHistoryPaginationEnabled(true);
+    }
+  };
 
   return (
     <div
@@ -300,8 +317,12 @@ function LatestMessageList({ channelId }) {
       className="sayup-latest-message-list"
       style={{ visibility: initialPositionReady ? "visible" : "hidden" }}
       aria-busy={!initialPositionReady}
+      onTouchMoveCapture={enableHistoryPagination}
+      onWheelCapture={enableHistoryPagination}
     >
       <MessageList
+        hasMore={historyPaginationEnabled && hasMore}
+        hasMoreNewer={historyPaginationEnabled && hasMoreNewer}
         returnAllReadData
         suppressAutoscroll
         scrolledUpThreshold={48}
