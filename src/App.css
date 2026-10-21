@@ -2603,21 +2603,20 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
     overflow-x: hidden !important;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    overflow-anchor: auto;
+    overflow-anchor: none !important;
     scroll-behavior: auto !important;
     touch-action: pan-y;
   }
 
-  /* Stream renders an empty marker after the typing indicator. Make that
-     marker the sole native browser anchor: new messages remain visible only
-     when the user is already at the bottom, with no JavaScript autoscroller. */
+  /* Safari/Chrome scroll anchoring is intentionally disabled. It otherwise
+     changes scrollTop when the keyboard resizes the room or a message renders. */
   .private-room-chat-shell .str-chat__message-list-scroll > * {
-    overflow-anchor: none;
+    overflow-anchor: none !important;
   }
 
   .private-room-chat-shell .str-chat__message-list-scroll > :last-child {
     min-height: 1px;
-    overflow-anchor: auto;
+    overflow-anchor: none !important;
   }
 
   .private-room-chat-shell .str-chat__message-list {
@@ -4581,18 +4580,19 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
    Keyboard stability, scroll smoothness, bubble shape, ticks
    ========================================================= */
 
-/* Reduce layout thrash on message list (big perf win on long rooms) */
+/* Message heights must remain real and stable. content-visibility:auto causes
+   late height corrections that look like automatic scrolling on mobile. */
 .private-room-chat-page .str-chat__message,
 .private-room-chat-page .private-room-message-row {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 72px;
+  content-visibility: visible;
+  contain-intrinsic-size: none;
 }
 
 .private-room-chat-page .str-chat__list {
   -webkit-overflow-scrolling: touch !important;
   overscroll-behavior-y: contain !important;
   scroll-behavior: auto !important;
-  will-change: scroll-position;
+  overflow-anchor: none !important;
 }
 
 /* Tighter WhatsApp-style bubble tails */

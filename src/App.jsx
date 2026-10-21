@@ -209,291 +209,6 @@ function WhatsAppQuotedMessagePreview() {
   );
 }
 
-// Retained temporarily for rollback reference. The live room uses the stable
-// viewport coordinator below; this older implementation fixed three regions
-// independently and caused repeated iPhone keyboard jumps.
-// eslint-disable-next-line no-unused-vars
-function LegacySyncChatViewport({ channelId }) {
-  useLayoutEffect(() => {
-    if (!channelId) return undefined;
-
-    const root = document.documentElement;
-    const viewport = window.visualViewport;
-    let composerFocused = false;
-
-    const lockPageScroll = () => {
-      window.scrollTo(0, 0);
-      root.scrollTop = 0;
-      document.body.scrollTop = 0;
-    };
-
-    const pin = (el, styles) => {
-      if (!el) return;
-      Object.entries(styles).forEach(([key, value]) => {
-        el.style.setProperty(key, value, "important");
-      });
-    };
-
-    const clearContainingBlock = (node) => {
-      let el = node?.parentElement;
-      while (el && el !== document.body) {
-        const style = getComputedStyle(el);
-        if (style.transform !== "none") el.style.setProperty("transform", "none", "important");
-        if (style.filter !== "none") el.style.setProperty("filter", "none", "important");
-        el = el.parentElement;
-      }
-    };
-
-    const estimatedKeyboard = () => {
-      const portrait = window.innerHeight >= window.innerWidth;
-      return portrait
-        ? Math.round(Math.min(520, Math.max(390, window.innerHeight * 0.5)))
-        : Math.round(Math.min(300, window.innerHeight * 0.42));
-    };
-
-    const apply = () => {
-      const header = document.querySelector(".private-room-call-header");
-      const composer = document.querySelector(".private-room-message-composer");
-      const messages = document.querySelector(".private-room-message-area");
-      const vvHeight = viewport?.height || window.innerHeight;
-      const vvTop = viewport?.offsetTop || 0;
-      lockPageScroll();
-
-      let keyboardInset = Math.max(0, window.innerHeight - vvHeight - vvTop);
-      if (composerFocused && keyboardInset < 80) {
-        keyboardInset = estimatedKeyboard();
-      } else if (!composerFocused && keyboardInset < 80) {
-        keyboardInset = 0;
-      }
-
-      try {
-        window.Capacitor?.Plugins?.Keyboard?.setAccessoryBarVisible?.({ isVisible: false });
-      } catch {
-        /* web / older iOS */
-      }
-
-      const headerH = header?.getBoundingClientRect().height || 64;
-
-      root.style.setProperty("--sayup-keyboard-inset", `${Math.round(keyboardInset)}px`);
-      root.classList.toggle("private-room-keyboard-open", composerFocused || keyboardInset > 80);
-
-      if (header) {
-        clearContainingBlock(header);
-        pin(header, {
-          position: "fixed",
-          top: "0px",
-          left: "0px",
-          right: "0px",
-          width: "100%",
-          "z-index": "2147483000",
-          transform: "none",
-        });
-      }
-
-      if (composer) {
-        clearContainingBlock(composer);
-        pin(composer, {
-          position: "fixed",
-          left: "0px",
-          right: "0px",
-          top: "auto",
-          bottom: `${Math.round(keyboardInset)}px`,
-          width: "100%",
-          height: "auto",
-          margin: "0px",
-          "z-index": "2147483001",
-          transform: "none",
-          padding: composerFocused ? "6px 8px 0px" : "6px 8px max(6px, env(safe-area-inset-bottom))",
-        });
-
-        const rect = composer.getBoundingClientRect();
-        const visibleBottom = vvTop + vvHeight;
-        const gap = visibleBottom - rect.bottom;
-        if (Math.abs(gap) > 2 && Math.abs(gap) < 160) {
-          keyboardInset = Math.max(0, keyboardInset - gap);
-          composer.style.setProperty("bottom", `${Math.round(keyboardInset)}px`, "important");
-        }
-      }
-
-      const composerH = composer?.getBoundingClientRect().height || 58;
-      if (messages) {
-        pin(messages, {
-          position: "fixed",
-          top: `${Math.round(headerH)}px`,
-          left: "0px",
-          right: "0px",
-          width: "100%",
-          bottom: `${Math.round(keyboardInset + composerH)}px`,
-          height: "auto",
-          "z-index": "1",
-        });
-      }
-
-      const list = messages?.querySelector(".str-chat__list");
-      if (list && (composerFocused || !list.dataset.sayupPinned)) {
-        list.scrollTop = list.scrollHeight;
-        list.dataset.sayupPinned = "1";
-      }
-    };
-
-    const onFocusIn = (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
-      const isField = target.tagName === "TEXTAREA" || target.tagName === "INPUT";
-      if (!isField && !target.closest(".private-room-message-composer")) return;
-      composerFocused = true;
-      apply();
-      requestAnimationFrame(apply);
-      window.setTimeout(apply, 50);
-      window.setTimeout(apply, 200);
-      window.setTimeout(apply, 450);
-      window.setTimeout(apply, 800);
-    };
-
-    const onFocusOut = () => {
-      window.setTimeout(() => {
-        const active = document.activeElement;
-        composerFocused = Boolean(
-          active instanceof HTMLElement &&
-            (active.closest(".private-room-message-composer") ||
-              active.tagName === "TEXTAREA" ||
-              active.tagName === "INPUT"),
-        );
-        apply();
-      }, 60);
-    };
-
-    viewport?.addEventListener("resize", apply, { passive: true });
-    viewport?.addEventListener("scroll", apply, { passive: true });
-    window.addEventListener("resize", apply, { passive: true });
-    window.addEventListener("scroll", lockPageScroll, { passive: true });
-    window.addEventListener("orientationchange", apply);
-    document.addEventListener("focusin", onFocusIn);
-    document.addEventListener("focusout", onFocusOut);
-
-    apply();
-    window.setTimeout(apply, 120);
-    try {
-      if (navigator.virtualKeyboard) {
-        navigator.virtualKeyboard.overlaysContent = true;
-      }
-    } catch {
-      /* Safari may not expose VirtualKeyboard */
-    }
-
-    return () => {
-      viewport?.removeEventListener("resize", apply);
-      viewport?.removeEventListener("scroll", apply);
-      window.removeEventListener("resize", apply);
-      window.removeEventListener("scroll", lockPageScroll);
-      window.removeEventListener("orientationchange", apply);
-      document.removeEventListener("focusin", onFocusIn);
-      document.removeEventListener("focusout", onFocusOut);
-      [".private-room-call-header", ".private-room-message-composer", ".private-room-message-area"].forEach((selector) => {
-        const el = document.querySelector(selector);
-        if (!el) return;
-        ["position", "top", "left", "right", "width", "height", "bottom", "z-index", "transform", "padding-bottom"].forEach((prop) => {
-          el.style.removeProperty(prop);
-        });
-      });
-      root.style.removeProperty("--sayup-keyboard-inset");
-      root.style.removeProperty("--private-room-composer-bottom");
-      root.classList.remove("private-room-keyboard-open");
-    };
-  }, [channelId]);
-
-  return null;
-}
-
-// eslint-disable-next-line no-unused-vars
-function LegacyLatestMessageList({ channelId }) {
-  const listHostRef = useRef(null);
-  const [initialPositionReady, setInitialPositionReady] = useState(false);
-  const stickToLatestRef = useRef(true);
-
-  useLayoutEffect(() => {
-    setInitialPositionReady(false);
-    stickToLatestRef.current = true;
-
-    const getList = () => listHostRef.current?.querySelector(".str-chat__list");
-
-    const jumpToLatest = () => {
-      const list = getList();
-      if (!list) return false;
-      list.scrollTop = list.scrollHeight;
-      return list.scrollHeight - list.clientHeight - list.scrollTop <= 64;
-    };
-
-    let tries = 0;
-    let retryId = 0;
-    const pinUntilReady = () => {
-      const atLatest = jumpToLatest();
-      const list = getList();
-      const hasMessages = (list?.scrollHeight || 0) > 24;
-      if ((atLatest && hasMessages) || tries++ > 50) {
-        setInitialPositionReady(true);
-        jumpToLatest();
-        return;
-      }
-      retryId = window.setTimeout(pinUntilReady, 50);
-    };
-
-    const frame = requestAnimationFrame(pinUntilReady);
-
-    const onListScroll = (event) => {
-      const list = event.currentTarget;
-      stickToLatestRef.current =
-        list.scrollHeight - list.scrollTop - list.clientHeight <= 80;
-    };
-
-    const observer = new MutationObserver(() => {
-      if (stickToLatestRef.current) jumpToLatest();
-    });
-
-    let listEl = null;
-    const attachId = window.setTimeout(() => {
-      listEl = getList();
-      if (!listEl) return;
-      listEl.addEventListener("scroll", onListScroll, { passive: true });
-      observer.observe(listEl, { childList: true, subtree: true });
-    }, 80);
-
-    const onViewportChange = () => {
-      if (stickToLatestRef.current) {
-        requestAnimationFrame(jumpToLatest);
-        window.setTimeout(jumpToLatest, 80);
-      }
-    };
-    window.visualViewport?.addEventListener("resize", onViewportChange);
-    window.addEventListener("resize", onViewportChange);
-
-    return () => {
-      cancelAnimationFrame(frame);
-      window.clearTimeout(retryId);
-      window.clearTimeout(attachId);
-      observer.disconnect();
-      listEl?.removeEventListener("scroll", onListScroll);
-      window.visualViewport?.removeEventListener("resize", onViewportChange);
-      window.removeEventListener("resize", onViewportChange);
-    };
-  }, [channelId]);
-
-  return (
-    <div
-      ref={listHostRef}
-      className="sayup-latest-message-list"
-      style={{ visibility: initialPositionReady ? "visible" : "hidden" }}
-      aria-busy={!initialPositionReady}
-    >
-      <MessageList
-        returnAllReadData
-        suppressAutoscroll
-        scrolledUpThreshold={48}
-      />
-    </div>
-  );
-}
-
 function SyncChatViewport({ channelId }) {
   useLayoutEffect(() => {
     if (!channelId) return undefined;
@@ -501,7 +216,6 @@ function SyncChatViewport({ channelId }) {
     const root = document.documentElement;
     const viewport = window.visualViewport;
     let viewportFrame = 0;
-    let latestMessageFrame = 0;
 
     const composerIsFocused = () => Boolean(
       document.activeElement?.closest?.(".private-room-message-composer"),
@@ -509,15 +223,7 @@ function SyncChatViewport({ channelId }) {
 
     const writeViewport = () => {
       viewportFrame = 0;
-      const messageList = document.querySelector(
-        ".private-room-message-area .str-chat__list",
-      );
       const focused = composerIsFocused();
-      const keepLatestMessageVisible = Boolean(
-        focused &&
-        messageList &&
-        messageList.scrollHeight - messageList.clientHeight - messageList.scrollTop <= 48,
-      );
 
       if (viewport) {
         root.style.setProperty(
@@ -536,14 +242,6 @@ function SyncChatViewport({ channelId }) {
       );
       root.classList.toggle("private-room-keyboard-open", focused);
 
-      if (keepLatestMessageVisible) {
-        cancelAnimationFrame(latestMessageFrame);
-        latestMessageFrame = requestAnimationFrame(() => {
-          // Preserve the latest-message anchor only during keyboard geometry
-          // changes. A user who has scrolled up is never moved automatically.
-          messageList.scrollTop = messageList.scrollHeight;
-        });
-      }
     };
 
     const scheduleViewportWrite = () => {
@@ -560,7 +258,6 @@ function SyncChatViewport({ channelId }) {
 
     return () => {
       cancelAnimationFrame(viewportFrame);
-      cancelAnimationFrame(latestMessageFrame);
       viewport?.removeEventListener("resize", scheduleViewportWrite);
       viewport?.removeEventListener("scroll", scheduleViewportWrite);
       window.removeEventListener("orientationchange", scheduleViewportWrite);
@@ -579,18 +276,23 @@ function SyncChatViewport({ channelId }) {
 function LatestMessageList({ channelId }) {
   const listHostRef = useRef(null);
   const [initialPositionReady, setInitialPositionReady] = useState(false);
+  const { loading, messages = [] } = useChannelStateContext("LatestMessageList");
 
   useLayoutEffect(() => {
+    if (loading || initialPositionReady) return undefined;
+
     // Stream autoscroll is disabled before the first visible frame. Place the
-    // hidden list at the latest message once, then leave scrolling to the user.
+    // fully rendered hidden list at the latest message exactly once, then
+    // permanently leave its scroll position under the user's control.
     const frame = requestAnimationFrame(() => {
       const list = listHostRef.current?.querySelector(".str-chat__list");
-      if (list) list.scrollTop = list.scrollHeight;
+      if (!list) return;
+      list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
       setInitialPositionReady(true);
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [channelId]);
+  }, [channelId, initialPositionReady, loading, messages.length]);
 
   return (
     <div
