@@ -3,6 +3,11 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
 
+const isStandaloneApp =
+  window.matchMedia?.("(display-mode: standalone)")?.matches ||
+  window.navigator.standalone === true;
+document.documentElement.classList.toggle("sayup-standalone", isStandaloneApp);
+
 const isAdminHostname = window.location.hostname === "sayup-admin.vercel.app";
 const isAdminRoute =
   isAdminHostname ||

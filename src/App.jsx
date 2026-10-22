@@ -216,7 +216,8 @@ function SyncChatViewport({ channelId }) {
     const root = document.documentElement;
     const viewport = window.visualViewport;
     let viewportFrame = 0;
-    let anchorLatestDuringKeyboardResize = false;
+    let keyboardSettleTimer = 0;
+    let anchorLatestAfterKeyboardSettles = false;
 
     const composerIsFocused = () => Boolean(
       document.activeElement?.closest?.(".private-room-message-composer"),
@@ -238,8 +239,11 @@ function SyncChatViewport({ channelId }) {
         );
       }
 
+      const viewportPageTop = Number.isFinite(viewport?.pageTop)
+        ? viewport.pageTop
+        : (window.scrollY || 0) + (viewport?.offsetTop || 0);
       const viewportTop = focused
-        ? Math.max(0, Math.round((viewport?.offsetTop || 0) * 100) / 100)
+        ? Math.max(0, Math.round(viewportPageTop * 100) / 100)
         : 0;
       root.style.setProperty(
         "--private-room-viewport-top",
@@ -251,15 +255,29 @@ function SyncChatViewport({ channelId }) {
         focused ? "0px" : "max(7px, env(safe-area-inset-bottom))",
       );
       root.classList.toggle("private-room-keyboard-open", focused);
-
-      if (focused && anchorLatestDuringKeyboardResize) {
-        window.dispatchEvent(new Event("sayup:follow-latest"));
-      }
     };
 
     const scheduleViewportWrite = () => {
       if (viewportFrame) return;
       viewportFrame = requestAnimationFrame(writeViewport);
+    };
+
+    const scheduleKeyboardSettle = () => {
+      if (!composerIsFocused()) return;
+      window.clearTimeout(keyboardSettleTimer);
+      keyboardSettleTimer = window.setTimeout(() => {
+        keyboardSettleTimer = 0;
+        writeViewport();
+        if (anchorLatestAfterKeyboardSettles) {
+          anchorLatestAfterKeyboardSettles = false;
+          window.dispatchEvent(new Event("sayup:follow-latest"));
+        }
+      }, 140);
+    };
+
+    const onViewportChange = () => {
+      scheduleViewportWrite();
+      scheduleKeyboardSettle();
     };
 
     const onFocusIn = (event) => {
@@ -270,27 +288,33 @@ function SyncChatViewport({ channelId }) {
       const distanceFromLatest = list
         ? list.scrollHeight - list.clientHeight - list.scrollTop
         : Number.POSITIVE_INFINITY;
-      anchorLatestDuringKeyboardResize = distanceFromLatest <= 64;
+      anchorLatestAfterKeyboardSettles = distanceFromLatest <= 64;
       scheduleViewportWrite();
+      scheduleKeyboardSettle();
     };
 
     const onFocusOut = () => {
-      anchorLatestDuringKeyboardResize = false;
+      anchorLatestAfterKeyboardSettles = false;
+      window.clearTimeout(keyboardSettleTimer);
+      keyboardSettleTimer = 0;
       scheduleViewportWrite();
     };
 
     const stopKeyboardAnchorOnUserScroll = (event) => {
       if (event.target?.closest?.(".private-room-message-area .str-chat__list")) {
-        anchorLatestDuringKeyboardResize = false;
+        anchorLatestAfterKeyboardSettles = false;
+        window.clearTimeout(keyboardSettleTimer);
+        keyboardSettleTimer = 0;
       }
     };
 
     // iOS pans the visual viewport to the focused textarea. Track that viewport
     // separately from the message list so the header and composer stay inside
     // the visible keyboard area without scrolling the conversation itself.
-    viewport?.addEventListener("resize", scheduleViewportWrite, { passive: true });
-    viewport?.addEventListener("scroll", scheduleViewportWrite, { passive: true });
-    window.addEventListener("resize", scheduleViewportWrite, { passive: true });
+    viewport?.addEventListener("resize", onViewportChange, { passive: true });
+    viewport?.addEventListener("scroll", onViewportChange, { passive: true });
+    window.addEventListener("resize", onViewportChange, { passive: true });
+    window.addEventListener("scroll", onViewportChange, { passive: true });
     window.addEventListener("orientationchange", scheduleViewportWrite);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
@@ -304,9 +328,11 @@ function SyncChatViewport({ channelId }) {
 
     return () => {
       cancelAnimationFrame(viewportFrame);
-      viewport?.removeEventListener("resize", scheduleViewportWrite);
-      viewport?.removeEventListener("scroll", scheduleViewportWrite);
-      window.removeEventListener("resize", scheduleViewportWrite);
+      window.clearTimeout(keyboardSettleTimer);
+      viewport?.removeEventListener("resize", onViewportChange);
+      viewport?.removeEventListener("scroll", onViewportChange);
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("scroll", onViewportChange);
       window.removeEventListener("orientationchange", scheduleViewportWrite);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
@@ -406,33 +432,14 @@ function LatestMessageList({ channelId }) {
       if (ownMessage || followLatestRef.current) followLatest();
     };
 
-    const handleKeyboardFocus = (event) => {
-      if (
-        event.target?.closest?.(".private-room-message-composer") &&
-        followLatestRef.current
-      ) {
-        followLatest();
-      }
-    };
-
     list.addEventListener("scroll", handleScroll, { passive: true });
-    document.addEventListener("focusin", handleKeyboardFocus);
     window.addEventListener("sayup:follow-latest", followLatest);
-    const sizeObserver = typeof ResizeObserver === "function"
-      ? new ResizeObserver(() => {
-          if (followLatestRef.current) followLatest();
-        })
-      : null;
-    sizeObserver?.observe(list);
-    if (list.firstElementChild) sizeObserver?.observe(list.firstElementChild);
     const messageSubscription = channel.on("message.new", handleNewMessage);
 
     return () => {
       cancelAnimationFrame(followFrameRef.current);
       list.removeEventListener("scroll", handleScroll);
-      document.removeEventListener("focusin", handleKeyboardFocus);
       window.removeEventListener("sayup:follow-latest", followLatest);
-      sizeObserver?.disconnect();
       messageSubscription?.unsubscribe?.();
     };
   }, [channel, initialPositionReady]);
