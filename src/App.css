@@ -5009,6 +5009,11 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
 /* Native-style keyboard state: keep room identity, Call, Video, Support and
    menu in one compact row so the reduced iPhone viewport still shows chat. */
 @media (max-width: 767px) {
+  html.private-room-keyboard-open .private-room-chat-page.private-room-chat-shell {
+    top: var(--private-room-viewport-top, 0px) !important;
+    bottom: auto !important;
+  }
+
   html.private-room-keyboard-open .private-room-call-header {
     grid-template-columns: minmax(0, 1fr) auto !important;
     grid-template-rows: 48px !important;

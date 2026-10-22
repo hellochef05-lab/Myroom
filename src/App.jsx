@@ -238,6 +238,14 @@ function SyncChatViewport({ channelId }) {
         );
       }
 
+      const viewportTop = focused
+        ? Math.max(0, Math.round((viewport?.offsetTop || 0) * 100) / 100)
+        : 0;
+      root.style.setProperty(
+        "--private-room-viewport-top",
+        `${viewportTop}px`,
+      );
+
       root.style.setProperty(
         "--private-room-composer-bottom",
         focused ? "0px" : "max(7px, env(safe-area-inset-bottom))",
@@ -277,11 +285,11 @@ function SyncChatViewport({ channelId }) {
       }
     };
 
-    // Safari may emit visualViewport scroll events for several seconds while
-    // panning the on-screen keyboard. Following those events moves the entire
-    // chat page up and down even though the message list itself never scrolls.
-    // Resize is the only event needed to keep the composer above the keyboard.
+    // iOS pans the visual viewport to the focused textarea. Track that viewport
+    // separately from the message list so the header and composer stay inside
+    // the visible keyboard area without scrolling the conversation itself.
     viewport?.addEventListener("resize", scheduleViewportWrite, { passive: true });
+    viewport?.addEventListener("scroll", scheduleViewportWrite, { passive: true });
     window.addEventListener("resize", scheduleViewportWrite, { passive: true });
     window.addEventListener("orientationchange", scheduleViewportWrite);
     document.addEventListener("focusin", onFocusIn);
@@ -297,6 +305,7 @@ function SyncChatViewport({ channelId }) {
     return () => {
       cancelAnimationFrame(viewportFrame);
       viewport?.removeEventListener("resize", scheduleViewportWrite);
+      viewport?.removeEventListener("scroll", scheduleViewportWrite);
       window.removeEventListener("resize", scheduleViewportWrite);
       window.removeEventListener("orientationchange", scheduleViewportWrite);
       document.removeEventListener("focusin", onFocusIn);
@@ -304,6 +313,7 @@ function SyncChatViewport({ channelId }) {
       document.removeEventListener("touchstart", stopKeyboardAnchorOnUserScroll);
       document.removeEventListener("wheel", stopKeyboardAnchorOnUserScroll);
       root.style.removeProperty("--private-room-visible-height");
+      root.style.removeProperty("--private-room-viewport-top");
       root.style.removeProperty("--private-room-composer-bottom");
       root.classList.remove("private-room-keyboard-open");
     };
