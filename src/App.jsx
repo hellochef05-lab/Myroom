@@ -255,8 +255,11 @@ function SyncChatViewport({ channelId }) {
 
     const onFocusOut = scheduleViewportWrite;
 
+    // Safari may emit visualViewport scroll events for several seconds while
+    // panning the on-screen keyboard. Following those events moves the entire
+    // chat page up and down even though the message list itself never scrolls.
+    // Resize is the only event needed to keep the composer above the keyboard.
     viewport?.addEventListener("resize", scheduleViewportWrite, { passive: true });
-    viewport?.addEventListener("scroll", scheduleViewportWrite, { passive: true });
     window.addEventListener("orientationchange", scheduleViewportWrite);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
@@ -265,7 +268,6 @@ function SyncChatViewport({ channelId }) {
     return () => {
       cancelAnimationFrame(viewportFrame);
       viewport?.removeEventListener("resize", scheduleViewportWrite);
-      viewport?.removeEventListener("scroll", scheduleViewportWrite);
       window.removeEventListener("orientationchange", scheduleViewportWrite);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
