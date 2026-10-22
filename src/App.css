@@ -5017,9 +5017,9 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
 
   html.private-room-keyboard-open .private-room-call-header {
     grid-template-columns: minmax(0, 1fr) auto !important;
-    grid-template-rows: 48px !important;
-    min-height: calc(60px + env(safe-area-inset-top)) !important;
-    height: calc(60px + env(safe-area-inset-top)) !important;
+    grid-template-rows: 46px !important;
+    min-height: calc(56px + env(safe-area-inset-top)) !important;
+    height: calc(56px + env(safe-area-inset-top)) !important;
     row-gap: 0 !important;
     padding:
       calc(5px + env(safe-area-inset-top))
@@ -5033,7 +5033,8 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
   }
 
   html.private-room-keyboard-open .private-room-header-user {
-    gap: 4px !important;
+    gap: 5px !important;
+    min-width: 0 !important;
   }
 
   html.private-room-keyboard-open .private-room-header-user > button {
@@ -5043,16 +5044,22 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
   }
 
   html.private-room-keyboard-open .private-room-header-avatar {
-    display: none !important;
+    display: flex !important;
+    width: 28px !important;
+    height: 28px !important;
+    flex: 0 0 28px !important;
+    font-size: 13px !important;
   }
 
   html.private-room-keyboard-open .private-room-header-user > div:last-child > div:first-child {
-    max-width: 104px !important;
+    max-width: 92px !important;
     font-size: 13px !important;
   }
 
   html.private-room-keyboard-open .private-room-header-user > div:last-child > div:last-child {
-    display: none !important;
+    display: flex !important;
+    margin-top: 1px !important;
+    font-size: 8px !important;
   }
 
   html.private-room-keyboard-open .private-room-header-utilities {
@@ -5060,12 +5067,16 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
   }
 
   html.private-room-keyboard-open .private-room-header-utilities .private-room-support-button {
-    min-width: 68px !important;
-    max-width: 72px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    width: 32px !important;
     height: 32px !important;
-    padding: 0 7px !important;
-    gap: 4px !important;
-    font-size: 10px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+  }
+
+  html.private-room-keyboard-open .private-room-header-utilities .private-room-support-button span {
+    display: none !important;
   }
 
   html.private-room-keyboard-open .private-room-keyboard-quick-call {
@@ -5094,7 +5105,21 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
   }
 
   html.private-room-keyboard-open .private-room-message-area {
-    padding-top: 4px !important;
-    padding-bottom: 2px !important;
+    padding-top: 6px !important;
+    padding-bottom: 0 !important;
+  }
+
+  html.private-room-keyboard-open .private-room-message-composer {
+    min-height: 52px !important;
+    padding: 4px 7px !important;
+    background: rgba(250, 247, 241, 0.99) !important;
+    border-top: 1px solid rgba(91, 70, 43, 0.10) !important;
+    box-shadow: none !important;
+  }
+
+  html.private-room-keyboard-open .private-room-chat-page .str-chat__message-input-inner {
+    min-height: 44px !important;
+    border-radius: 23px !important;
+    box-shadow: 0 1px 5px rgba(68, 49, 29, 0.08) !important;
   }
 }
