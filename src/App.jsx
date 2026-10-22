@@ -226,10 +226,15 @@ function SyncChatViewport({ channelId }) {
       viewportFrame = 0;
       const focused = composerIsFocused();
 
-      if (viewport) {
+      const measuredHeight = Math.min(
+        viewport?.height || Number.POSITIVE_INFINITY,
+        window.innerHeight || Number.POSITIVE_INFINITY,
+        root.clientHeight || Number.POSITIVE_INFINITY,
+      );
+      if (Number.isFinite(measuredHeight)) {
         root.style.setProperty(
           "--private-room-visible-height",
-          `${Math.round(viewport.height * 100) / 100}px`,
+          `${Math.round(measuredHeight * 100) / 100}px`,
         );
       }
 
@@ -240,13 +245,7 @@ function SyncChatViewport({ channelId }) {
       root.classList.toggle("private-room-keyboard-open", focused);
 
       if (focused && anchorLatestDuringKeyboardResize) {
-        requestAnimationFrame(() => {
-          const list = document.querySelector(
-            ".private-room-message-area .str-chat__list",
-          );
-          if (!list) return;
-          list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
-        });
+        window.dispatchEvent(new Event("sayup:follow-latest"));
       }
     };
 
@@ -283,6 +282,7 @@ function SyncChatViewport({ channelId }) {
     // chat page up and down even though the message list itself never scrolls.
     // Resize is the only event needed to keep the composer above the keyboard.
     viewport?.addEventListener("resize", scheduleViewportWrite, { passive: true });
+    window.addEventListener("resize", scheduleViewportWrite, { passive: true });
     window.addEventListener("orientationchange", scheduleViewportWrite);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
@@ -297,6 +297,7 @@ function SyncChatViewport({ channelId }) {
     return () => {
       cancelAnimationFrame(viewportFrame);
       viewport?.removeEventListener("resize", scheduleViewportWrite);
+      window.removeEventListener("resize", scheduleViewportWrite);
       window.removeEventListener("orientationchange", scheduleViewportWrite);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
@@ -313,6 +314,9 @@ function SyncChatViewport({ channelId }) {
 
 function LatestMessageList({ channelId }) {
   const listHostRef = useRef(null);
+  const followLatestRef = useRef(true);
+  const programmaticScrollRef = useRef(false);
+  const followFrameRef = useRef(0);
   const [initialPositionReady, setInitialPositionReady] = useState(false);
   const [historyPaginationEnabled, setHistoryPaginationEnabled] = useState(false);
   const {
@@ -326,22 +330,102 @@ function LatestMessageList({ channelId }) {
   useLayoutEffect(() => {
     if (!channel?.initialized || loading || initialPositionReady) return undefined;
 
-    // Stream autoscroll is disabled before the first visible frame. Place the
-    // fully rendered hidden list at the latest message exactly once, then
-    // permanently leave its scroll position under the user's control.
+    // Stream's competing autoscroll is disabled before the first visible
+    // frame. Start at the latest message, then use one predictable controller
+    // below for new messages, keyboard changes and manual history scrolling.
     let revealFrame = 0;
-    const positionFrame = requestAnimationFrame(() => {
+    let positionFrame = 0;
+    let attempts = 0;
+    const positionAtLatest = () => {
       const list = listHostRef.current?.querySelector(".str-chat__list");
-      if (!list) return;
+      if (!list) {
+        attempts += 1;
+        if (attempts < 30) positionFrame = requestAnimationFrame(positionAtLatest);
+        return;
+      }
+      programmaticScrollRef.current = true;
       list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
-      revealFrame = requestAnimationFrame(() => setInitialPositionReady(true));
-    });
+      followLatestRef.current = true;
+      revealFrame = requestAnimationFrame(() => {
+        list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
+        programmaticScrollRef.current = false;
+        setInitialPositionReady(true);
+      });
+    };
+    positionFrame = requestAnimationFrame(positionAtLatest);
 
     return () => {
       cancelAnimationFrame(positionFrame);
       cancelAnimationFrame(revealFrame);
     };
   }, [channel, channelId, initialPositionReady, loading, messages.length]);
+
+  useEffect(() => {
+    if (!initialPositionReady || !channel) return undefined;
+
+    const list = listHostRef.current?.querySelector(".str-chat__list");
+    if (!list) return undefined;
+
+    const distanceFromLatest = () => Math.max(
+      0,
+      list.scrollHeight - list.clientHeight - list.scrollTop,
+    );
+
+    const followLatest = () => {
+      cancelAnimationFrame(followFrameRef.current);
+      followFrameRef.current = requestAnimationFrame(() => {
+        followFrameRef.current = requestAnimationFrame(() => {
+          programmaticScrollRef.current = true;
+          list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
+          followLatestRef.current = true;
+          requestAnimationFrame(() => {
+            programmaticScrollRef.current = false;
+          });
+        });
+      });
+    };
+
+    const handleScroll = () => {
+      const isLatest = distanceFromLatest() <= 48;
+      if (!programmaticScrollRef.current) followLatestRef.current = isLatest;
+      programmaticScrollRef.current = false;
+    };
+
+    const handleNewMessage = (event) => {
+      const ownMessage = event.message?.user?.id === channel.getClient?.().userID;
+      if (ownMessage || followLatestRef.current) followLatest();
+    };
+
+    const handleKeyboardFocus = (event) => {
+      if (
+        event.target?.closest?.(".private-room-message-composer") &&
+        followLatestRef.current
+      ) {
+        followLatest();
+      }
+    };
+
+    list.addEventListener("scroll", handleScroll, { passive: true });
+    document.addEventListener("focusin", handleKeyboardFocus);
+    window.addEventListener("sayup:follow-latest", followLatest);
+    const sizeObserver = typeof ResizeObserver === "function"
+      ? new ResizeObserver(() => {
+          if (followLatestRef.current) followLatest();
+        })
+      : null;
+    sizeObserver?.observe(list);
+    if (list.firstElementChild) sizeObserver?.observe(list.firstElementChild);
+    const messageSubscription = channel.on("message.new", handleNewMessage);
+
+    return () => {
+      cancelAnimationFrame(followFrameRef.current);
+      list.removeEventListener("scroll", handleScroll);
+      document.removeEventListener("focusin", handleKeyboardFocus);
+      window.removeEventListener("sayup:follow-latest", followLatest);
+      sizeObserver?.disconnect();
+      messageSubscription?.unsubscribe?.();
+    };
+  }, [channel, initialPositionReady]);
 
   const enableHistoryPagination = () => {
     if (initialPositionReady && !historyPaginationEnabled) {
@@ -472,6 +556,7 @@ function ReliableMessageInput(props) {
     const queue = readQueue().filter((item) => item.id !== queuedItem.id);
     writeQueue([...queue, queuedItem]);
     updateMessage?.(queuedLocalMessage);
+    window.dispatchEvent(new Event("sayup:follow-latest"));
 
     // Prevent Stream's stopTyping request from restoring the previous draft
     // when the device is offline. Typing events are restored immediately after
@@ -1044,6 +1129,28 @@ function CallHeader({
         >
           <Headphones size={15} aria-hidden="true" />
           <span>Support</span>
+        </button>
+
+        <button
+          type="button"
+          className="private-room-keyboard-quick-call"
+          onClick={onStartAudio}
+          disabled={!joinedRoom || inCall}
+          title="Start audio call"
+          aria-label="Start audio call"
+        >
+          <Phone size={16} aria-hidden="true" />
+        </button>
+
+        <button
+          type="button"
+          className="private-room-keyboard-quick-call"
+          onClick={onStartVideo}
+          disabled={!joinedRoom || inCall}
+          title="Start video call"
+          aria-label="Start video call"
+        >
+          <Video size={16} aria-hidden="true" />
         </button>
 
         <button

@@ -5002,9 +5002,12 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
   }
 }
 
-/* Native-style keyboard state: keep the room identity, Support and menu in a
-   single compact row so the reduced iPhone viewport still has room for chat.
-   Call and video remain available in the three-dot menu. */
+.private-room-keyboard-quick-call {
+  display: none;
+}
+
+/* Native-style keyboard state: keep room identity, Call, Video, Support and
+   menu in one compact row so the reduced iPhone viewport still shows chat. */
 @media (max-width: 767px) {
   html.private-room-keyboard-open .private-room-call-header {
     grid-template-columns: minmax(0, 1fr) auto !important;
@@ -5023,6 +5026,10 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
     display: none !important;
   }
 
+  html.private-room-keyboard-open .private-room-header-user {
+    gap: 4px !important;
+  }
+
   html.private-room-keyboard-open .private-room-header-user > button {
     width: 31px !important;
     height: 31px !important;
@@ -5030,27 +5037,48 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
   }
 
   html.private-room-keyboard-open .private-room-header-avatar {
-    width: 32px !important;
-    height: 32px !important;
-    flex-basis: 32px !important;
-    font-size: 15px !important;
+    display: none !important;
   }
 
   html.private-room-keyboard-open .private-room-header-user > div:last-child > div:first-child {
-    font-size: 14px !important;
+    max-width: 104px !important;
+    font-size: 13px !important;
   }
 
   html.private-room-keyboard-open .private-room-header-user > div:last-child > div:last-child {
-    margin-top: 1px !important;
-    font-size: 9px !important;
+    display: none !important;
+  }
+
+  html.private-room-keyboard-open .private-room-header-utilities {
+    gap: 3px !important;
   }
 
   html.private-room-keyboard-open .private-room-header-utilities .private-room-support-button {
-    min-width: 78px !important;
-    max-width: 82px !important;
+    min-width: 68px !important;
+    max-width: 72px !important;
     height: 32px !important;
-    padding: 0 9px !important;
-    font-size: 11px !important;
+    padding: 0 7px !important;
+    gap: 4px !important;
+    font-size: 10px !important;
+  }
+
+  html.private-room-keyboard-open .private-room-keyboard-quick-call {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 32px !important;
+    height: 32px !important;
+    flex: 0 0 32px !important;
+    padding: 0 !important;
+    color: #0b6b57 !important;
+    background: rgba(255, 255, 255, 0.88) !important;
+    border: 1px solid rgba(7, 63, 52, 0.14) !important;
+    border-radius: 999px !important;
+    box-shadow: 0 3px 10px rgba(68, 49, 29, 0.07) !important;
+  }
+
+  html.private-room-keyboard-open .private-room-keyboard-quick-call:disabled {
+    opacity: 0.45 !important;
   }
 
   html.private-room-keyboard-open .sayup-v2-open-button {
