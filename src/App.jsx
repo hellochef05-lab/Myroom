@@ -1832,6 +1832,42 @@ function WebRTCCall({
     channelCount: 1,
   };
 
+  const ensureCallRoomReady = async () => {
+    const socket = socketRef.current;
+    if (!socket || !roomId) return false;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer = null;
+
+      const finish = (ready) => {
+        if (settled) return;
+        settled = true;
+        if (timer) window.clearTimeout(timer);
+        socket.off("connect", joinRoom);
+        setJoinedRoom(ready);
+        resolve(ready);
+      };
+
+      const joinRoom = () => {
+        socket.timeout(8000).emit(
+          "join-room",
+          { roomId },
+          (error, result) => finish(!error && Boolean(result?.ok)),
+        );
+      };
+
+      timer = window.setTimeout(() => finish(false), 9000);
+
+      if (socket.connected) {
+        joinRoom();
+      } else {
+        socket.once("connect", joinRoom);
+        socket.connect();
+      }
+    });
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -2346,6 +2382,11 @@ function WebRTCCall({
   };
 
   const startOfferFlow = async (type) => {
+    const roomReady = await ensureCallRoomReady();
+    if (!roomReady) {
+      throw new Error("Call signaling room is unavailable");
+    }
+
     activeCallTypeRef.current = type;
     let pc = pcRef.current;
     if (!pc) {
@@ -2717,6 +2758,14 @@ function WebRTCCall({
       // delayed getUserMedia call when it is started later by a socket event.
       await startLocalMedia(type);
 
+      // The room UI is intentionally shown before the Socket.IO handshake
+      // completes. Confirm membership here so a quick iPhone tap cannot send
+      // the call before this device is able to receive the peer's answer.
+      const roomReady = await ensureCallRoomReady();
+      if (!roomReady) {
+        throw new Error("Call signaling room is unavailable");
+      }
+
       const ringOnce = () =>
         new Promise((resolve) => {
           const socket = socketRef.current;
@@ -2744,11 +2793,19 @@ function WebRTCCall({
           );
         });
 
-      let result = await ringOnce();
-      if (!result.ok) {
-        setConnectionMessage("Slow network — retrying call…");
-        await wait(1200);
+      let result = { ok: false, recipients: 0 };
+      for (let attempt = 0; attempt < 4; attempt += 1) {
         result = await ringOnce();
+        if (result.ok && result.recipients > 0) break;
+        if (attempt < 3) {
+          setConnectionMessage(
+            result.ok
+              ? "Waiting for the other person to come online…"
+              : "Slow network — retrying call…",
+          );
+          await wait(700 + attempt * 300);
+          await ensureCallRoomReady();
+        }
       }
 
       if (!result.ok) {
@@ -2771,6 +2828,11 @@ function WebRTCCall({
     try {
       acceptedRef.current = true;
       setConnectionMessage("Connecting…");
+
+      const roomReady = await ensureCallRoomReady();
+      if (!roomReady) {
+        throw new Error("Call signaling room is unavailable");
+      }
 
       socketRef.current?.emit("signal", {
         roomId,
