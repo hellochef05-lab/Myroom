@@ -5010,6 +5010,7 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
    menu in one compact row so the reduced iPhone viewport still shows chat. */
 @media (max-width: 767px) {
   html.private-room-keyboard-open .private-room-chat-page.private-room-chat-shell {
+    position: absolute !important;
     top: var(--private-room-viewport-top, 0px) !important;
     bottom: auto !important;
   }
