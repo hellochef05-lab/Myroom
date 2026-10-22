@@ -706,6 +706,34 @@ try {
   turnServers = [];
 }
 
+const defaultIceServers = [
+  ...turnServers,
+  ...publicStunServers,
+  ...fallbackTurnServers,
+];
+
+function normalizeIceServers(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value.filter((server) => {
+    if (!server || typeof server !== "object") return false;
+    if (typeof server.urls === "string") return Boolean(server.urls.trim());
+    return Array.isArray(server.urls) && server.urls.some(Boolean);
+  });
+}
+
+function mergeIceServers(...groups) {
+  const seen = new Set();
+
+  return groups.flatMap(normalizeIceServers).filter((server) => {
+    const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+    const key = `${urls.join("|")}::${server.username || ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function formatTime(dateValue) {
   if (!dateValue) return "";
   const date = new Date(dateValue);
@@ -1613,6 +1641,12 @@ function WebRTCCall({
   const lastAudioBytesSentRef = useRef(null);
   const stagnantAudioChecksRef = useRef(0);
   const lastAudioRepairAtRef = useRef(0);
+  const iceServersRef = useRef(defaultIceServers);
+  const iceRestartInFlightRef = useRef(false);
+  const lastIceRestartAtRef = useRef(0);
+  const relayCandidateSeenRef = useRef(false);
+  const activeCallTypeRef = useRef(null);
+  const connectionAttemptTimeoutRef = useRef(null);
 
   // The room screen is available immediately. Socket.IO readiness is updated
   // in the background and only changes this state if the join actually fails.
@@ -1637,6 +1671,30 @@ function WebRTCCall({
     autoGainControl: true,
     channelCount: 1,
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch(`${API_BASE}/api/call/ice-servers`, { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("ICE server lookup failed");
+        return response.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        iceServersRef.current = mergeIceServers(
+          data?.iceServers,
+          defaultIceServers,
+        );
+      })
+      .catch(() => {
+        // Calls still have the bundled STUN/TURN fallback while the API wakes.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const findSenderByKind = (pc, kind) =>
     pc?.getSenders?.().find((sender) => sender.track?.kind === kind) || null;
@@ -1749,6 +1807,11 @@ function WebRTCCall({
   };
 
   const cleanupCall = () => {
+    if (connectionAttemptTimeoutRef.current) {
+      clearTimeout(connectionAttemptTimeoutRef.current);
+      connectionAttemptTimeoutRef.current = null;
+    }
+
     if (disconnectTimeoutRef.current) {
       clearTimeout(disconnectTimeoutRef.current);
       disconnectTimeoutRef.current = null;
@@ -1776,6 +1839,10 @@ function WebRTCCall({
     isCallerRef.current = false;
     pendingOfferRef.current = null;
     iceQueueRef.current = [];
+    iceRestartInFlightRef.current = false;
+    lastIceRestartAtRef.current = 0;
+    relayCandidateSeenRef.current = false;
+    activeCallTypeRef.current = null;
 
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -1808,13 +1875,95 @@ function WebRTCCall({
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
   };
 
+  const armConnectionRecovery = (reason) => {
+    if (connectionAttemptTimeoutRef.current) {
+      clearTimeout(connectionAttemptTimeoutRef.current);
+    }
+
+    connectionAttemptTimeoutRef.current = setTimeout(() => {
+      const pc = pcRef.current;
+      if (
+        pc &&
+        pc.connectionState !== "connected" &&
+        pc.iceConnectionState !== "connected" &&
+        pc.iceConnectionState !== "completed"
+      ) {
+        restartIceAndRenegotiate(reason);
+      }
+    }, 12000);
+  };
+
+  const restartIceAndRenegotiate = async (reason = "network-change") => {
+    const pc = pcRef.current;
+    const socket = socketRef.current;
+    if (!pc || !socket || pc.signalingState === "closed") return false;
+
+    const now = Date.now();
+    if (
+      iceRestartInFlightRef.current ||
+      now - lastIceRestartAtRef.current < 3500
+    ) {
+      return false;
+    }
+
+    lastIceRestartAtRef.current = now;
+
+    if (!isCallerRef.current) {
+      socket.emit("signal", {
+        roomId,
+        data: { type: "ice-restart-request", reason },
+      });
+      return true;
+    }
+
+    if (pc.signalingState !== "stable") return false;
+
+    iceRestartInFlightRef.current = true;
+    setConnectionMessage(
+      relayCandidateSeenRef.current
+        ? "Reconnecting securely…"
+        : "Mobile network detected — finding a secure route…",
+    );
+
+    try {
+      pc.setConfiguration({
+        ...pc.getConfiguration(),
+        iceServers: iceServersRef.current,
+      });
+      pc.restartIce?.();
+
+      const nextCallType = activeCallTypeRef.current || "audio";
+      const offer = await pc.createOffer({
+        iceRestart: true,
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: nextCallType === "video",
+      });
+      await pc.setLocalDescription(offer);
+
+      socket.emit("signal", {
+        roomId,
+        data: {
+          type: "offer",
+          offer,
+          callType: nextCallType,
+          from: myName,
+          iceRestart: true,
+        },
+      });
+      armConnectionRecovery("restart-timeout");
+      return true;
+    } catch (err) {
+      console.error("ICE renegotiation failed:", err);
+      setConnectionMessage("Call network blocked — retrying…");
+      return false;
+    } finally {
+      iceRestartInFlightRef.current = false;
+    }
+  };
+
   const createPC = () => {
     const pc = new RTCPeerConnection({
-      iceServers: [
-        ...turnServers,
-        ...publicStunServers,
-        ...fallbackTurnServers,
-      ],
+      iceServers: iceServersRef.current,
       bundlePolicy: "max-bundle",
       iceTransportPolicy: "all",
       iceCandidatePoolSize: 4,
@@ -1833,6 +1982,10 @@ function WebRTCCall({
     pc.onicecandidate = (event) => {
       if (!event.candidate) return;
 
+      if (event.candidate.type === "relay") {
+        relayCandidateSeenRef.current = true;
+      }
+
       socketRef.current?.emit("signal", {
         roomId,
         data: { type: "ice", candidate: event.candidate },
@@ -1842,6 +1995,11 @@ function WebRTCCall({
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
         setConnectionMessage("");
+
+        if (connectionAttemptTimeoutRef.current) {
+          clearTimeout(connectionAttemptTimeoutRef.current);
+          connectionAttemptTimeoutRef.current = null;
+        }
 
         if (disconnectTimeoutRef.current) {
           clearTimeout(disconnectTimeoutRef.current);
@@ -1857,23 +2015,15 @@ function WebRTCCall({
 
       if (pc.connectionState === "disconnected") {
         setConnectionMessage("Reconnecting…");
-        try {
-          pc.restartIce?.();
-        } catch {
-          // restartIce is best-effort on older WebViews.
-        }
+        restartIceAndRenegotiate("connection-disconnected");
 
         if (disconnectTimeoutRef.current) {
           clearTimeout(disconnectTimeoutRef.current);
         }
 
         disconnectTimeoutRef.current = setTimeout(() => {
-          try {
-            pc.restartIce?.();
-            setConnectionMessage("Still reconnecting…");
-          } catch {
-            cleanupCall();
-          }
+          restartIceAndRenegotiate("connection-timeout");
+          setConnectionMessage("Still reconnecting…");
         }, 25000);
 
         return;
@@ -1881,11 +2031,7 @@ function WebRTCCall({
 
       if (pc.connectionState === "failed") {
         setConnectionMessage("Reconnecting call…");
-        try {
-          pc.restartIce?.();
-        } catch {
-          cleanupCall();
-        }
+        restartIceAndRenegotiate("connection-failed");
         return;
       }
 
@@ -1901,11 +2047,7 @@ function WebRTCCall({
       ) {
         setConnectionMessage("Connecting…");
         if (pc.iceConnectionState === "disconnected") {
-          try {
-            pc.restartIce?.();
-          } catch {
-            // ignore
-          }
+          restartIceAndRenegotiate("ice-disconnected");
         }
         return;
       }
@@ -1920,11 +2062,7 @@ function WebRTCCall({
 
       if (pc.iceConnectionState === "failed") {
         setConnectionMessage("Reconnecting call…");
-        try {
-          pc.restartIce?.();
-        } catch {
-          // ignore
-        }
+        restartIceAndRenegotiate("ice-failed");
       }
     };
 
@@ -2022,6 +2160,7 @@ function WebRTCCall({
     }
 
     const nextCallType = data.callType || "audio";
+    activeCallTypeRef.current = nextCallType;
     setCallType(nextCallType);
     setRemoteName(data.from || "Contact");
 
@@ -2047,6 +2186,7 @@ function WebRTCCall({
   };
 
   const startOfferFlow = async (type) => {
+    activeCallTypeRef.current = type;
     let pc = pcRef.current;
     if (!pc) {
       pc = createPC();
@@ -2070,6 +2210,7 @@ function WebRTCCall({
         from: myName,
       },
     });
+    armConnectionRecovery("initial-connect-timeout");
   };
 
   useEffect(() => {
@@ -2145,6 +2286,13 @@ function WebRTCCall({
         if (data.type === "accept") {
           if (isCallerRef.current) {
             await startOfferFlow(data.callType || "audio");
+          }
+          return;
+        }
+
+        if (data.type === "ice-restart-request") {
+          if (isCallerRef.current) {
+            await restartIceAndRenegotiate("peer-requested");
           }
           return;
         }
@@ -2396,6 +2544,7 @@ function WebRTCCall({
 
     try {
       setCallType(type);
+      activeCallTypeRef.current = type;
       setRemoteName("Contact");
       setConnectionMessage("Waiting for answer…");
       setInCall(true);

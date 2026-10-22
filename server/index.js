@@ -756,6 +756,26 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+app.get("/api/call/ice-servers", (_req, res) => {
+  const urls = String(process.env.TURN_URLS || "")
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+  const username = String(process.env.TURN_USERNAME || "").trim();
+  const credential = String(process.env.TURN_CREDENTIAL || "").trim();
+
+  const iceServers =
+    urls.length && username && credential
+      ? [{ urls, username, credential }]
+      : [];
+
+  res.set("Cache-Control", "no-store");
+  res.json({
+    iceServers,
+    relayConfigured: iceServers.length > 0,
+  });
+});
+
 /*
 |--------------------------------------------------------------------------
 | STREAM TOKEN AND SAYUP ROOM CREATION
