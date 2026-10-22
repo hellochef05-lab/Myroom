@@ -4980,7 +4980,29 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
     color: #d9f5f0 !important;
   }
 
-  html[data-sayup-palette="midnight"].private-room-chat-active .private-room-header-action svg {
+html[data-sayup-palette="midnight"].private-room-chat-active .private-room-header-action svg {
     color: #65dfcb !important;
+  }
+}
+
+/* iOS keyboard stability contract.
+   WebKit can visually pan a fixed document when an input receives focus even
+   though window/body scrollTop remain zero. Compensate that browser-level pan
+   once at the app root. The room itself stays at top:0, so viewport updates
+   never participate in message-list layout or scrolling. */
+@media (max-width: 767px),
+  (min-width: 768px) and (max-width: 950px) and (max-height: 600px) {
+  html.private-room-chat-active #root {
+    transform: translate3d(
+      0,
+      var(--private-room-visible-top, 0px),
+      0
+    ) !important;
+    will-change: transform;
+  }
+
+  html.private-room-chat-active .private-room-chat-page.private-room-chat-shell {
+    top: 0 !important;
+    transform: none !important;
   }
 }
