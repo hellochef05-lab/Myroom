@@ -216,6 +216,7 @@ function SyncChatViewport({ channelId }) {
     const root = document.documentElement;
     const viewport = window.visualViewport;
     let viewportFrame = 0;
+    let anchorLatestDuringKeyboardResize = false;
 
     const composerIsFocused = () => Boolean(
       document.activeElement?.closest?.(".private-room-message-composer"),
@@ -230,10 +231,6 @@ function SyncChatViewport({ channelId }) {
           "--private-room-visible-height",
           `${Math.round(viewport.height * 100) / 100}px`,
         );
-        root.style.setProperty(
-          "--private-room-visible-top",
-          `${Math.max(0, Math.round(viewport.offsetTop * 100) / 100)}px`,
-        );
       }
 
       root.style.setProperty(
@@ -241,6 +238,16 @@ function SyncChatViewport({ channelId }) {
         focused ? "0px" : "max(7px, env(safe-area-inset-bottom))",
       );
       root.classList.toggle("private-room-keyboard-open", focused);
+
+      if (focused && anchorLatestDuringKeyboardResize) {
+        requestAnimationFrame(() => {
+          const list = document.querySelector(
+            ".private-room-message-area .str-chat__list",
+          );
+          if (!list) return;
+          list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
+        });
+      }
     };
 
     const scheduleViewportWrite = () => {
@@ -250,10 +257,26 @@ function SyncChatViewport({ channelId }) {
 
     const onFocusIn = (event) => {
       if (!event.target?.closest?.(".private-room-message-composer")) return;
+      const list = document.querySelector(
+        ".private-room-message-area .str-chat__list",
+      );
+      const distanceFromLatest = list
+        ? list.scrollHeight - list.clientHeight - list.scrollTop
+        : Number.POSITIVE_INFINITY;
+      anchorLatestDuringKeyboardResize = distanceFromLatest <= 64;
       scheduleViewportWrite();
     };
 
-    const onFocusOut = scheduleViewportWrite;
+    const onFocusOut = () => {
+      anchorLatestDuringKeyboardResize = false;
+      scheduleViewportWrite();
+    };
+
+    const stopKeyboardAnchorOnUserScroll = (event) => {
+      if (event.target?.closest?.(".private-room-message-area .str-chat__list")) {
+        anchorLatestDuringKeyboardResize = false;
+      }
+    };
 
     // Safari may emit visualViewport scroll events for several seconds while
     // panning the on-screen keyboard. Following those events moves the entire
@@ -263,6 +286,12 @@ function SyncChatViewport({ channelId }) {
     window.addEventListener("orientationchange", scheduleViewportWrite);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
+    document.addEventListener("touchstart", stopKeyboardAnchorOnUserScroll, {
+      passive: true,
+    });
+    document.addEventListener("wheel", stopKeyboardAnchorOnUserScroll, {
+      passive: true,
+    });
     writeViewport();
 
     return () => {
@@ -271,8 +300,9 @@ function SyncChatViewport({ channelId }) {
       window.removeEventListener("orientationchange", scheduleViewportWrite);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
+      document.removeEventListener("touchstart", stopKeyboardAnchorOnUserScroll);
+      document.removeEventListener("wheel", stopKeyboardAnchorOnUserScroll);
       root.style.removeProperty("--private-room-visible-height");
-      root.style.removeProperty("--private-room-visible-top");
       root.style.removeProperty("--private-room-composer-bottom");
       root.classList.remove("private-room-keyboard-open");
     };
