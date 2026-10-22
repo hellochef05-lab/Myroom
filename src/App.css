@@ -5001,3 +5001,66 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
     transform: none !important;
   }
 }
+
+/* Native-style keyboard state: keep the room identity, Support and menu in a
+   single compact row so the reduced iPhone viewport still has room for chat.
+   Call and video remain available in the three-dot menu. */
+@media (max-width: 767px) {
+  html.private-room-keyboard-open .private-room-call-header {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-rows: 48px !important;
+    min-height: calc(60px + env(safe-area-inset-top)) !important;
+    height: calc(60px + env(safe-area-inset-top)) !important;
+    row-gap: 0 !important;
+    padding:
+      calc(5px + env(safe-area-inset-top))
+      max(8px, env(safe-area-inset-right))
+      5px
+      max(8px, env(safe-area-inset-left)) !important;
+  }
+
+  html.private-room-keyboard-open .private-room-header-actions {
+    display: none !important;
+  }
+
+  html.private-room-keyboard-open .private-room-header-user > button {
+    width: 31px !important;
+    height: 31px !important;
+    flex-basis: 31px !important;
+  }
+
+  html.private-room-keyboard-open .private-room-header-avatar {
+    width: 32px !important;
+    height: 32px !important;
+    flex-basis: 32px !important;
+    font-size: 15px !important;
+  }
+
+  html.private-room-keyboard-open .private-room-header-user > div:last-child > div:first-child {
+    font-size: 14px !important;
+  }
+
+  html.private-room-keyboard-open .private-room-header-user > div:last-child > div:last-child {
+    margin-top: 1px !important;
+    font-size: 9px !important;
+  }
+
+  html.private-room-keyboard-open .private-room-header-utilities .private-room-support-button {
+    min-width: 78px !important;
+    max-width: 82px !important;
+    height: 32px !important;
+    padding: 0 9px !important;
+    font-size: 11px !important;
+  }
+
+  html.private-room-keyboard-open .sayup-v2-open-button {
+    width: 32px !important;
+    height: 32px !important;
+    flex-basis: 32px !important;
+  }
+
+  html.private-room-keyboard-open .private-room-message-area {
+    padding-top: 4px !important;
+    padding-bottom: 2px !important;
+  }
+}
