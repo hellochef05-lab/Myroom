@@ -806,19 +806,12 @@ async function getClientLocationInfo() {
 
 
 const publicStunServers = [
-  {
-    urls: [
-      "stun:stun.relay.metered.ca:80",
-      "stun:stun.l.google.com:19302",
-      "stun:stun1.l.google.com:19302",
-    ],
-  },
+  { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
 ];
 const fallbackTurnServers = [
   {
     urls: [
       "turn:openrelay.metered.ca:80",
-      "turn:openrelay.metered.ca:80?transport=tcp",
       "turn:openrelay.metered.ca:443",
       "turn:openrelay.metered.ca:443?transport=tcp",
       "turns:openrelay.metered.ca:443?transport=tcp",
@@ -1812,7 +1805,6 @@ function WebRTCCall({
   const iceRestartInFlightRef = useRef(false);
   const lastIceRestartAtRef = useRef(0);
   const relayCandidateSeenRef = useRef(false);
-  const relayFallbackActiveRef = useRef(false);
   const activeCallTypeRef = useRef(null);
   const connectionAttemptTimeoutRef = useRef(null);
 
@@ -2010,7 +2002,6 @@ function WebRTCCall({
     iceRestartInFlightRef.current = false;
     lastIceRestartAtRef.current = 0;
     relayCandidateSeenRef.current = false;
-    relayFallbackActiveRef.current = false;
     activeCallTypeRef.current = null;
 
     if (screenStreamRef.current) {
@@ -2021,7 +2012,6 @@ function WebRTCCall({
     if (pcRef.current) {
       pcRef.current.ontrack = null;
       pcRef.current.onicecandidate = null;
-      pcRef.current.onicecandidateerror = null;
       pcRef.current.onconnectionstatechange = null;
       pcRef.current.oniceconnectionstatechange = null;
       pcRef.current.close();
@@ -2089,17 +2079,16 @@ function WebRTCCall({
     if (pc.signalingState !== "stable") return false;
 
     iceRestartInFlightRef.current = true;
-    relayFallbackActiveRef.current = true;
-    relayCandidateSeenRef.current = false;
-    setConnectionMessage("Connecting through secure relay…");
+    setConnectionMessage(
+      relayCandidateSeenRef.current
+        ? "Reconnecting securely…"
+        : "Mobile network detected — finding a secure route…",
+    );
 
     try {
       pc.setConfiguration({
         ...pc.getConfiguration(),
         iceServers: iceServersRef.current,
-        // Direct peer-to-peer ICE already failed. A relay-only restart avoids
-        // repeating the same unusable carrier-NAT candidate pair forever.
-        iceTransportPolicy: "relay",
       });
       pc.restartIce?.();
 
@@ -2119,7 +2108,6 @@ function WebRTCCall({
           callType: nextCallType,
           from: myName,
           iceRestart: true,
-          relayOnly: true,
         },
       });
       armConnectionRecovery("restart-timeout");
@@ -2152,12 +2140,7 @@ function WebRTCCall({
     };
 
     pc.onicecandidate = (event) => {
-      if (!event.candidate) {
-        if (relayFallbackActiveRef.current && !relayCandidateSeenRef.current) {
-          setConnectionMessage("Secure call relay unavailable");
-        }
-        return;
-      }
+      if (!event.candidate) return;
 
       if (event.candidate.type === "relay") {
         relayCandidateSeenRef.current = true;
@@ -2169,17 +2152,8 @@ function WebRTCCall({
       });
     };
 
-    pc.onicecandidateerror = (event) => {
-      console.warn("ICE candidate error", {
-        errorCode: event.errorCode,
-        errorText: event.errorText,
-        url: event.url,
-      });
-    };
-
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
-        relayFallbackActiveRef.current = false;
         setConnectionMessage("");
 
         if (connectionAttemptTimeoutRef.current) {
@@ -2242,7 +2216,6 @@ function WebRTCCall({
         pc.iceConnectionState === "connected" ||
         pc.iceConnectionState === "completed"
       ) {
-        relayFallbackActiveRef.current = false;
         setConnectionMessage("");
         return;
       }
@@ -2344,17 +2317,6 @@ function WebRTCCall({
     let pc = pcRef.current;
     if (!pc) {
       pc = createPC();
-    }
-
-    if (data.relayOnly) {
-      relayFallbackActiveRef.current = true;
-      relayCandidateSeenRef.current = false;
-      pc.setConfiguration({
-        ...pc.getConfiguration(),
-        iceServers: iceServersRef.current,
-        iceTransportPolicy: "relay",
-      });
-      setConnectionMessage("Connecting through secure relay…");
     }
 
     const nextCallType = data.callType || "audio";
