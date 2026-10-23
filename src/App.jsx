@@ -1318,6 +1318,8 @@ function FullScreenCallOverlay({
   cameraOff,
   remoteStream,
   facingMode,
+  audioPlaybackBlocked = false,
+  onResumeAudio,
 }) {
   if (!visible) return null;
 
@@ -1358,6 +1360,17 @@ function FullScreenCallOverlay({
 
       {connectionMessage && (
         <div className="video-call-connection-message">{connectionMessage}</div>
+      )}
+
+      {audioPlaybackBlocked && onResumeAudio && (
+        <button
+          type="button"
+          className="video-call-audio-unlock"
+          onClick={onResumeAudio}
+        >
+          <Mic size={17} aria-hidden="true" />
+          Tap to hear the call
+        </button>
       )}
 
       <div className="video-call-stage">
@@ -1822,6 +1835,8 @@ function WebRTCCall({
   const relayCandidateSeenRef = useRef(false);
   const activeCallTypeRef = useRef(null);
   const connectionAttemptTimeoutRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const audioUnlockedRef = useRef(false);
 
   // The room screen is available immediately. Socket.IO readiness is updated
   // in the background and only changes this state if the join actually fails.
@@ -1835,6 +1850,7 @@ function WebRTCCall({
   const [facingMode, setFacingMode] = useState("user");
   const [remoteName, setRemoteName] = useState("Contact");
   const [connectionMessage, setConnectionMessage] = useState("");
+  const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -1845,6 +1861,44 @@ function WebRTCCall({
     noiseSuppression: true,
     autoGainControl: true,
     channelCount: 1,
+  };
+
+  const unlockRemoteAudio = async ({ fromUserGesture = false } = {}) => {
+    try {
+      if (fromUserGesture && typeof window !== "undefined") {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          if (!audioContextRef.current) {
+            audioContextRef.current = new AudioContextClass();
+          }
+          if (audioContextRef.current.state === "suspended") {
+            await audioContextRef.current.resume();
+          }
+        }
+        audioUnlockedRef.current = true;
+      }
+
+      const audioElement = remoteAudioRef.current;
+      if (!audioElement) return audioUnlockedRef.current;
+
+      audioElement.autoplay = true;
+      audioElement.playsInline = true;
+      audioElement.muted = false;
+      audioElement.volume = 1;
+
+      if (!audioElement.srcObject) {
+        setAudioPlaybackBlocked(false);
+        return audioUnlockedRef.current;
+      }
+
+      await audioElement.play();
+      setAudioPlaybackBlocked(false);
+      return true;
+    } catch (error) {
+      console.warn("Remote audio playback needs a tap:", error);
+      setAudioPlaybackBlocked(true);
+      return false;
+    }
   };
 
   const ensureCallRoomReady = async () => {
@@ -2030,6 +2084,12 @@ function WebRTCCall({
 
     callActiveRef.current = false;
     userMutedRef.current = false;
+    audioUnlockedRef.current = false;
+    setAudioPlaybackBlocked(false);
+    if (audioContextRef.current) {
+      audioContextRef.current.close?.().catch(() => {});
+      audioContextRef.current = null;
+    }
     lastAudioBytesSentRef.current = null;
     stagnantAudioChecksRef.current = 0;
     if (audioWatchdogRef.current) {
@@ -2206,6 +2266,11 @@ function WebRTCCall({
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
         setConnectionMessage("");
+        // Reacquire and reattach the microphone once the peer is connected.
+        // This repairs iPhone Home Screen tracks that look live but send no
+        // samples after the app switches into the native call audio session.
+        repairMicrophone("peer-connected", true).catch(() => {});
+        unlockRemoteAudio().catch(() => {});
 
         if (connectionAttemptTimeoutRef.current) {
           clearTimeout(connectionAttemptTimeoutRef.current);
@@ -2690,30 +2755,12 @@ function WebRTCCall({
 
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = remoteStream;
-          remoteAudioRef.current.autoplay = true;
-          remoteAudioRef.current.playsInline = true;
-          remoteAudioRef.current.muted = false;
-          remoteAudioRef.current.volume = 1;
-
-          try {
-            await remoteAudioRef.current.play();
-          } catch (err) {
-            console.error("Remote audio play failed:", err);
-          }
+          await unlockRemoteAudio();
         }
       } else {
         if (remoteAudioRef.current) {
           remoteAudioRef.current.srcObject = remoteStream;
-          remoteAudioRef.current.autoplay = true;
-          remoteAudioRef.current.playsInline = true;
-          remoteAudioRef.current.muted = false;
-          remoteAudioRef.current.volume = 1;
-
-          try {
-            await remoteAudioRef.current.play();
-          } catch (err) {
-            console.error("Remote audio play failed:", err);
-          }
+          await unlockRemoteAudio();
         }
 
         if (remoteVideoRef.current) {
@@ -2757,6 +2804,7 @@ function WebRTCCall({
     if (inCall) return;
 
     cleanupCall();
+    unlockRemoteAudio({ fromUserGesture: true }).catch(() => {});
 
     try {
       setCallType(type);
@@ -2841,6 +2889,7 @@ function WebRTCCall({
 
   const answerCall = async () => {
     try {
+      unlockRemoteAudio({ fromUserGesture: true }).catch(() => {});
       acceptedRef.current = true;
       setConnectionMessage("Connecting…");
 
@@ -3037,6 +3086,8 @@ function WebRTCCall({
         cameraOff={cameraOff}
         remoteStream={remoteStream}
         facingMode={facingMode}
+        audioPlaybackBlocked={audioPlaybackBlocked}
+        onResumeAudio={() => unlockRemoteAudio({ fromUserGesture: true })}
       />
     </>
   );

@@ -3256,6 +3256,29 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
   text-overflow: ellipsis;
 }
 
+.video-call-audio-unlock {
+  position: absolute;
+  z-index: 12;
+  top: calc(118px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
+  max-width: calc(100% - 32px);
+  padding: 0 16px;
+  border: 1px solid rgba(255,255,255,.4);
+  border-radius: 999px;
+  background: #fff;
+  color: #0b594d;
+  font-size: 13px;
+  font-weight: 900;
+  box-shadow: 0 10px 28px rgba(0,0,0,.28);
+  cursor: pointer;
+}
+
 .video-call-stage {
   grid-row: 2;
   position: relative;
