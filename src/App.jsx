@@ -1821,6 +1821,7 @@ function WebRTCCall({
   const iceQueueRef = useRef([]);
   const acceptedRef = useRef(false);
   const isCallerRef = useRef(false);
+  const offerPreparedRef = useRef(false);
   const disconnectTimeoutRef = useRef(null);
   const callActiveRef = useRef(false);
   const userMutedRef = useRef(false);
@@ -2108,6 +2109,7 @@ function WebRTCCall({
 
     acceptedRef.current = false;
     isCallerRef.current = false;
+    offerPreparedRef.current = false;
     pendingOfferRef.current = null;
     iceQueueRef.current = [];
     iceRestartInFlightRef.current = false;
@@ -2285,7 +2287,7 @@ function WebRTCCall({
       }
 
       if (pc.connectionState === "connecting" || pc.connectionState === "new") {
-        setConnectionMessage("Connecting on a weak network…");
+        setConnectionMessage("Connecting…");
         return;
       }
 
@@ -2462,6 +2464,13 @@ function WebRTCCall({
   };
 
   const startOfferFlow = async (type) => {
+    if (
+      offerPreparedRef.current &&
+      pcRef.current?.localDescription?.type === "offer"
+    ) {
+      return true;
+    }
+
     const roomReady = await ensureCallRoomReady();
     if (!roomReady) {
       throw new Error("Call signaling room is unavailable");
@@ -2480,18 +2489,24 @@ function WebRTCCall({
       offerToReceiveVideo: type === "video",
     });
 
-    await pc.setLocalDescription(offer);
+    try {
+      await pc.setLocalDescription(offer);
+      offerPreparedRef.current = true;
 
-    socketRef.current?.emit("signal", {
-      roomId,
-      data: {
-        type: "offer",
-        offer,
-        callType: type,
-        from: myName,
-      },
-    });
-    armConnectionRecovery("initial-connect-timeout");
+      socketRef.current?.emit("signal", {
+        roomId,
+        data: {
+          type: "offer",
+          offer,
+          callType: type,
+          from: myName,
+        },
+      });
+      return true;
+    } catch (err) {
+      offerPreparedRef.current = false;
+      throw err;
+    }
   };
 
   useEffect(() => {
@@ -2566,7 +2581,24 @@ function WebRTCCall({
 
         if (data.type === "accept") {
           if (isCallerRef.current) {
-            await startOfferFlow(data.callType || "audio");
+            if (!offerPreparedRef.current) {
+              await startOfferFlow(data.callType || "audio");
+            } else if (!data.offerReady) {
+              const preparedOffer = pcRef.current?.localDescription;
+              if (preparedOffer?.type === "offer") {
+                socketRef.current?.emit("signal", {
+                  roomId,
+                  data: {
+                    type: "offer",
+                    offer: preparedOffer,
+                    callType: data.callType || "audio",
+                    from: myName,
+                  },
+                });
+              }
+            }
+            setConnectionMessage("Connecting…");
+            armConnectionRecovery("initial-connect-timeout");
           }
           return;
         }
@@ -2857,8 +2889,19 @@ function WebRTCCall({
         });
 
       let result = { ok: false, recipients: 0 };
+      let routePreparation = null;
       for (let attempt = 0; attempt < 4; attempt += 1) {
-        result = await ringOnce();
+        const ringResult = ringOnce();
+        if (!routePreparation) {
+          // Prepare media, ICE and the WebRTC offer while the other phone is
+          // ringing. Answering then completes an already-started connection.
+          routePreparation = startOfferFlow(type).catch((err) => {
+            offerPreparedRef.current = false;
+            console.warn("Call route preparation failed", err);
+            return false;
+          });
+        }
+        result = await ringResult;
         if (result.ok && result.recipients > 0) break;
         if (attempt < 3) {
           setConnectionMessage(
@@ -2870,6 +2913,8 @@ function WebRTCCall({
           await ensureCallRoomReady();
         }
       }
+
+      await routePreparation;
 
       if (!result.ok) {
         setConnectionMessage("Still ringing on a slow network…");
@@ -2903,6 +2948,7 @@ function WebRTCCall({
         data: {
           type: "accept",
           callType: incoming?.callType || "audio",
+          offerReady: Boolean(pendingOfferRef.current),
         },
       });
 
