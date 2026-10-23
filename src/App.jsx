@@ -1,5 +1,4 @@
 import {
-  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -7,13 +6,6 @@ import {
   useState,
 } from "react";
 import { StreamChat } from "stream-chat";
-import {
-  ParticipantView,
-  StreamCall,
-  StreamVideo,
-  StreamVideoClient,
-  useCallStateHooks,
-} from "@stream-io/video-react-sdk";
 import {
   Attachment,
   Chat,
@@ -32,7 +24,6 @@ import {
 } from "stream-chat-react";
 import { createPortal } from "react-dom";
 import "stream-chat-react/dist/css/v2/index.css";
-import "@stream-io/video-react-sdk/dist/css/styles.css";
 import "./App.css";
 import SayUpV2Hub from "./SayUpV2Hub";
 
@@ -1327,8 +1318,6 @@ function FullScreenCallOverlay({
   cameraOff,
   remoteStream,
   facingMode,
-  managedStage = null,
-  connected = false,
 }) {
   if (!visible) return null;
 
@@ -1337,7 +1326,7 @@ function FullScreenCallOverlay({
     ? incoming.callType === "video"
       ? "Incoming video call"
       : "Incoming audio call"
-    : remoteStream || connected
+    : remoteStream
       ? isVideo
         ? "Video call connected"
         : "Audio call connected"
@@ -1345,9 +1334,7 @@ function FullScreenCallOverlay({
 
   return (
     <div className={`video-call-overlay ${isVideo ? "is-video" : "is-audio"}`}>
-      {remoteAudioRef ? (
-        <audio ref={remoteAudioRef} autoPlay playsInline className="video-call-remote-audio" />
-      ) : null}
+      <audio ref={remoteAudioRef} autoPlay playsInline className="video-call-remote-audio" />
 
       <div className="video-call-topbar">
         <div className="video-call-contact">
@@ -1374,7 +1361,7 @@ function FullScreenCallOverlay({
       )}
 
       <div className="video-call-stage">
-        {managedStage || (isVideo ? (
+        {isVideo ? (
           <>
             <video
               ref={remoteVideoRef}
@@ -1400,9 +1387,9 @@ function FullScreenCallOverlay({
             <div className="video-call-avatar">
               {(remoteName || "C").slice(0, 1).toUpperCase()}
             </div>
-            <div>{remoteStream || connected ? "Connected" : "Connecting…"}</div>
+            <div>{remoteStream ? "Connected" : "Connecting…"}</div>
           </div>
-        ))}
+        )}
       </div>
 
       {incoming && !inCall ? (
@@ -1801,473 +1788,7 @@ const adminCardStyle = {
   boxSizing: "border-box",
 };
 
-function ManagedCallStage({ callType, remoteName, onConnectionChange }) {
-  const { useLocalParticipant, useRemoteParticipants, useCallCallingState } =
-    useCallStateHooks();
-  const localParticipant = useLocalParticipant();
-  const remoteParticipants = useRemoteParticipants();
-  const callingState = useCallCallingState();
-  const remoteParticipant = remoteParticipants[0];
-  const connected = Boolean(remoteParticipant);
-
-  useEffect(() => {
-    onConnectionChange?.({ connected, callingState });
-  }, [connected, callingState, onConnectionChange]);
-
-  if (callType !== "video") {
-    return (
-      <div className="video-call-audio-stage">
-        {remoteParticipant ? (
-          <ParticipantView
-            participant={remoteParticipant}
-            trackType="none"
-            ParticipantViewUI={null}
-            className="sayup-managed-audio-participant"
-          />
-        ) : null}
-        <div className="video-call-avatar">
-          {(remoteName || "C").slice(0, 1).toUpperCase()}
-        </div>
-        <div>{connected ? "Connected securely" : "Connecting securely…"}</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="sayup-managed-video-stage">
-      {remoteParticipant ? (
-        <ParticipantView
-          participant={remoteParticipant}
-          ParticipantViewUI={null}
-          className="sayup-managed-remote-video"
-        />
-      ) : (
-        <div className="video-call-waiting">Connecting video securely…</div>
-      )}
-
-      {localParticipant ? (
-        <ParticipantView
-          participant={localParticipant}
-          ParticipantViewUI={null}
-          muteAudio
-          className="sayup-managed-local-video"
-        />
-      ) : null}
-    </div>
-  );
-}
-
 function WebRTCCall({
-  roomId,
-  displayRoomId,
-  myName,
-  videoAuth,
-  onExitRoom,
-  onOpenSupport,
-  onCallStateChange,
-  onClearChat,
-  clearingChat,
-  onOpenV2,
-}) {
-  const socketRef = useRef(null);
-  const activeCallRef = useRef(null);
-  const [videoClient, setVideoClient] = useState(null);
-  const [activeCall, setActiveCall] = useState(null);
-  const [joinedRoom, setJoinedRoom] = useState(() => Boolean(roomId));
-  const [incoming, setIncoming] = useState(null);
-  const [inCall, setInCall] = useState(false);
-  const [callType, setCallType] = useState(null);
-  const [remoteName, setRemoteName] = useState("Contact");
-  const [connectionMessage, setConnectionMessage] = useState("");
-  const [connected, setConnected] = useState(false);
-  const [muted, setMuted] = useState(false);
-  const [cameraOff, setCameraOff] = useState(false);
-  const [facingMode, setFacingMode] = useState("user");
-
-  useEffect(() => {
-    if (!apiKey || !videoAuth?.user?.id || !videoAuth?.token) {
-      setVideoClient(null);
-      return undefined;
-    }
-
-    const nextClient = new StreamVideoClient({
-      apiKey,
-      user: videoAuth.user,
-      token: videoAuth.token,
-      options: { logLevel: "warn" },
-    });
-    setVideoClient(nextClient);
-
-    return () => {
-      const currentCall = activeCallRef.current;
-      activeCallRef.current = null;
-      if (currentCall) currentCall.leave().catch(() => {});
-      nextClient.disconnectUser().catch(() => {});
-      setVideoClient(null);
-    };
-  }, [videoAuth]);
-
-  const ensureCallRoomReady = async () => {
-    const socket = socketRef.current;
-    if (!socket || !roomId) return false;
-
-    return new Promise((resolve) => {
-      let settled = false;
-      let timer = null;
-      const finish = (ready) => {
-        if (settled) return;
-        settled = true;
-        if (timer) window.clearTimeout(timer);
-        socket.off("connect", joinRoom);
-        setJoinedRoom(ready);
-        resolve(ready);
-      };
-      const joinRoom = () => {
-        socket.timeout(8000).emit("join-room", { roomId }, (error, result) => {
-          finish(!error && Boolean(result?.ok));
-        });
-      };
-
-      timer = window.setTimeout(() => finish(false), 9000);
-      if (socket.connected) joinRoom();
-      else {
-        socket.once("connect", joinRoom);
-        socket.connect();
-      }
-    });
-  };
-
-  const resetCallState = () => {
-    setActiveCall(null);
-    setIncoming(null);
-    setInCall(false);
-    setCallType(null);
-    setRemoteName("Contact");
-    setConnectionMessage("");
-    setConnected(false);
-    setMuted(false);
-    setCameraOff(false);
-    setFacingMode("user");
-  };
-
-  const leaveManagedCall = async () => {
-    const currentCall = activeCallRef.current;
-    activeCallRef.current = null;
-    resetCallState();
-    if (currentCall) await currentCall.leave().catch(() => {});
-  };
-
-  const prepareManagedCall = async (nextCallId, nextCallType) => {
-    if (!videoClient) throw new Error("Secure call service is still connecting");
-
-    const call = videoClient.call("default", nextCallId);
-    activeCallRef.current = call;
-    setActiveCall(call);
-    setCallType(nextCallType);
-    setConnectionMessage("Connecting securely…");
-
-    await call.microphone.enable();
-    if (nextCallType === "video") await call.camera.enable();
-    else await call.camera.disable();
-
-    await call.join({
-      create: true,
-      video: nextCallType === "video",
-      maxJoinRetries: 5,
-      joinResponseTimeout: 20000,
-      rpcRequestTimeout: 20000,
-    });
-
-    return call;
-  };
-
-  useEffect(() => {
-    const socket = io(API_BASE, {
-      transports: ["websocket", "polling"],
-      tryAllTransports: true,
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 400,
-      reconnectionDelayMax: 6000,
-      randomizationFactor: 0.4,
-      timeout: 30000,
-      forceNew: false,
-    });
-    socketRef.current = socket;
-
-    const joinCurrentRoom = () => {
-      if (!roomId) return;
-      socket.emit("join-room", { roomId }, (result) => {
-        setJoinedRoom(Boolean(result?.ok));
-      });
-    };
-
-    socket.on("connect", joinCurrentRoom);
-    socket.on("reconnect", joinCurrentRoom);
-    socket.on("disconnect", (reason) => {
-      if (reason === "io client disconnect") setJoinedRoom(false);
-    });
-
-    return () => {
-      if (roomId) socket.emit("leave-room", { roomId });
-      socket.disconnect();
-      socketRef.current = null;
-      setJoinedRoom(false);
-    };
-  }, [roomId]);
-
-  useEffect(() => {
-    const socket = socketRef.current;
-    if (!socket) return undefined;
-
-    const onSignal = (data) => {
-      if (data.type === "call" && data.callId) {
-        setIncoming({
-          callId: data.callId,
-          callType: data.callType || "audio",
-          from: data.from || "Contact",
-        });
-        setRemoteName(data.from || "Contact");
-        setCallType(data.callType || "audio");
-        setConnectionMessage("");
-        return;
-      }
-
-      if (data.type === "accept") {
-        setConnectionMessage("Connecting securely…");
-        return;
-      }
-
-      if (data.type === "hangup") {
-        leaveManagedCall();
-      }
-    };
-
-    socket.on("signal", onSignal);
-    return () => socket.off("signal", onSignal);
-    // The handler deliberately reads the current active call ref.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId]);
-
-  const overlayVisible = Boolean(incoming || inCall);
-
-  useEffect(() => {
-    onCallStateChange?.({
-      active: overlayVisible,
-      inCall,
-      incoming: Boolean(incoming),
-      callType: incoming?.callType || callType || null,
-    });
-  }, [overlayVisible, inCall, incoming, callType, onCallStateChange]);
-
-  const startCall = async (nextCallType) => {
-    if (!videoClient) {
-      alert("Secure calling is connecting. Please tap again in a moment.");
-      return;
-    }
-    if (inCall || incoming) return;
-
-    const callId = `sayup-${Date.now().toString(36)}-${Math.random()
-      .toString(36)
-      .slice(2, 10)}`;
-
-    try {
-      setInCall(true);
-      setCallType(nextCallType);
-      setRemoteName("Contact");
-      setConnectionMessage("Preparing secure call…");
-      await prepareManagedCall(callId, nextCallType);
-
-      const roomReady = await ensureCallRoomReady();
-      if (!roomReady) throw new Error("Call signaling room is unavailable");
-
-      const result = await new Promise((resolve) => {
-        socketRef.current.timeout(20000).emit(
-          "signal",
-          {
-            roomId,
-            data: {
-              type: "call",
-              callId,
-              callType: nextCallType,
-              from: myName,
-            },
-          },
-          (error, response) => resolve(error ? { ok: false } : response),
-        );
-      });
-
-      setConnectionMessage(
-        result?.ok && result?.recipients > 0
-          ? "Ringing…"
-          : "Waiting for the other person…",
-      );
-    } catch (error) {
-      console.error("Managed call start failed:", error);
-      await leaveManagedCall();
-      alert(
-        error?.name === "NotAllowedError"
-          ? "Please allow microphone and camera access for SayUp."
-          : "Could not start the secure call. Please try again.",
-      );
-    }
-  };
-
-  const answerCall = async () => {
-    if (!incoming?.callId) return;
-
-    const nextIncoming = incoming;
-    try {
-      setConnectionMessage("Connecting securely…");
-      await prepareManagedCall(nextIncoming.callId, nextIncoming.callType);
-      setIncoming(null);
-      setInCall(true);
-      socketRef.current?.emit("signal", {
-        roomId,
-        data: {
-          type: "accept",
-          callId: nextIncoming.callId,
-          callType: nextIncoming.callType,
-        },
-      });
-    } catch (error) {
-      console.error("Managed call answer failed:", error);
-      socketRef.current?.emit("signal", {
-        roomId,
-        data: { type: "hangup", callId: nextIncoming.callId },
-      });
-      await leaveManagedCall();
-      alert(
-        error?.name === "NotAllowedError"
-          ? "Please allow microphone and camera access for SayUp."
-          : "Could not connect the secure call. Please try again.",
-      );
-    }
-  };
-
-  const declineCall = () => {
-    socketRef.current?.emit("signal", {
-      roomId,
-      data: { type: "hangup", callId: incoming?.callId },
-    });
-    resetCallState();
-  };
-
-  const hangup = async () => {
-    socketRef.current?.emit("signal", {
-      roomId,
-      data: { type: "hangup", callId: activeCallRef.current?.id },
-    });
-    await leaveManagedCall();
-  };
-
-  const toggleMute = async () => {
-    const call = activeCallRef.current;
-    if (!call) return;
-    await call.microphone.toggle();
-    setMuted((current) => !current);
-  };
-
-  const toggleCamera = async () => {
-    const call = activeCallRef.current;
-    if (!call) return;
-    await call.camera.toggle();
-    setCameraOff((current) => !current);
-  };
-
-  const switchCamera = async () => {
-    const call = activeCallRef.current;
-    if (!call || callType !== "video" || cameraOff) return;
-    try {
-      await call.camera.flip();
-      setFacingMode((current) =>
-        current === "user" ? "environment" : "user",
-      );
-    } catch (error) {
-      console.error("Camera switch failed:", error);
-    }
-  };
-
-  const shareScreen = async () => {
-    const call = activeCallRef.current;
-    if (!call || !navigator.mediaDevices?.getDisplayMedia) return;
-    await call.screenShare.toggle().catch((error) => {
-      console.error("Screen share failed:", error);
-    });
-  };
-
-  const handleConnectionChange = useCallback(
-    ({ connected: nextConnected, callingState }) => {
-      setConnected(nextConnected);
-      if (nextConnected) setConnectionMessage("");
-      else if (callingState === "reconnecting" || callingState === "migrating") {
-        setConnectionMessage("Reconnecting securely…");
-      } else if (inCall && !incoming) {
-        setConnectionMessage((current) => current || "Connecting securely…");
-      }
-    },
-    [inCall, incoming],
-  );
-
-  const managedStage =
-    activeCall && videoClient ? (
-      <StreamVideo client={videoClient}>
-        <StreamCall call={activeCall}>
-          <ManagedCallStage
-            callType={callType}
-            remoteName={remoteName}
-            onConnectionChange={handleConnectionChange}
-          />
-        </StreamCall>
-      </StreamVideo>
-    ) : null;
-
-  return (
-    <>
-      <CallHeader
-        room={displayRoomId || roomId}
-        onStartAudio={() => startCall("audio")}
-        onStartVideo={() => startCall("video")}
-        inCall={inCall}
-        callType={callType}
-        joinedRoom={joinedRoom}
-        onExitRoom={onExitRoom}
-        onOpenSupport={onOpenSupport}
-        onClearChat={onClearChat}
-        clearingChat={clearingChat}
-        onOpenV2={onOpenV2}
-      />
-
-      <FullScreenCallOverlay
-        visible={overlayVisible}
-        inCall={inCall}
-        incoming={incoming}
-        callType={incoming?.callType || callType}
-        remoteName={incoming?.from || remoteName}
-        connectionMessage={connectionMessage}
-        localVideoRef={null}
-        remoteVideoRef={null}
-        remoteAudioRef={null}
-        onAnswer={answerCall}
-        onDecline={declineCall}
-        onHangup={hangup}
-        onToggleMute={toggleMute}
-        onToggleCamera={toggleCamera}
-        onSwitchCamera={switchCamera}
-        onShareScreen={shareScreen}
-        onOpenSupport={onOpenSupport}
-        muted={muted}
-        cameraOff={cameraOff}
-        remoteStream={null}
-        facingMode={facingMode}
-        managedStage={managedStage}
-        connected={connected}
-      />
-    </>
-  );
-}
-
-function LegacyWebRTCCall({
   roomId,
   displayRoomId,
   myName,
@@ -4526,7 +4047,6 @@ useEffect(() => {
 
   const [client, setClient] = useState(null);
   const [channel, setChannel] = useState(null);
-  const [videoAuth, setVideoAuth] = useState(null);
   const [name, setName] = useState("");
   const [room, setRoom] = useState("");
   const [joining, setJoining] = useState(false);
@@ -5751,13 +5271,6 @@ async function adminUpdateTicketStatus(requestId, status) {
 
       setLoggedUser(loginData.user);
       localStorage.setItem("logged_user", JSON.stringify(loginData.user));
-      setVideoAuth({
-        user: {
-          id: tokenData.userId || streamUserId,
-          name: tokenData.name || name || "Guest",
-        },
-        token: tokenData.token,
-      });
 
       chatClient = getStreamClient();
       await connectStreamUserWithRetry(
@@ -5807,7 +5320,6 @@ async function adminUpdateTicketStatus(requestId, status) {
       setClient(chatClient);
     } catch (err) {
       console.error("joinRoom error", err);
-      setVideoAuth(null);
       if (chatClient?.userID) {
         await chatClient.disconnectUser().catch(() => {});
       }
@@ -5864,7 +5376,6 @@ async function adminUpdateTicketStatus(requestId, status) {
     } finally {
       setChannel(null);
       setClient(null);
-      setVideoAuth(null);
       setName("");
       setAccessKey("");
       setRoom("");
@@ -7697,7 +7208,6 @@ async function adminUpdateTicketStatus(requestId, status) {
                   roomId={privateRoomId}
                   displayRoomId={room}
                   myName={name}
-                  videoAuth={videoAuth}
                   onExitRoom={exitRoom}
                   onOpenSupport={openRoomSupport}
                   onCallStateChange={setCallUiState}

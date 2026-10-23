@@ -3293,58 +3293,6 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
   display: none !important;
 }
 
-.sayup-managed-video-stage {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  background: #000;
-}
-
-.sayup-managed-remote-video {
-  position: absolute !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  background: #000;
-}
-
-.sayup-managed-remote-video video {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover !important;
-}
-
-.sayup-managed-local-video {
-  position: absolute !important;
-  z-index: 5;
-  right: 14px;
-  bottom: 14px;
-  width: clamp(92px, 25vw, 150px) !important;
-  height: auto !important;
-  max-height: 34%;
-  aspect-ratio: 3 / 4;
-  overflow: hidden;
-  border: 2px solid rgba(255,255,255,.72);
-  border-radius: 18px;
-  background: #111;
-  box-shadow: 0 12px 36px rgba(0,0,0,.42);
-}
-
-.sayup-managed-local-video video {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover !important;
-}
-
-.sayup-managed-audio-participant {
-  position: absolute !important;
-  width: 1px !important;
-  height: 1px !important;
-  overflow: hidden !important;
-  opacity: .01;
-  pointer-events: none;
-}
-
 .video-call-waiting,
 .video-call-audio-stage {
   position: absolute;
@@ -3651,13 +3599,6 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
 
   .video-call-local-video {
     width: 104px;
-    right: 10px;
-    bottom: 10px;
-    border-radius: 14px;
-  }
-
-  .sayup-managed-local-video {
-    width: 104px !important;
     right: 10px;
     bottom: 10px;
     border-radius: 14px;
