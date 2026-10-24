@@ -4708,9 +4708,9 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
     min-height: 0 !important;
   }
 
-  /* The room root carries both classes. Keep the visualViewport height from
-     being overwritten by the generic shell rule when the keyboard opens. */
-  .private-room-chat-page.private-room-chat-shell {
+  /* The page and shell are separate elements. Keep the visualViewport height
+     on the page; the shell fills that measured page height. */
+  .private-room-chat-page {
     height: var(--private-room-visible-height, 100dvh) !important;
     max-height: var(--private-room-visible-height, 100dvh) !important;
   }
@@ -4781,7 +4781,7 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
     overflow: hidden !important;
   }
 
-  .private-room-chat-page.private-room-chat-shell {
+  .private-room-chat-page {
     position: fixed !important;
     top: 0 !important;
     right: 0 !important;
@@ -4792,6 +4792,7 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
     max-height: var(--private-room-visible-height, 100dvh) !important;
     overflow: hidden !important;
   }
+
 }
 
 /* Slightly snappier long-press / action sheet on mobile */
@@ -5009,9 +5010,9 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
 }
 
 /* iOS keyboard stability contract.
-   Never translate the page with visualViewport.offsetTop: Safari changes that
-   value repeatedly during keyboard/address-bar animation and makes the whole
-   room appear to scroll. Only the room height follows the visible viewport. */
+   Never animate a transform with visualViewport.offsetTop: Safari changes it
+   repeatedly during keyboard animation. After the viewport settles, align the
+   measured-height page once with the visible viewport origin. */
 @media (max-width: 767px),
   (min-width: 768px) and (max-width: 950px) and (max-height: 600px) {
   html.private-room-chat-active #root {
@@ -5019,9 +5020,15 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
     will-change: auto;
   }
 
-  html.private-room-chat-active .private-room-chat-page.private-room-chat-shell {
+  html.private-room-chat-active .private-room-chat-page {
     top: 0 !important;
     transform: none !important;
+  }
+
+  html.private-room-keyboard-open .private-room-chat-page {
+    position: absolute !important;
+    top: var(--private-room-viewport-top, 0px) !important;
+    bottom: auto !important;
   }
 }
 
@@ -5032,12 +5039,6 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
 /* Native-style keyboard state: keep room identity, Call, Video, Support and
    menu in one compact row so the reduced iPhone viewport still shows chat. */
 @media (max-width: 767px) {
-  html.private-room-keyboard-open .private-room-chat-page.private-room-chat-shell {
-    position: absolute !important;
-    top: var(--private-room-viewport-top, 0px) !important;
-    bottom: auto !important;
-  }
-
   html.private-room-keyboard-open .private-room-call-header {
     grid-template-columns: minmax(0, 1fr) auto !important;
     grid-template-rows: 46px !important;
