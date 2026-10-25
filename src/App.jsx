@@ -330,6 +330,7 @@ function SyncChatViewport({ channelId }) {
 function LatestMessageList({ channelId }) {
   const listHostRef = useRef(null);
   const followFrameRef = useRef(0);
+  const pinnedToLatestRef = useRef(true);
   const [initialPositionReady, setInitialPositionReady] = useState(false);
   const [historyPaginationEnabled, setHistoryPaginationEnabled] = useState(false);
   const {
@@ -357,8 +358,10 @@ function LatestMessageList({ channelId }) {
         return;
       }
       list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
+      pinnedToLatestRef.current = true;
       revealFrame = requestAnimationFrame(() => {
         list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
+        pinnedToLatestRef.current = true;
         setInitialPositionReady(true);
       });
     };
@@ -381,21 +384,56 @@ function LatestMessageList({ channelId }) {
       followFrameRef.current = requestAnimationFrame(() => {
         followFrameRef.current = requestAnimationFrame(() => {
           list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
+          pinnedToLatestRef.current = true;
         });
       });
     };
 
-    // This is the only post-mount programmatic scroll path. It is dispatched
-    // by the local composer immediately after the user sends a message.
-    // Incoming messages, acknowledgements, keyboard changes and read receipts
-    // deliberately have no listener that can move the message list.
-    window.addEventListener("sayup:own-message-sent", followLatest);
+    const updatePinnedState = () => {
+      const distanceFromLatest = list.scrollHeight - list.clientHeight - list.scrollTop;
+      pinnedToLatestRef.current = distanceFromLatest <= 24;
+    };
+
+    const handleNewMessage = (event) => {
+      const senderId = event?.message?.user?.id || event?.user?.id;
+      const currentUserId = channel?.getClient?.().userID;
+
+      // The optimistic local send already follows once. Ignore its server
+      // acknowledgement so it cannot create a second jump.
+      if (senderId && senderId === currentUserId) return;
+      if (pinnedToLatestRef.current) followLatest();
+    };
+
+    let previousClientHeight = list.clientHeight;
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(() => {
+          const nextClientHeight = list.clientHeight;
+          if (nextClientHeight === previousClientHeight) return;
+          previousClientHeight = nextClientHeight;
+
+          // Match native chat behavior while the keyboard animates: keep the
+          // last message attached to the composer only if the user was already
+          // at the bottom. Never move someone who is reading older messages.
+          if (pinnedToLatestRef.current) {
+            list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
+          }
+        });
+
+    updatePinnedState();
+    list.addEventListener("scroll", updatePinnedState, { passive: true });
+    resizeObserver?.observe(list);
+    const messageSubscription = channel?.on?.("message.new", handleNewMessage);
+    window.addEventListener("sayup:whatsapp-send-follow", followLatest);
 
     return () => {
       cancelAnimationFrame(followFrameRef.current);
-      window.removeEventListener("sayup:own-message-sent", followLatest);
+      list.removeEventListener("scroll", updatePinnedState);
+      resizeObserver?.disconnect();
+      messageSubscription?.unsubscribe?.();
+      window.removeEventListener("sayup:whatsapp-send-follow", followLatest);
     };
-  }, [initialPositionReady]);
+  }, [channel, initialPositionReady]);
 
   const enableHistoryPagination = () => {
     if (initialPositionReady && !historyPaginationEnabled) {
@@ -526,7 +564,7 @@ function ReliableMessageInput(props) {
     const queue = readQueue().filter((item) => item.id !== queuedItem.id);
     writeQueue([...queue, queuedItem]);
     updateMessage?.(queuedLocalMessage);
-    window.dispatchEvent(new Event("sayup:own-message-sent"));
+    window.dispatchEvent(new Event("sayup:whatsapp-send-follow"));
 
     // Prevent Stream's stopTyping request from restoring the previous draft
     // when the device is offline. Typing events are restored immediately after
