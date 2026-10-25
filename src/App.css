@@ -2603,21 +2603,20 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
     overflow-x: hidden !important;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    overflow-anchor: auto !important;
+    overflow-anchor: none !important;
     scroll-behavior: auto !important;
     touch-action: pan-y;
   }
 
-  /* Let the browser preserve the visible bottom message during a keyboard
-     resize without JavaScript changing scrollTop. Older messages cannot
-     become anchors, so manual history reading remains exactly where it is. */
+  /* Disable browser anchoring for every message. Safari must never adjust the
+     list after keyboard, media, reaction, tick or receipt layout changes. */
   .private-room-chat-shell .str-chat__message-list-scroll > * {
     overflow-anchor: none !important;
   }
 
   .private-room-chat-shell .str-chat__message-list-scroll > :last-child {
     min-height: 1px;
-    overflow-anchor: auto !important;
+    overflow-anchor: none !important;
   }
 
   .private-room-chat-shell .str-chat__message-list {
@@ -5046,8 +5045,8 @@ html[data-sayup-palette="midnight"].private-room-chat-active .private-room-heade
   }
 
   html.private-room-keyboard-open .private-room-chat-page {
-    position: absolute !important;
-    top: var(--private-room-viewport-top, 0px) !important;
+    position: fixed !important;
+    top: 0 !important;
     bottom: auto !important;
   }
 }

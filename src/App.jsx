@@ -237,14 +237,6 @@ function SyncChatViewport({ channelId }) {
         );
       }
 
-      const viewportTop = focused
-        ? Math.max(0, Math.round((viewport?.offsetTop || 0) * 100) / 100)
-        : 0;
-      root.style.setProperty(
-        "--private-room-viewport-top",
-        `${viewportTop}px`,
-      );
-
       root.style.setProperty(
         "--private-room-composer-bottom",
         focused ? "0px" : "max(7px, env(safe-area-inset-bottom))",
@@ -261,13 +253,6 @@ function SyncChatViewport({ channelId }) {
       scheduleViewportWrite();
     };
 
-    // Follow the visual viewport in the same animation frame. A delayed
-    // correction makes iOS move the room once during keyboard animation and
-    // again after it settles, which looks like unsolicited chat scrolling.
-    const onViewportPan = () => {
-      scheduleViewportWrite();
-    };
-
     const onFocusIn = (event) => {
       if (!event.target?.closest?.(".private-room-message-composer")) return;
       scheduleViewportWrite();
@@ -277,13 +262,11 @@ function SyncChatViewport({ channelId }) {
       scheduleViewportWrite();
     };
 
-    // Keep height and viewport origin in the same animation frame so Safari
-    // cannot apply a second, delayed room movement after the keyboard opens.
+    // Only the available height follows the keyboard. Never follow Safari's
+    // visualViewport scroll/offset events: doing so repositions the entire
+    // room and looks like automatic message scrolling in an installed PWA.
     viewport?.addEventListener("resize", onViewportResize, { passive: true });
-    viewport?.addEventListener("scroll", onViewportPan, { passive: true });
-    viewport?.addEventListener("scrollend", onViewportPan, { passive: true });
     window.addEventListener("resize", onViewportResize, { passive: true });
-    window.addEventListener("scroll", onViewportPan, { passive: true });
     window.addEventListener("orientationchange", scheduleViewportWrite);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
@@ -292,15 +275,11 @@ function SyncChatViewport({ channelId }) {
     return () => {
       cancelAnimationFrame(viewportFrame);
       viewport?.removeEventListener("resize", onViewportResize);
-      viewport?.removeEventListener("scroll", onViewportPan);
-      viewport?.removeEventListener("scrollend", onViewportPan);
       window.removeEventListener("resize", onViewportResize);
-      window.removeEventListener("scroll", onViewportPan);
       window.removeEventListener("orientationchange", scheduleViewportWrite);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
       root.style.removeProperty("--private-room-visible-height");
-      root.style.removeProperty("--private-room-viewport-top");
       root.style.removeProperty("--private-room-composer-bottom");
       root.classList.remove("private-room-keyboard-open");
     };
