@@ -217,7 +217,6 @@ function SyncChatViewport({ channelId }) {
     const viewport = window.visualViewport;
     let viewportFrame = 0;
     let keyboardSettleTimer = 0;
-    let anchorLatestAfterKeyboardSettles = false;
 
     const composerIsFocused = () => Boolean(
       document.activeElement?.closest?.(".private-room-message-composer"),
@@ -268,10 +267,6 @@ function SyncChatViewport({ channelId }) {
       keyboardSettleTimer = window.setTimeout(() => {
         keyboardSettleTimer = 0;
         writeViewport();
-        if (anchorLatestAfterKeyboardSettles) {
-          anchorLatestAfterKeyboardSettles = false;
-          window.dispatchEvent(new Event("sayup:follow-latest"));
-        }
       }, 220);
     };
 
@@ -289,30 +284,14 @@ function SyncChatViewport({ channelId }) {
 
     const onFocusIn = (event) => {
       if (!event.target?.closest?.(".private-room-message-composer")) return;
-      const list = document.querySelector(
-        ".private-room-message-area .str-chat__list",
-      );
-      const distanceFromLatest = list
-        ? list.scrollHeight - list.clientHeight - list.scrollTop
-        : Number.POSITIVE_INFINITY;
-      anchorLatestAfterKeyboardSettles = distanceFromLatest <= 64;
       scheduleViewportWrite();
       scheduleKeyboardSettle();
     };
 
     const onFocusOut = () => {
-      anchorLatestAfterKeyboardSettles = false;
       window.clearTimeout(keyboardSettleTimer);
       keyboardSettleTimer = 0;
       scheduleViewportWrite();
-    };
-
-    const stopKeyboardAnchorOnUserScroll = (event) => {
-      if (event.target?.closest?.(".private-room-message-area .str-chat__list")) {
-        anchorLatestAfterKeyboardSettles = false;
-        window.clearTimeout(keyboardSettleTimer);
-        keyboardSettleTimer = 0;
-      }
     };
 
     // Height changes are safe to apply immediately. Safari's delayed panning
@@ -325,12 +304,6 @@ function SyncChatViewport({ channelId }) {
     window.addEventListener("orientationchange", scheduleViewportWrite);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
-    document.addEventListener("touchstart", stopKeyboardAnchorOnUserScroll, {
-      passive: true,
-    });
-    document.addEventListener("wheel", stopKeyboardAnchorOnUserScroll, {
-      passive: true,
-    });
     writeViewport();
 
     return () => {
@@ -344,8 +317,6 @@ function SyncChatViewport({ channelId }) {
       window.removeEventListener("orientationchange", scheduleViewportWrite);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
-      document.removeEventListener("touchstart", stopKeyboardAnchorOnUserScroll);
-      document.removeEventListener("wheel", stopKeyboardAnchorOnUserScroll);
       root.style.removeProperty("--private-room-visible-height");
       root.style.removeProperty("--private-room-viewport-top");
       root.style.removeProperty("--private-room-composer-bottom");
@@ -358,8 +329,6 @@ function SyncChatViewport({ channelId }) {
 
 function LatestMessageList({ channelId }) {
   const listHostRef = useRef(null);
-  const followLatestRef = useRef(true);
-  const programmaticScrollRef = useRef(false);
   const followFrameRef = useRef(0);
   const [initialPositionReady, setInitialPositionReady] = useState(false);
   const [historyPaginationEnabled, setHistoryPaginationEnabled] = useState(false);
@@ -387,12 +356,9 @@ function LatestMessageList({ channelId }) {
         if (attempts < 30) positionFrame = requestAnimationFrame(positionAtLatest);
         return;
       }
-      programmaticScrollRef.current = true;
       list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
-      followLatestRef.current = true;
       revealFrame = requestAnimationFrame(() => {
         list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
-        programmaticScrollRef.current = false;
         setInitialPositionReady(true);
       });
     };
@@ -405,52 +371,31 @@ function LatestMessageList({ channelId }) {
   }, [channel, channelId, initialPositionReady, loading, messages.length]);
 
   useEffect(() => {
-    if (!initialPositionReady || !channel) return undefined;
+    if (!initialPositionReady) return undefined;
 
     const list = listHostRef.current?.querySelector(".str-chat__list");
     if (!list) return undefined;
-
-    const distanceFromLatest = () => Math.max(
-      0,
-      list.scrollHeight - list.clientHeight - list.scrollTop,
-    );
 
     const followLatest = () => {
       cancelAnimationFrame(followFrameRef.current);
       followFrameRef.current = requestAnimationFrame(() => {
         followFrameRef.current = requestAnimationFrame(() => {
-          programmaticScrollRef.current = true;
           list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
-          followLatestRef.current = true;
-          requestAnimationFrame(() => {
-            programmaticScrollRef.current = false;
-          });
         });
       });
     };
 
-    const handleScroll = () => {
-      const isLatest = distanceFromLatest() <= 48;
-      if (!programmaticScrollRef.current) followLatestRef.current = isLatest;
-      programmaticScrollRef.current = false;
-    };
-
-    const handleNewMessage = (event) => {
-      const ownMessage = event.message?.user?.id === channel.getClient?.().userID;
-      if (ownMessage || followLatestRef.current) followLatest();
-    };
-
-    list.addEventListener("scroll", handleScroll, { passive: true });
-    window.addEventListener("sayup:follow-latest", followLatest);
-    const messageSubscription = channel.on("message.new", handleNewMessage);
+    // This is the only post-mount programmatic scroll path. It is dispatched
+    // by the local composer immediately after the user sends a message.
+    // Incoming messages, acknowledgements, keyboard changes and read receipts
+    // deliberately have no listener that can move the message list.
+    window.addEventListener("sayup:own-message-sent", followLatest);
 
     return () => {
       cancelAnimationFrame(followFrameRef.current);
-      list.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("sayup:follow-latest", followLatest);
-      messageSubscription?.unsubscribe?.();
+      window.removeEventListener("sayup:own-message-sent", followLatest);
     };
-  }, [channel, initialPositionReady]);
+  }, [initialPositionReady]);
 
   const enableHistoryPagination = () => {
     if (initialPositionReady && !historyPaginationEnabled) {
@@ -581,7 +526,7 @@ function ReliableMessageInput(props) {
     const queue = readQueue().filter((item) => item.id !== queuedItem.id);
     writeQueue([...queue, queuedItem]);
     updateMessage?.(queuedLocalMessage);
-    window.dispatchEvent(new Event("sayup:follow-latest"));
+    window.dispatchEvent(new Event("sayup:own-message-sent"));
 
     // Prevent Stream's stopTyping request from restoring the previous draft
     // when the device is offline. Typing events are restored immediately after
