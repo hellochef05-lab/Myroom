@@ -312,7 +312,6 @@ function SyncChatViewport({ channelId }) {
 function LatestMessageList({ channelId }) {
   const listHostRef = useRef(null);
   const followFrameRef = useRef(0);
-  const pinnedToLatestRef = useRef(true);
   const [initialPositionReady, setInitialPositionReady] = useState(false);
   const [historyPaginationEnabled, setHistoryPaginationEnabled] = useState(false);
   const {
@@ -326,9 +325,9 @@ function LatestMessageList({ channelId }) {
   useLayoutEffect(() => {
     if (!channel?.initialized || loading || initialPositionReady) return undefined;
 
-    // Stream's competing autoscroll is disabled before the first visible
-    // frame. Start at the latest message, then use one predictable controller
-    // below for new messages, keyboard changes and manual history scrolling.
+    // Position once while hidden. After the list becomes visible, keyboard
+    // changes, incoming messages and read receipts are never allowed to set
+    // scrollTop.
     let revealFrame = 0;
     let positionFrame = 0;
     let attempts = 0;
@@ -340,10 +339,8 @@ function LatestMessageList({ channelId }) {
         return;
       }
       list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
-      pinnedToLatestRef.current = true;
       revealFrame = requestAnimationFrame(() => {
         list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
-        pinnedToLatestRef.current = true;
         setInitialPositionReady(true);
       });
     };
@@ -361,61 +358,24 @@ function LatestMessageList({ channelId }) {
     const list = listHostRef.current?.querySelector(".str-chat__list");
     if (!list) return undefined;
 
-    const followLatest = () => {
+    const scrollAfterOwnSend = () => {
       cancelAnimationFrame(followFrameRef.current);
       followFrameRef.current = requestAnimationFrame(() => {
         followFrameRef.current = requestAnimationFrame(() => {
           list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
-          pinnedToLatestRef.current = true;
         });
       });
     };
 
-    const updatePinnedState = () => {
-      const distanceFromLatest = list.scrollHeight - list.clientHeight - list.scrollTop;
-      pinnedToLatestRef.current = distanceFromLatest <= 24;
-    };
-
-    const handleNewMessage = (event) => {
-      const senderId = event?.message?.user?.id || event?.user?.id;
-      const currentUserId = channel?.getClient?.().userID;
-
-      // The optimistic local send already follows once. Ignore its server
-      // acknowledgement so it cannot create a second jump.
-      if (senderId && senderId === currentUserId) return;
-      if (pinnedToLatestRef.current) followLatest();
-    };
-
-    let previousClientHeight = list.clientHeight;
-    const resizeObserver = typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver(() => {
-          const nextClientHeight = list.clientHeight;
-          if (nextClientHeight === previousClientHeight) return;
-          previousClientHeight = nextClientHeight;
-
-          // Match native chat behavior while the keyboard animates: keep the
-          // last message attached to the composer only if the user was already
-          // at the bottom. Never move someone who is reading older messages.
-          if (pinnedToLatestRef.current) {
-            list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
-          }
-        });
-
-    updatePinnedState();
-    list.addEventListener("scroll", updatePinnedState, { passive: true });
-    resizeObserver?.observe(list);
-    const messageSubscription = channel?.on?.("message.new", handleNewMessage);
-    window.addEventListener("sayup:whatsapp-send-follow", followLatest);
+    // This is the only visible programmatic movement: one jump after the local
+    // user sends. Server acknowledgements cannot trigger it a second time.
+    window.addEventListener("sayup:whatsapp-send-follow", scrollAfterOwnSend);
 
     return () => {
       cancelAnimationFrame(followFrameRef.current);
-      list.removeEventListener("scroll", updatePinnedState);
-      resizeObserver?.disconnect();
-      messageSubscription?.unsubscribe?.();
-      window.removeEventListener("sayup:whatsapp-send-follow", followLatest);
+      window.removeEventListener("sayup:whatsapp-send-follow", scrollAfterOwnSend);
     };
-  }, [channel, initialPositionReady]);
+  }, [initialPositionReady]);
 
   const enableHistoryPagination = () => {
     if (initialPositionReady && !historyPaginationEnabled) {
