@@ -4811,8 +4811,10 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
   }
 }
 
-/* Final mobile room-header contract. Keep this after all theme and keyboard
-   rules so the header remains a compact two-row grid in every viewport state. */
+/* Final mobile room-header contract. Keep one WhatsApp-style row before,
+   during and after keyboard use. Changing the header from two rows to one
+   while the keyboard opens changes the message viewport twice and produces
+   the visible up/down jump. Clear and Exit remain in the three-dot menu. */
 @media (max-width: 767px) {
   html.private-room-chat-active .private-room-call-header,
   html.private-room-keyboard-open .private-room-call-header {
@@ -4820,13 +4822,13 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
     top: 0 !important;
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) auto !important;
-    grid-template-rows: minmax(46px, auto) 48px !important;
+    grid-template-rows: 46px !important;
     align-items: center !important;
     column-gap: 8px !important;
-    row-gap: 6px !important;
+    row-gap: 0 !important;
     width: 100% !important;
-    min-height: calc(110px + env(safe-area-inset-top)) !important;
-    height: auto !important;
+    min-height: calc(56px + env(safe-area-inset-top)) !important;
+    height: calc(56px + env(safe-area-inset-top)) !important;
     padding:
       calc(7px + env(safe-area-inset-top))
       max(9px, env(safe-area-inset-right))
@@ -4862,9 +4864,9 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
 
   html.private-room-chat-active .private-room-header-avatar {
     display: flex !important;
-    width: 38px !important;
-    height: 38px !important;
-    flex: 0 0 38px !important;
+    width: 30px !important;
+    height: 30px !important;
+    flex: 0 0 30px !important;
     color: #fff8e9 !important;
     background: linear-gradient(145deg, #10b981, #087461) !important;
     box-shadow: 0 5px 14px rgba(8, 116, 97, 0.22) !important;
@@ -4923,9 +4925,7 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
 
   html.private-room-chat-active .private-room-header-actions,
   html.private-room-keyboard-open .private-room-header-actions {
-    grid-column: 1 / -1 !important;
-    grid-row: 2 !important;
-    display: grid !important;
+    display: none !important;
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
     align-items: center !important;
     justify-items: stretch !important;
@@ -4988,6 +4988,25 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
   html.private-room-chat-active .private-room-header-action-exit svg,
   html.private-room-chat-active .private-room-header-action-exit + span {
     color: #c43139 !important;
+  }
+
+  html.private-room-chat-active .private-room-keyboard-quick-call {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 32px !important;
+    height: 32px !important;
+    flex: 0 0 32px !important;
+    padding: 0 !important;
+    color: #0b6b57 !important;
+    background: rgba(255, 255, 255, 0.88) !important;
+    border: 1px solid rgba(7, 63, 52, 0.14) !important;
+    border-radius: 999px !important;
+    box-shadow: 0 3px 10px rgba(68, 49, 29, 0.07) !important;
+  }
+
+  html.private-room-chat-active .private-room-keyboard-quick-call:disabled {
+    opacity: 0.45 !important;
   }
 
   html[data-sayup-palette="midnight"].private-room-chat-active .private-room-call-header {

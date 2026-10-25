@@ -216,7 +216,6 @@ function SyncChatViewport({ channelId }) {
     const root = document.documentElement;
     const viewport = window.visualViewport;
     let viewportFrame = 0;
-    let keyboardSettleTimer = 0;
 
     const composerIsFocused = () => Boolean(
       document.activeElement?.closest?.(".private-room-message-composer"),
@@ -238,11 +237,8 @@ function SyncChatViewport({ channelId }) {
         );
       }
 
-      const viewportPageTop = Number.isFinite(viewport?.pageTop)
-        ? viewport.pageTop
-        : (window.scrollY || 0) + (viewport?.offsetTop || 0);
       const viewportTop = focused
-        ? Math.max(0, Math.round(viewportPageTop * 100) / 100)
+        ? Math.max(0, Math.round((viewport?.offsetTop || 0) * 100) / 100)
         : 0;
       root.style.setProperty(
         "--private-room-viewport-top",
@@ -261,41 +257,28 @@ function SyncChatViewport({ channelId }) {
       viewportFrame = requestAnimationFrame(writeViewport);
     };
 
-    const scheduleKeyboardSettle = () => {
-      if (!composerIsFocused()) return;
-      window.clearTimeout(keyboardSettleTimer);
-      keyboardSettleTimer = window.setTimeout(() => {
-        keyboardSettleTimer = 0;
-        writeViewport();
-      }, 220);
-    };
-
     const onViewportResize = () => {
       scheduleViewportWrite();
-      scheduleKeyboardSettle();
     };
 
-    // Standalone iOS can keep emitting visualViewport/window scroll events
-    // long after the keyboard is visible. Never move the room on every event;
-    // capture the final viewport position once the browser finishes panning.
+    // Follow the visual viewport in the same animation frame. A delayed
+    // correction makes iOS move the room once during keyboard animation and
+    // again after it settles, which looks like unsolicited chat scrolling.
     const onViewportPan = () => {
-      scheduleKeyboardSettle();
+      scheduleViewportWrite();
     };
 
     const onFocusIn = (event) => {
       if (!event.target?.closest?.(".private-room-message-composer")) return;
       scheduleViewportWrite();
-      scheduleKeyboardSettle();
     };
 
     const onFocusOut = () => {
-      window.clearTimeout(keyboardSettleTimer);
-      keyboardSettleTimer = 0;
       scheduleViewportWrite();
     };
 
-    // Height changes are safe to apply immediately. Safari's delayed panning
-    // is debounced above so the room cannot bounce with the visual viewport.
+    // Keep height and viewport origin in the same animation frame so Safari
+    // cannot apply a second, delayed room movement after the keyboard opens.
     viewport?.addEventListener("resize", onViewportResize, { passive: true });
     viewport?.addEventListener("scroll", onViewportPan, { passive: true });
     viewport?.addEventListener("scrollend", onViewportPan, { passive: true });
@@ -308,7 +291,6 @@ function SyncChatViewport({ channelId }) {
 
     return () => {
       cancelAnimationFrame(viewportFrame);
-      window.clearTimeout(keyboardSettleTimer);
       viewport?.removeEventListener("resize", onViewportResize);
       viewport?.removeEventListener("scroll", onViewportPan);
       viewport?.removeEventListener("scrollend", onViewportPan);
