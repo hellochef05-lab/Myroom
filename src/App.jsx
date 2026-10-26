@@ -1122,28 +1122,6 @@ function CallHeader({
 
         <button
           type="button"
-          className="private-room-keyboard-quick-call"
-          onClick={onStartAudio}
-          disabled={!joinedRoom || inCall}
-          title="Start audio call"
-          aria-label="Start audio call"
-        >
-          <Phone size={16} aria-hidden="true" />
-        </button>
-
-        <button
-          type="button"
-          className="private-room-keyboard-quick-call"
-          onClick={onStartVideo}
-          disabled={!joinedRoom || inCall}
-          title="Start video call"
-          aria-label="Start video call"
-        >
-          <Video size={16} aria-hidden="true" />
-        </button>
-
-        <button
-          type="button"
           className={`sayup-v2-open-button${menuOpen ? " is-open" : ""}`}
           onClick={() => setMenuOpen((current) => !current)}
           title="More room options"
