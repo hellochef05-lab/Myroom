@@ -1599,6 +1599,17 @@ button {
   width: 190px;
 }
 
+/* Keep the desktop utility controls with the brand side of the layout. They
+   must never float over the authentication card or its secure-status pill. */
+@media (min-width: 768px) {
+  .sayup-landing-top-actions {
+    top: max(24px, env(safe-area-inset-top));
+    right: auto;
+    left: max(32px, calc((100vw - 1320px) / 2 + 8px));
+    justify-content: flex-start;
+  }
+}
+
 .sayup-theme-picker {
   position: relative;
   display: flex;
