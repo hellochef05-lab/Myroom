@@ -291,9 +291,10 @@ function SyncChatViewport({ channelId }) {
 function LatestMessageList({ channelId }) {
   const listHostRef = useRef(null);
   const followFrameRef = useRef(0);
+  const keyboardSettleTimerRef = useRef(0);
   const pinnedToLatestRef = useRef(true);
   const userIsScrollingRef = useRef(false);
-  const interactionResetFrameRef = useRef(0);
+  const interactionResetTimerRef = useRef(0);
   const [initialPositionReady, setInitialPositionReady] = useState(false);
   const [historyPaginationEnabled, setHistoryPaginationEnabled] = useState(false);
   const {
@@ -342,9 +343,11 @@ function LatestMessageList({ channelId }) {
     const moveToLatest = () => {
       cancelAnimationFrame(followFrameRef.current);
       followFrameRef.current = requestAnimationFrame(() => {
-        if (!pinnedToLatestRef.current) return;
-        const latest = Math.max(0, list.scrollHeight - list.clientHeight);
-        if (Math.abs(list.scrollTop - latest) > 1) list.scrollTop = latest;
+        followFrameRef.current = requestAnimationFrame(() => {
+          if (!pinnedToLatestRef.current) return;
+          const latest = Math.max(0, list.scrollHeight - list.clientHeight);
+          if (Math.abs(list.scrollTop - latest) > 1) list.scrollTop = latest;
+        });
       });
     };
 
@@ -356,37 +359,45 @@ function LatestMessageList({ channelId }) {
     const keepLatestAboveKeyboard = (event) => {
       if (!event.target?.closest?.(".private-room-message-composer")) return;
       pinnedToLatestRef.current = true;
-      moveToLatest();
+      window.clearTimeout(keyboardSettleTimerRef.current);
+      keyboardSettleTimerRef.current = window.setTimeout(moveToLatest, 180);
     };
 
-    // Stream hydrates reactions, read state and attachments after the first
-    // message render. ResizeObserver absorbs those height changes only while
-    // the reader is already at the latest message. It never moves a reader who
-    // intentionally scrolled into history.
-    const resizeObserver = new ResizeObserver(moveToLatest);
-    resizeObserver.observe(list);
-    const scrollContent = list.querySelector(".str-chat__message-list-scroll");
-    const messageItems = list.querySelector(".str-chat__ul");
-    if (scrollContent) resizeObserver.observe(scrollContent);
-    if (messageItems) resizeObserver.observe(messageItems);
+    const settleKeyboardResize = () => {
+      if (!pinnedToLatestRef.current) return;
+      window.clearTimeout(keyboardSettleTimerRef.current);
+      // iOS emits several viewport heights while its keyboard animates. Wait
+      // for the final height and perform one correction instead of following
+      // every animation frame up and down.
+      keyboardSettleTimerRef.current = window.setTimeout(moveToLatest, 180);
+    };
 
-    window.visualViewport?.addEventListener("resize", moveToLatest, { passive: true });
-    window.addEventListener("resize", moveToLatest, { passive: true });
+    const onNewMessage = () => {
+      if (pinnedToLatestRef.current) moveToLatest();
+    };
+
+    window.visualViewport?.addEventListener("resize", settleKeyboardResize, { passive: true });
+    if (!window.visualViewport) {
+      window.addEventListener("resize", settleKeyboardResize, { passive: true });
+    }
     document.addEventListener("focusin", keepLatestAboveKeyboard);
     window.addEventListener("sayup:whatsapp-send-follow", scrollAfterOwnSend);
+    channel.on("message.new", onNewMessage);
 
     return () => {
       cancelAnimationFrame(followFrameRef.current);
-      cancelAnimationFrame(interactionResetFrameRef.current);
-      resizeObserver.disconnect();
-      window.visualViewport?.removeEventListener("resize", moveToLatest);
-      window.removeEventListener("resize", moveToLatest);
+      window.clearTimeout(keyboardSettleTimerRef.current);
+      window.clearTimeout(interactionResetTimerRef.current);
+      window.visualViewport?.removeEventListener("resize", settleKeyboardResize);
+      window.removeEventListener("resize", settleKeyboardResize);
       document.removeEventListener("focusin", keepLatestAboveKeyboard);
       window.removeEventListener("sayup:whatsapp-send-follow", scrollAfterOwnSend);
+      channel.off("message.new", onNewMessage);
     };
-  }, [initialPositionReady]);
+  }, [channel, initialPositionReady]);
 
   const beginUserScroll = () => {
+    window.clearTimeout(interactionResetTimerRef.current);
     userIsScrollingRef.current = true;
     if (initialPositionReady && !historyPaginationEnabled) {
       setHistoryPaginationEnabled(true);
@@ -394,25 +405,21 @@ function LatestMessageList({ channelId }) {
   };
 
   const finishUserScroll = () => {
-    cancelAnimationFrame(interactionResetFrameRef.current);
-    interactionResetFrameRef.current = requestAnimationFrame(() => {
-      const list = listHostRef.current?.querySelector(".str-chat__list");
-      if (list) {
-        const distanceFromLatest =
-          list.scrollHeight - list.clientHeight - list.scrollTop;
-        pinnedToLatestRef.current = distanceFromLatest <= 48;
-      }
+    window.clearTimeout(interactionResetTimerRef.current);
+    interactionResetTimerRef.current = window.setTimeout(() => {
       userIsScrollingRef.current = false;
-    });
+    }, 220);
   };
 
   const recordUserScrollPosition = (event) => {
     if (!userIsScrollingRef.current) return;
-    const list = event.currentTarget.querySelector(".str-chat__list");
+    const list = event.target?.closest?.(".str-chat__list") ||
+      event.currentTarget.querySelector(".str-chat__list");
     if (!list) return;
     const distanceFromLatest =
       list.scrollHeight - list.clientHeight - list.scrollTop;
     pinnedToLatestRef.current = distanceFromLatest <= 48;
+    finishUserScroll();
   };
 
   return (
@@ -422,13 +429,12 @@ function LatestMessageList({ channelId }) {
       style={{ visibility: initialPositionReady ? "visible" : "hidden" }}
       aria-busy={!initialPositionReady}
       onTouchStartCapture={beginUserScroll}
-      onTouchMoveCapture={recordUserScrollPosition}
       onTouchEndCapture={finishUserScroll}
       onPointerDownCapture={beginUserScroll}
       onPointerUpCapture={finishUserScroll}
-      onWheelCapture={(event) => {
+      onScrollCapture={recordUserScrollPosition}
+      onWheelCapture={() => {
         beginUserScroll();
-        recordUserScrollPosition(event);
         finishUserScroll();
       }}
     >
