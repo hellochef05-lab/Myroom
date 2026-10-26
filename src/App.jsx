@@ -291,6 +291,9 @@ function SyncChatViewport({ channelId }) {
 function LatestMessageList({ channelId }) {
   const listHostRef = useRef(null);
   const followFrameRef = useRef(0);
+  const pinnedToLatestRef = useRef(true);
+  const userIsScrollingRef = useRef(false);
+  const interactionResetFrameRef = useRef(0);
   const [initialPositionReady, setInitialPositionReady] = useState(false);
   const [historyPaginationEnabled, setHistoryPaginationEnabled] = useState(false);
   const {
@@ -298,15 +301,13 @@ function LatestMessageList({ channelId }) {
     hasMore = false,
     hasMoreNewer = false,
     loading,
-    messages = [],
   } = useChannelStateContext("LatestMessageList");
 
   useLayoutEffect(() => {
     if (!channel?.initialized || loading || initialPositionReady) return undefined;
 
-    // Position once while hidden. After the list becomes visible, keyboard
-    // changes, incoming messages and read receipts are never allowed to set
-    // scrollTop.
+    // Position exactly once while hidden. The resize controller below owns all
+    // later bottom-pinning, so message hydration cannot restart this sequence.
     let revealFrame = 0;
     let positionFrame = 0;
     let attempts = 0;
@@ -320,6 +321,7 @@ function LatestMessageList({ channelId }) {
       list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
       revealFrame = requestAnimationFrame(() => {
         list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
+        pinnedToLatestRef.current = true;
         setInitialPositionReady(true);
       });
     };
@@ -329,37 +331,88 @@ function LatestMessageList({ channelId }) {
       cancelAnimationFrame(positionFrame);
       cancelAnimationFrame(revealFrame);
     };
-  }, [channel, channelId, initialPositionReady, loading, messages.length]);
+  }, [channel, channelId, initialPositionReady, loading]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!initialPositionReady) return undefined;
 
     const list = listHostRef.current?.querySelector(".str-chat__list");
     if (!list) return undefined;
 
-    const scrollAfterOwnSend = () => {
+    const moveToLatest = () => {
       cancelAnimationFrame(followFrameRef.current);
       followFrameRef.current = requestAnimationFrame(() => {
-        followFrameRef.current = requestAnimationFrame(() => {
-          list.scrollTop = Math.max(0, list.scrollHeight - list.clientHeight);
-        });
+        if (!pinnedToLatestRef.current) return;
+        const latest = Math.max(0, list.scrollHeight - list.clientHeight);
+        if (Math.abs(list.scrollTop - latest) > 1) list.scrollTop = latest;
       });
     };
 
-    // This is the only visible programmatic movement: one jump after the local
-    // user sends. Server acknowledgements cannot trigger it a second time.
+    const scrollAfterOwnSend = () => {
+      pinnedToLatestRef.current = true;
+      moveToLatest();
+    };
+
+    const keepLatestAboveKeyboard = (event) => {
+      if (!event.target?.closest?.(".private-room-message-composer")) return;
+      pinnedToLatestRef.current = true;
+      moveToLatest();
+    };
+
+    // Stream hydrates reactions, read state and attachments after the first
+    // message render. ResizeObserver absorbs those height changes only while
+    // the reader is already at the latest message. It never moves a reader who
+    // intentionally scrolled into history.
+    const resizeObserver = new ResizeObserver(moveToLatest);
+    resizeObserver.observe(list);
+    const scrollContent = list.querySelector(".str-chat__message-list-scroll");
+    const messageItems = list.querySelector(".str-chat__ul");
+    if (scrollContent) resizeObserver.observe(scrollContent);
+    if (messageItems) resizeObserver.observe(messageItems);
+
+    window.visualViewport?.addEventListener("resize", moveToLatest, { passive: true });
+    window.addEventListener("resize", moveToLatest, { passive: true });
+    document.addEventListener("focusin", keepLatestAboveKeyboard);
     window.addEventListener("sayup:whatsapp-send-follow", scrollAfterOwnSend);
 
     return () => {
       cancelAnimationFrame(followFrameRef.current);
+      cancelAnimationFrame(interactionResetFrameRef.current);
+      resizeObserver.disconnect();
+      window.visualViewport?.removeEventListener("resize", moveToLatest);
+      window.removeEventListener("resize", moveToLatest);
+      document.removeEventListener("focusin", keepLatestAboveKeyboard);
       window.removeEventListener("sayup:whatsapp-send-follow", scrollAfterOwnSend);
     };
   }, [initialPositionReady]);
 
-  const enableHistoryPagination = () => {
+  const beginUserScroll = () => {
+    userIsScrollingRef.current = true;
     if (initialPositionReady && !historyPaginationEnabled) {
       setHistoryPaginationEnabled(true);
     }
+  };
+
+  const finishUserScroll = () => {
+    cancelAnimationFrame(interactionResetFrameRef.current);
+    interactionResetFrameRef.current = requestAnimationFrame(() => {
+      const list = listHostRef.current?.querySelector(".str-chat__list");
+      if (list) {
+        const distanceFromLatest =
+          list.scrollHeight - list.clientHeight - list.scrollTop;
+        pinnedToLatestRef.current = distanceFromLatest <= 48;
+      }
+      userIsScrollingRef.current = false;
+    });
+  };
+
+  const recordUserScrollPosition = (event) => {
+    if (!userIsScrollingRef.current) return;
+    const list = event.currentTarget.querySelector(".str-chat__list");
+    if (!list) return;
+    const distanceFromLatest =
+      list.scrollHeight - list.clientHeight - list.scrollTop;
+    pinnedToLatestRef.current = distanceFromLatest <= 48;
   };
 
   return (
@@ -368,8 +421,16 @@ function LatestMessageList({ channelId }) {
       className="sayup-latest-message-list"
       style={{ visibility: initialPositionReady ? "visible" : "hidden" }}
       aria-busy={!initialPositionReady}
-      onTouchMoveCapture={enableHistoryPagination}
-      onWheelCapture={enableHistoryPagination}
+      onTouchStartCapture={beginUserScroll}
+      onTouchMoveCapture={recordUserScrollPosition}
+      onTouchEndCapture={finishUserScroll}
+      onPointerDownCapture={beginUserScroll}
+      onPointerUpCapture={finishUserScroll}
+      onWheelCapture={(event) => {
+        beginUserScroll();
+        recordUserScrollPosition(event);
+        finishUserScroll();
+      }}
     >
       <MessageList
         hasMore={historyPaginationEnabled && hasMore}
