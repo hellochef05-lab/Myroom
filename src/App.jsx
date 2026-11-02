@@ -344,7 +344,7 @@ function LatestMessageList({ channelId }) {
       cancelAnimationFrame(followFrameRef.current);
       followFrameRef.current = requestAnimationFrame(() => {
         followFrameRef.current = requestAnimationFrame(() => {
-          if (!pinnedToLatestRef.current) return;
+          if (!pinnedToLatestRef.current || userIsScrollingRef.current) return;
           const latest = Math.max(0, list.scrollHeight - list.clientHeight);
           if (Math.abs(list.scrollTop - latest) > 1) list.scrollTop = latest;
         });
@@ -358,7 +358,7 @@ function LatestMessageList({ channelId }) {
 
     const keepLatestAboveKeyboard = (event) => {
       if (!event.target?.closest?.(".private-room-message-composer")) return;
-      pinnedToLatestRef.current = true;
+      if (!pinnedToLatestRef.current || userIsScrollingRef.current) return;
       window.clearTimeout(keyboardSettleTimerRef.current);
       keyboardSettleTimerRef.current = window.setTimeout(moveToLatest, 180);
     };
@@ -399,6 +399,8 @@ function LatestMessageList({ channelId }) {
   const beginUserScroll = () => {
     window.clearTimeout(interactionResetTimerRef.current);
     userIsScrollingRef.current = true;
+    cancelAnimationFrame(followFrameRef.current);
+    window.clearTimeout(keyboardSettleTimerRef.current);
     if (initialPositionReady && !historyPaginationEnabled) {
       setHistoryPaginationEnabled(true);
     }
@@ -433,6 +435,12 @@ function LatestMessageList({ channelId }) {
       onPointerDownCapture={beginUserScroll}
       onPointerUpCapture={finishUserScroll}
       onScrollCapture={recordUserScrollPosition}
+      onKeyDownCapture={(event) => {
+        if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) {
+          beginUserScroll();
+          finishUserScroll();
+        }
+      }}
       onWheelCapture={() => {
         beginUserScroll();
         finishUserScroll();
@@ -1768,6 +1776,7 @@ function WebRTCCall({
   const screenStreamRef = useRef(null);
   const pendingOfferRef = useRef(null);
   const iceQueueRef = useRef([]);
+  const localIceCandidatesRef = useRef([]);
   const acceptedRef = useRef(false);
   const isCallerRef = useRef(false);
   const offerPreparedRef = useRef(false);
@@ -2184,6 +2193,7 @@ function WebRTCCall({
   };
 
   const createPC = () => {
+    localIceCandidatesRef.current = [];
     const pc = new RTCPeerConnection({
       iceServers: iceServersRef.current,
       bundlePolicy: "max-bundle",
@@ -2203,6 +2213,7 @@ function WebRTCCall({
 
     pc.onicecandidate = (event) => {
       if (!event.candidate) return;
+      localIceCandidatesRef.current.push(event.candidate.toJSON());
 
       if (event.candidate.type === "relay") {
         relayCandidateSeenRef.current = true;
@@ -2467,7 +2478,7 @@ function WebRTCCall({
       reconnectionDelay: 400,
       reconnectionDelayMax: 6000,
       randomizationFactor: 0.4,
-      timeout: 30000,
+      timeout: 8000,
       forceNew: false,
     });
 
@@ -2544,6 +2555,14 @@ function WebRTCCall({
                     from: myName,
                   },
                 });
+                // A peer who joined after ringing missed the trickled ICE
+                // candidates. Replay them with the cached offer immediately.
+                for (const candidate of localIceCandidatesRef.current) {
+                  socketRef.current?.emit("signal", {
+                    roomId,
+                    data: { type: "ice", candidate },
+                  });
+                }
               }
             }
             setConnectionMessage("Connecting…");
@@ -2800,12 +2819,10 @@ function WebRTCCall({
 
       // Request media directly from the user's tap. iOS/Safari can reject a
       // delayed getUserMedia call when it is started later by a socket event.
-      await startLocalMedia(type);
-
-      // The room UI is intentionally shown before the Socket.IO handshake
-      // completes. Confirm membership here so a quick iPhone tap cannot send
-      // the call before this device is able to receive the peer's answer.
-      const roomReady = await ensureCallRoomReady();
+      const [, roomReady] = await Promise.all([
+        startLocalMedia(type),
+        ensureCallRoomReady(),
+      ]);
       if (!roomReady) {
         throw new Error("Call signaling room is unavailable");
       }
@@ -2887,7 +2904,10 @@ function WebRTCCall({
       acceptedRef.current = true;
       setConnectionMessage("Connecting…");
 
-      const roomReady = await ensureCallRoomReady();
+      const [, roomReady] = await Promise.all([
+        startLocalMedia(incoming?.callType || "audio"),
+        ensureCallRoomReady(),
+      ]);
       if (!roomReady) {
         throw new Error("Call signaling room is unavailable");
       }
