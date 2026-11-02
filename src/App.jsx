@@ -1,3 +1,4 @@
+import { getChatViewportGeometry } from "./chatViewport.js";
 import {
   useEffect,
   useLayoutEffect,
@@ -225,12 +226,12 @@ function SyncChatViewport({ channelId }) {
       viewportFrame = 0;
       const focused = composerIsFocused();
 
-      const measuredHeight = Math.min(
-        viewport?.height || Number.POSITIVE_INFINITY,
-        window.innerHeight || Number.POSITIVE_INFINITY,
-        root.clientHeight || Number.POSITIVE_INFINITY,
+      const { height: measuredHeight, top } = getChatViewportGeometry(
+        viewport,
+        window.innerHeight,
       );
-      if (Number.isFinite(measuredHeight)) {
+      root.style.setProperty("--private-room-viewport-top", `${top}px`);
+      if (measuredHeight !== null) {
         root.style.setProperty(
           "--private-room-visible-height",
           `${Math.round(measuredHeight * 100) / 100}px`,
@@ -262,9 +263,9 @@ function SyncChatViewport({ channelId }) {
       scheduleViewportWrite();
     };
 
-    // Only the available height follows the keyboard. Never follow Safari's
-    // visualViewport scroll/offset events: doing so repositions the entire
-    // room and looks like automatic message scrolling in an installed PWA.
+    // Safari can pan the visual viewport without resizing it when focusing
+    // an input. Update the frame origin as well as its height, in the same RAF.
+    viewport?.addEventListener("scroll", scheduleViewportWrite, { passive: true });
     viewport?.addEventListener("resize", onViewportResize, { passive: true });
     window.addEventListener("resize", onViewportResize, { passive: true });
     window.addEventListener("orientationchange", scheduleViewportWrite);
@@ -274,11 +275,13 @@ function SyncChatViewport({ channelId }) {
 
     return () => {
       cancelAnimationFrame(viewportFrame);
+      viewport?.removeEventListener("scroll", scheduleViewportWrite);
       viewport?.removeEventListener("resize", onViewportResize);
       window.removeEventListener("resize", onViewportResize);
       window.removeEventListener("orientationchange", scheduleViewportWrite);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
+      root.style.removeProperty("--private-room-viewport-top");
       root.style.removeProperty("--private-room-visible-height");
       root.style.removeProperty("--private-room-composer-bottom");
       root.classList.remove("private-room-keyboard-open");
