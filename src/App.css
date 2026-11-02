@@ -5047,3 +5047,21 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
     font-size: 16px !important;
   }
 }
+
+/* An explicit way back to the latest messages; keyboard events never opt in. */
+.sayup-latest-message-list { position: relative; }
+.sayup-follow-latest {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 20;
+  border: 1px solid #d6e4df;
+  border-radius: 20px;
+  padding: 9px 14px;
+  background: #fff;
+  color: #075e54;
+  box-shadow: 0 2px 8px #0002;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}

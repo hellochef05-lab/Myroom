@@ -300,6 +300,7 @@ function LatestMessageList({ channelId }) {
   const interactionResetTimerRef = useRef(0);
   const [initialPositionReady, setInitialPositionReady] = useState(false);
   const [historyPaginationEnabled, setHistoryPaginationEnabled] = useState(false);
+  const [followingLatest, setFollowingLatest] = useState(true);
   const {
     channel,
     hasMore = false,
@@ -355,7 +356,10 @@ function LatestMessageList({ channelId }) {
     };
 
     const scrollAfterOwnSend = () => {
+      // Sending or tapping Latest is an explicit request to resume following.
+      userIsScrollingRef.current = false;
       pinnedToLatestRef.current = true;
+      setFollowingLatest(true);
       moveToLatest();
     };
 
@@ -414,6 +418,10 @@ function LatestMessageList({ channelId }) {
   const beginUserScroll = () => {
     window.clearTimeout(interactionResetTimerRef.current);
     userIsScrollingRef.current = true;
+    // Detach synchronously, BEFORE Safari emits any scroll/resize callbacks.
+    // This choice persists beyond the gesture/momentum timer and keyboard use.
+    pinnedToLatestRef.current = false;
+    setFollowingLatest(false);
     cancelAnimationFrame(followFrameRef.current);
     window.clearTimeout(keyboardSettleTimerRef.current);
     if (initialPositionReady && !historyPaginationEnabled) {
@@ -435,7 +443,12 @@ function LatestMessageList({ channelId }) {
     if (!list) return;
     const distanceFromLatest =
       list.scrollHeight - list.clientHeight - list.scrollTop;
-    pinnedToLatestRef.current = distanceFromLatest <= 48;
+    // A viewport resize can make the list appear close to the bottom. Only
+    // an explicit Latest/send action may re-enable following after browsing.
+    if (distanceFromLatest > 48) {
+      pinnedToLatestRef.current = false;
+      setFollowingLatest(false);
+    }
     finishUserScroll();
   };
 
@@ -468,6 +481,15 @@ function LatestMessageList({ channelId }) {
         suppressAutoscroll
         scrolledUpThreshold={48}
       />
+      {!followingLatest && (
+        <button
+          className="sayup-follow-latest"
+          type="button"
+          onClick={() => window.dispatchEvent(new Event("sayup:whatsapp-send-follow"))}
+        >
+          ↓ Latest messages
+        </button>
+      )}
     </div>
   );
 }
