@@ -376,6 +376,17 @@ function LatestMessageList({ channelId }) {
       if (pinnedToLatestRef.current) moveToLatest();
     };
 
+    // History hydration and late-loading media can change content height after
+    // the initial positioning frames. Follow that growth only while pinned;
+    // reading older messages must never be interrupted by a resize callback.
+    const content = list.querySelector(".str-chat__message-list-scroll");
+    const contentResizeObserver = new ResizeObserver(() => {
+      if (pinnedToLatestRef.current && !userIsScrollingRef.current) moveToLatest();
+    });
+    contentResizeObserver.observe(list);
+    if (content) contentResizeObserver.observe(content);
+    moveToLatest();
+
     window.visualViewport?.addEventListener("resize", settleKeyboardResize, { passive: true });
     if (!window.visualViewport) {
       window.addEventListener("resize", settleKeyboardResize, { passive: true });
@@ -385,6 +396,7 @@ function LatestMessageList({ channelId }) {
     channel.on("message.new", onNewMessage);
 
     return () => {
+      contentResizeObserver.disconnect();
       cancelAnimationFrame(followFrameRef.current);
       window.clearTimeout(keyboardSettleTimerRef.current);
       window.clearTimeout(interactionResetTimerRef.current);
