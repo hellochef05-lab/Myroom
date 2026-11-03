@@ -1,3 +1,4 @@
+import { createIceConfigLoader, callVideoConstraints, applyCallBandwidthLimits } from "./callNetwork.js";
 import { getChatViewportGeometry } from "./chatViewport.js";
 import {
   useEffect,
@@ -59,6 +60,7 @@ const isMobile =
 
 const apiKey = import.meta.env.VITE_STREAM_API_KEY;
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+const loadCallIceConfig = createIceConfigLoader(`${API_BASE}/api/call/ice-servers`);
 
 function getStreamClient() {
   return StreamChat.getInstance(apiKey, {
@@ -1936,11 +1938,7 @@ function WebRTCCall({
   useEffect(() => {
     let cancelled = false;
 
-    fetch(`${API_BASE}/api/call/ice-servers`, { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("ICE server lookup failed");
-        return response.json();
-      })
+    loadCallIceConfig()
       .then((data) => {
         if (cancelled) return;
         iceServersRef.current = mergeIceServers(
@@ -1956,6 +1954,19 @@ function WebRTCCall({
       cancelled = true;
     };
   }, []);
+
+  const prepareCallRoutes = async (pc) => {
+    try {
+      const data = await loadCallIceConfig();
+      iceServersRef.current = mergeIceServers(data.iceServers, defaultIceServers);
+    } catch {
+      // A sleeping backend must not prevent trying already available routes.
+    }
+    if (pcRef.current !== pc || pc.signalingState === "closed") {
+      throw new Error("Call cancelled");
+    }
+    pc.setConfiguration({ ...pc.getConfiguration(), iceServers: iceServersRef.current });
+  };
 
   const findSenderByKind = (pc, kind) =>
     pc?.getSenders?.().find((sender) => sender.track?.kind === kind) || null;
@@ -2194,10 +2205,7 @@ function WebRTCCall({
     );
 
     try {
-      pc.setConfiguration({
-        ...pc.getConfiguration(),
-        iceServers: iceServersRef.current,
-      });
+      await prepareCallRoutes(pc);
       pc.restartIce?.();
 
       const nextCallType = activeCallTypeRef.current || "audio";
@@ -2207,6 +2215,7 @@ function WebRTCCall({
         offerToReceiveVideo: nextCallType === "video",
       });
       await pc.setLocalDescription(offer);
+      await applyCallBandwidthLimits(pc);
 
       socket.emit("signal", {
         roomId,
@@ -2366,7 +2375,7 @@ function WebRTCCall({
       type === "video"
         ? {
             audio: preferredAudioConstraints,
-            video: { facingMode: { ideal: facingMode } },
+            video: callVideoConstraints(facingMode),
           }
         : { audio: preferredAudioConstraints, video: false };
 
@@ -2439,7 +2448,7 @@ function WebRTCCall({
     setCallType(nextCallType);
     setRemoteName(data.from || "Contact");
 
-    await startLocalMedia(nextCallType);
+    await Promise.all([startLocalMedia(nextCallType), prepareCallRoutes(pc)]);
     await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
 
     for (const candidate of iceQueueRef.current) {
@@ -2449,6 +2458,7 @@ function WebRTCCall({
 
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
+    await applyCallBandwidthLimits(pc);
 
     socketRef.current?.emit("signal", {
       roomId,
@@ -2479,7 +2489,7 @@ function WebRTCCall({
       pc = createPC();
     }
 
-    await startLocalMedia(type);
+    await Promise.all([startLocalMedia(type), prepareCallRoutes(pc)]);
 
     const offer = await pc.createOffer({
       offerToReceiveAudio: true,
@@ -2488,6 +2498,7 @@ function WebRTCCall({
 
     try {
       await pc.setLocalDescription(offer);
+      await applyCallBandwidthLimits(pc);
       offerPreparedRef.current = true;
 
       socketRef.current?.emit("signal", {
@@ -3041,7 +3052,7 @@ function WebRTCCall({
 
     try {
       const replacementStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: nextFacingMode } },
+        video: callVideoConstraints(nextFacingMode),
         audio: false,
       });
       const replacementTrack = replacementStream.getVideoTracks()[0];
