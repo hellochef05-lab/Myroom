@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
 
     VitePWA({
-      registerType: "autoUpdate",
+      registerType: "prompt",
 
       includeAssets: [
         "favicon.ico",
@@ -62,7 +62,7 @@ export default defineConfig({
         navigateFallback: "/index.html",
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        skipWaiting: true,
+        skipWaiting: false,
 
         // API requests must bypass Workbox. Wrapping Render requests in a
         // NetworkOnly route turns a temporary cold start into noisy rejected

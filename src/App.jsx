@@ -1,3 +1,4 @@
+import { createRoomJoiner, CALL_SIGNAL_ACK_TIMEOUT_MS } from "./callSignaling.js";
 import { createIceConfigLoader, callVideoConstraints, applyCallBandwidthLimits } from "./callNetwork.js";
 import { getChatViewportGeometry } from "./chatViewport.js";
 import {
@@ -1809,6 +1810,9 @@ function WebRTCCall({
   onOpenV2,
 }) {
   const socketRef = useRef(null);
+  const roomJoinerRef = useRef(null);
+  const callAttemptRef = useRef(0);
+  const offerPreparationRef = useRef(null);
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
@@ -1836,9 +1840,9 @@ function WebRTCCall({
   const audioContextRef = useRef(null);
   const audioUnlockedRef = useRef(false);
 
-  // The room screen is available immediately. Socket.IO readiness is updated
-  // in the background and only changes this state if the join actually fails.
-  const [joinedRoom, setJoinedRoom] = useState(() => Boolean(roomId));
+  // Call controls become ready only after actual signaling membership is
+  // confirmed; chat availability alone does not mean the call route is ready.
+  const [joinedRoom, setJoinedRoom] = useState(false);
   const [remoteStream, setRemoteStream] = useState(null);
   const [incoming, setIncoming] = useState(null);
   const [inCall, setInCall] = useState(false);
@@ -1899,41 +1903,8 @@ function WebRTCCall({
     }
   };
 
-  const ensureCallRoomReady = async () => {
-    const socket = socketRef.current;
-    if (!socket || !roomId) return false;
-
-    return new Promise((resolve) => {
-      let settled = false;
-      let timer = null;
-
-      const finish = (ready) => {
-        if (settled) return;
-        settled = true;
-        if (timer) window.clearTimeout(timer);
-        socket.off("connect", joinRoom);
-        setJoinedRoom(ready);
-        resolve(ready);
-      };
-
-      const joinRoom = () => {
-        socket.timeout(8000).emit(
-          "join-room",
-          { roomId },
-          (error, result) => finish(!error && Boolean(result?.ok)),
-        );
-      };
-
-      timer = window.setTimeout(() => finish(false), 9000);
-
-      if (socket.connected) {
-        joinRoom();
-      } else {
-        socket.once("connect", joinRoom);
-        socket.connect();
-      }
-    });
-  };
+  const ensureCallRoomReady = () =>
+    roomJoinerRef.current?.ensure() || Promise.resolve(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -2079,6 +2050,8 @@ function WebRTCCall({
   };
 
   const cleanupCall = () => {
+    callAttemptRef.current += 1;
+    offerPreparationRef.current = null;
     if (connectionAttemptTimeoutRef.current) {
       clearTimeout(connectionAttemptTimeoutRef.current);
       connectionAttemptTimeoutRef.current = null;
@@ -2391,6 +2364,10 @@ function WebRTCCall({
       throw err;
     }
 
+    if (pcRef.current !== pc || pc.signalingState === "closed") {
+      stream.getTracks().forEach((track) => track.stop());
+      throw new Error("Call cancelled");
+    }
     localStreamRef.current = stream;
 
     for (const track of stream.getTracks()) {
@@ -2470,51 +2447,64 @@ function WebRTCCall({
     setIncoming(null);
   };
 
-  const startOfferFlow = async (type) => {
-    if (
-      offerPreparedRef.current &&
-      pcRef.current?.localDescription?.type === "offer"
-    ) {
-      return true;
-    }
+  const startOfferFlow = (type) => {
+    if (offerPreparationRef.current) return offerPreparationRef.current;
+    const attemptId = callAttemptRef.current;
+    const preparation = (async () => {
+      if (
+        offerPreparedRef.current &&
+        pcRef.current?.localDescription?.type === "offer"
+      ) {
+        return true;
+      }
 
-    const roomReady = await ensureCallRoomReady();
-    if (!roomReady) {
-      throw new Error("Call signaling room is unavailable");
-    }
+      const roomReady = await ensureCallRoomReady();
+      if (callAttemptRef.current !== attemptId) throw new Error("Call cancelled");
+      if (!roomReady) {
+        throw new Error("Call signaling room is unavailable");
+      }
 
-    activeCallTypeRef.current = type;
-    let pc = pcRef.current;
-    if (!pc) {
-      pc = createPC();
-    }
+      activeCallTypeRef.current = type;
+      let pc = pcRef.current;
+      if (!pc) {
+        pc = createPC();
+      }
 
-    await Promise.all([startLocalMedia(type), prepareCallRoutes(pc)]);
+      await Promise.all([startLocalMedia(type), prepareCallRoutes(pc)]);
+      if (callAttemptRef.current !== attemptId || pcRef.current !== pc) throw new Error("Call cancelled");
 
-    const offer = await pc.createOffer({
-      offerToReceiveAudio: true,
-      offerToReceiveVideo: type === "video",
-    });
-
-    try {
-      await pc.setLocalDescription(offer);
-      await applyCallBandwidthLimits(pc);
-      offerPreparedRef.current = true;
-
-      socketRef.current?.emit("signal", {
-        roomId,
-        data: {
-          type: "offer",
-          offer,
-          callType: type,
-          from: myName,
-        },
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: type === "video",
       });
-      return true;
-    } catch (err) {
-      offerPreparedRef.current = false;
-      throw err;
-    }
+
+      try {
+        await pc.setLocalDescription(offer);
+        await applyCallBandwidthLimits(pc);
+        offerPreparedRef.current = true;
+
+        socketRef.current?.emit("signal", {
+          roomId,
+          data: {
+            type: "offer",
+            offer,
+            callType: type,
+            from: myName,
+          },
+        });
+        return true;
+      } catch (err) {
+        offerPreparedRef.current = false;
+        throw err;
+      }
+
+    })();
+    offerPreparationRef.current = preparation;
+    const release = () => {
+      if (offerPreparationRef.current === preparation) offerPreparationRef.current = null;
+    };
+    preparation.then(release, release);
+    return preparation;
   };
 
   useEffect(() => {
@@ -2531,40 +2521,26 @@ function WebRTCCall({
     });
 
     socketRef.current = s;
-
-    const joinCurrentRoom = () => {
-      if (!roomId) return;
-
-      s.emit("join-room", { roomId }, (res) => {
-        if (res?.ok) {
-          setJoinedRoom(true);
-        } else {
-          setJoinedRoom(false);
-        }
-      });
+    const joiner = createRoomJoiner(s, roomId, { onReady: setJoinedRoom });
+    roomJoinerRef.current = joiner;
+    const joinCurrentRoom = () => { joiner.ensure(); };
+    const resume = () => {
+      if (document.visibilityState === "hidden") return;
+      if (!s.connected) s.connect();
+      joiner.ensure();
     };
-
-    s.on("connect", () => {
-      joinCurrentRoom();
-    });
-
-    s.on("reconnect", () => {
-      joinCurrentRoom();
-    });
-
-    s.on("disconnect", (reason) => {
-      if (reason === "io client disconnect") {
-        setJoinedRoom(false);
-        return;
-      }
-      // Stay joinable during brief drops so calls/chat can recover on 2G/3G.
-      joinCurrentRoom();
-    });
+    s.on("connect", joinCurrentRoom);
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("online", resume);
+    if (s.connected) joinCurrentRoom();
 
     return () => {
-      if (roomId) {
-        s.emit("leave-room", { roomId });
-      }
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("online", resume);
+      s.off("connect", joinCurrentRoom);
+      joiner.dispose();
+      if (roomJoinerRef.current === joiner) roomJoinerRef.current = null;
+      if (roomId && s.connected) s.emit("leave-room", { roomId });
       s.disconnect();
       socketRef.current = null;
       setJoinedRoom(false);
@@ -2589,6 +2565,7 @@ function WebRTCCall({
 
         if (data.type === "accept") {
           if (isCallerRef.current) {
+            acceptedRef.current = true;
             if (!offerPreparedRef.current) {
               await startOfferFlow(data.callType || "audio");
             } else if (!data.offerReady) {
@@ -2852,6 +2829,8 @@ function WebRTCCall({
     if (inCall) return;
 
     cleanupCall();
+    const attemptId = callAttemptRef.current;
+    const isCurrentAttempt = () => callAttemptRef.current === attemptId;
     unlockRemoteAudio({ fromUserGesture: true }).catch(() => {});
 
     try {
@@ -2871,6 +2850,7 @@ function WebRTCCall({
         startLocalMedia(type),
         ensureCallRoomReady(),
       ]);
+      if (!isCurrentAttempt()) return;
       if (!roomReady) {
         throw new Error("Call signaling room is unavailable");
       }
@@ -2882,7 +2862,7 @@ function WebRTCCall({
             resolve({ ok: false });
             return;
           }
-          socket.timeout(20000).emit(
+          socket.timeout(CALL_SIGNAL_ACK_TIMEOUT_MS).emit(
             "signal",
             {
               roomId,
@@ -2904,62 +2884,70 @@ function WebRTCCall({
 
       let result = { ok: false, recipients: 0 };
       let routePreparation = null;
-      for (let attempt = 0; attempt < 4; attempt += 1) {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (!isCurrentAttempt()) return;
         const ringResult = ringOnce();
         if (!routePreparation) {
           // Prepare media, ICE and the WebRTC offer while the other phone is
           // ringing. Answering then completes an already-started connection.
           routePreparation = startOfferFlow(type).catch((err) => {
+            if (!isCurrentAttempt()) return false;
             offerPreparedRef.current = false;
             console.warn("Call route preparation failed", err);
             return false;
           });
         }
         result = await ringResult;
+        if (!isCurrentAttempt() || acceptedRef.current || pcRef.current?.connectionState === "connected") return;
         if (result.ok && result.recipients > 0) break;
-        if (attempt < 3) {
+        if (attempt < 2) {
           setConnectionMessage(
             result.ok
               ? "Waiting for the other person to come online…"
               : "Slow network — retrying call…",
           );
           await wait(700 + attempt * 300);
+          if (!isCurrentAttempt()) return;
           await ensureCallRoomReady();
         }
       }
 
       await routePreparation;
+      if (!isCurrentAttempt() || acceptedRef.current || pcRef.current?.connectionState === "connected") return;
 
       if (!result.ok) {
-        setConnectionMessage("Still ringing on a slow network…");
+        setConnectionMessage("Unable to reach the call server. Please retry.");
         return;
       }
 
       setConnectionMessage(
         result.recipients > 0
           ? "Ringing…"
-          : "Waiting for the other person… they can join on a slow network too",
+          : "Waiting for the other person to open this room…",
       );
     } catch (err) {
+      if (!isCurrentAttempt()) return;
       console.error("startCall failed", err);
       cleanupCall();
     }
   };
 
   const answerCall = async () => {
+    const attemptId = callAttemptRef.current;
     try {
       unlockRemoteAudio({ fromUserGesture: true }).catch(() => {});
-      acceptedRef.current = true;
       setConnectionMessage("Connecting…");
 
       const [, roomReady] = await Promise.all([
         startLocalMedia(incoming?.callType || "audio"),
         ensureCallRoomReady(),
       ]);
+      if (callAttemptRef.current !== attemptId) return;
       if (!roomReady) {
         throw new Error("Call signaling room is unavailable");
       }
 
+      acceptedRef.current = true;
       socketRef.current?.emit("signal", {
         roomId,
         data: {
@@ -2978,7 +2966,9 @@ function WebRTCCall({
         setIncoming(null);
       }
     } catch (err) {
+      if (callAttemptRef.current !== attemptId) return;
       console.error("answerCall failed", err);
+      cleanupCall();
     }
   };
 
@@ -4341,7 +4331,7 @@ const [supportLoading, setSupportLoading] = useState(false);
   const [planDrafts, setPlanDrafts] = useState({});
   const [userEditDrafts, setUserEditDrafts] = useState({});
   const [supportForm, setSupportForm] = useState({
-    
+
     name: "",
     contact: "",
     accessKey: "",

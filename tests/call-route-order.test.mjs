@@ -8,7 +8,7 @@ const steps=[];let release;
 const routeReady=new Promise(resolve=>{release=resolve;});
 const pc={createOffer:async()=>{steps.push('offer');return{type:'offer'};},setLocalDescription:async()=>steps.push('description')};
 const run=vm.runInNewContext(source.slice(begin,end)+'\nstartOfferFlow',{
- offerPreparedRef:{current:false},pcRef:{current:pc},activeCallTypeRef:{current:null},
+ callAttemptRef:{current:0},offerPreparationRef:{current:null},offerPreparedRef:{current:false},pcRef:{current:pc},activeCallTypeRef:{current:null},
  ensureCallRoomReady:async()=>true,startLocalMedia:async()=>steps.push('media'),
  prepareCallRoutes:async()=>{await routeReady;steps.push('routes');},applyCallBandwidthLimits:async()=>steps.push('limits'),
  socketRef:{current:{emit(){steps.push('signal');}}},roomId:'test',myName:'Test',
