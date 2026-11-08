@@ -44,17 +44,8 @@ if (isAdminRoute) {
 }
 
 if ("serviceWorker" in navigator) {
-  const hadControllerAtLaunch = Boolean(navigator.serviceWorker.controller);
-  let refreshingForUpdate = false;
-
-  if (hadControllerAtLaunch) {
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (refreshingForUpdate) return;
-      refreshingForUpdate = true;
-      window.location.reload();
-    });
-  }
-
+  // Never reload an active document when a worker takes control. New versions
+  // wait until all app windows close; chats, calls and drafts keep their state.
   const checkForSavedAppUpdate = () => {
     navigator.serviceWorker
       .getRegistration()

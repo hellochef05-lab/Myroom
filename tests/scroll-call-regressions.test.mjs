@@ -24,7 +24,7 @@ const start=source.indexOf('        if (data.type === "accept") {');
 const end=source.indexOf('        if (data.type === "ice-restart-request")',start);
 const signals=[];
 const accept=vm.runInNewContext('(async (data)=>{'+source.slice(start,end)+'})',{
- isCallerRef:{current:true},offerPreparedRef:{current:true},pcRef:{current:{localDescription:{type:'offer',sdp:'prepared'}}},socketRef:{current:{emit(type,payload){signals.push(payload.data);}}},roomId:'room',myName:'caller',localIceCandidatesRef:{current:[{candidate:'relay-route'}]},setConnectionMessage(){},armConnectionRecovery(){},
+ acceptedRef:{current:false},isCallerRef:{current:true},offerPreparedRef:{current:true},pcRef:{current:{localDescription:{type:'offer',sdp:'prepared'}}},socketRef:{current:{emit(type,payload){signals.push(payload.data);}}},roomId:'room',myName:'caller',localIceCandidatesRef:{current:[{candidate:'relay-route'}]},setConnectionMessage(){},armConnectionRecovery(){},
 });
 await accept({type:'accept',offerReady:false,callType:'audio'});
 assert.deepEqual(signals.map(s=>s.type),['offer','ice']);
