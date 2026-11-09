@@ -1,3 +1,4 @@
+import { createOutboxFlusher, createDraftSafeSubmit } from "./messageOutbox.js";
 import { createRoomJoiner, CALL_SIGNAL_ACK_TIMEOUT_MS } from "./callSignaling.js";
 import { createIceConfigLoader, callVideoConstraints, applyCallBandwidthLimits } from "./callNetwork.js";
 import { getChatViewportGeometry } from "./chatViewport.js";
@@ -503,118 +504,81 @@ function ReliableMessageInput(props) {
   const messageComposer = useMessageComposer();
   const { updateMessage } = useChannelActionContext("ReliableMessageInput");
   const { channel } = useChannelStateContext("ReliableMessageInput");
-  const flushInProgressRef = useRef(false);
+  const updateMessageRef = useRef(updateMessage);
+  useLayoutEffect(() => { updateMessageRef.current = updateMessage; }, [updateMessage]);
   const queueKey = `${SAYUP_OUTBOX_PREFIX}:${channel?.getClient?.().userID || "guest"}:${channel?.cid || "room"}`;
 
-  const readQueue = () => {
-    try {
-      const value = JSON.parse(localStorage.getItem(queueKey) || "[]");
-      return Array.isArray(value) ? value : [];
-    } catch {
-      return [];
-    }
-  };
-
-  const writeQueue = (items) => {
-    if (items.length) localStorage.setItem(queueKey, JSON.stringify(items));
-    else localStorage.removeItem(queueKey);
-  };
-
-  const flushQueue = async () => {
-    if (!channel || flushInProgressRef.current) return;
-    flushInProgressRef.current = true;
-
-    try {
-      const remaining = [];
-      for (const item of readQueue()) {
-        const localMessage = {
-          ...item.localMessage,
-          created_at: item.localMessage?.created_at
-            ? new Date(item.localMessage.created_at)
-            : new Date(),
-          status: "sending",
-          sayup_queued: true,
-        };
-        updateMessage?.(localMessage);
-
-        try {
-          const response = await channel.sendMessage(item.message, item.sendOptions);
-          if (response?.message) {
-            updateMessage?.({ ...response.message, status: "received", sayup_queued: false });
-          }
-        } catch {
-          remaining.push(item);
-          updateMessage?.(localMessage);
-        }
+  const delivery = useMemo(() => {
+    const readQueue = () => {
+      try {
+        const value = JSON.parse(localStorage.getItem(queueKey) || "[]");
+        return Array.isArray(value) ? value : [];
+      } catch {
+        return [];
       }
-      writeQueue(remaining);
-    } finally {
-      flushInProgressRef.current = false;
-    }
-  };
+    };
+    const writeQueue = (items) => {
+      if (items.length) localStorage.setItem(queueKey, JSON.stringify(items));
+      else localStorage.removeItem(queueKey);
+    };
+    const showMessage = (message) => updateMessageRef.current?.(message);
+    // The factory stores showMessage; it never reads the ref during render.
+    // eslint-disable-next-line react-hooks/refs
+    const flush = createOutboxFlusher({
+      readQueue, writeQueue, updateMessage: showMessage,
+      sendMessage: (message, options) => channel.sendMessage(message, options),
+    });
+    const reportError = (error) => console.warn("Message remains queued", error);
+    // This factory also stores callbacks without executing them during render.
+    // eslint-disable-next-line react-hooks/refs
+    const submitter = createDraftSafeSubmit({
+      composer: messageComposer,
+      enqueue({ localMessage, message, sendOptions }) {
+        const queuedItem = {
+          id: localMessage.id,
+          localMessage: { ...localMessage, status: "sending", sayup_queued: true },
+          message: { ...message, id: message.id || localMessage.id },
+          sendOptions,
+          queuedAt: new Date().toISOString(),
+        };
+        writeQueue([...readQueue().filter((item) => item.id !== queuedItem.id), queuedItem]);
+      },
+      flush,
+      onQueued({ localMessage }) {
+        showMessage({ ...localMessage, status: "sending", sayup_queued: true });
+        window.dispatchEvent(new Event("sayup:whatsapp-send-follow"));
+      },
+      onError: reportError,
+    });
+    const restoreQueuedMessages = () => {
+      for (const item of readQueue()) {
+        showMessage({
+          ...item.localMessage,
+          created_at: item.localMessage?.created_at ? new Date(item.localMessage.created_at) : new Date(),
+          status: "sending", sayup_queued: true,
+        });
+      }
+    };
+    return { restoreQueuedMessages, submit: submitter.submit, dispose: submitter.dispose,
+      flush: () => { void flush().catch(reportError); } };
+  }, [channel, messageComposer, queueKey]);
 
   useEffect(() => {
     if (!channel) return undefined;
-
-    for (const item of readQueue()) {
-      updateMessage?.({
-        ...item.localMessage,
-        created_at: item.localMessage?.created_at
-          ? new Date(item.localMessage.created_at)
-          : new Date(),
-        status: "sending",
-        sayup_queued: true,
-      });
-    }
-
-    const handleOnline = () => void flushQueue();
-    const connectionSubscription = channel
-      .getClient()
-      .on("connection.changed", (event) => {
-        if (event.online) void flushQueue();
-      });
-    window.addEventListener("online", handleOnline);
-    if (navigator.onLine) void flushQueue();
-
+    delivery.restoreQueuedMessages();
+    const connectionSubscription = channel.getClient().on("connection.changed", (event) => {
+      if (event.online) delivery.flush();
+    });
+    window.addEventListener("online", delivery.flush);
+    if (navigator.onLine) delivery.flush();
     return () => {
-      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("online", delivery.flush);
       connectionSubscription.unsubscribe();
+      delivery.dispose();
     };
-    // This queue is re-established only when the user/channel identity changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queueKey]);
+  }, [channel, delivery]);
 
-  const queueAndSend = async ({ localMessage, message, sendOptions }) => {
-    const queuedLocalMessage = {
-      ...localMessage,
-      status: "sending",
-      sayup_queued: true,
-    };
-    const queuedItem = {
-      id: localMessage.id,
-      localMessage: queuedLocalMessage,
-      message: { ...message, id: message.id || localMessage.id },
-      sendOptions,
-      queuedAt: new Date().toISOString(),
-    };
-    const queue = readQueue().filter((item) => item.id !== queuedItem.id);
-    writeQueue([...queue, queuedItem]);
-    updateMessage?.(queuedLocalMessage);
-    window.dispatchEvent(new Event("sayup:whatsapp-send-follow"));
-
-    // Prevent Stream's stopTyping request from restoring the previous draft
-    // when the device is offline. Typing events are restored immediately after
-    // this submit cycle, while the composer is cleared once more after submit.
-    const publishTypingEvents = messageComposer.config.text.publishTypingEvents;
-    messageComposer.updateConfig({ text: { publishTypingEvents: false } });
-    await flushQueue();
-    window.setTimeout(() => {
-      messageComposer.clear();
-      messageComposer.updateConfig({ text: { publishTypingEvents } });
-    }, 0);
-  };
-
-  return <MessageInput {...props} overrideSubmitHandler={queueAndSend} />;
+  return <MessageInput {...props} overrideSubmitHandler={delivery.submit} />;
 }
 
 function RoomReadReceiptCoordinator({ channel, clientUserId, children }) {
