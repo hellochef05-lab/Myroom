@@ -18,6 +18,7 @@ import {
   MessageList,
   SimpleReactionsList,
   Thread,
+  TypingIndicator as StreamTypingIndicator,
   Window,
   MessageSimple,
   useChannelActionContext,
@@ -295,6 +296,10 @@ function SyncChatViewport({ channelId }) {
   return null;
 }
 
+function HiddenBottomIndicator() {
+  return null;
+}
+
 function LatestMessageList({ channelId }) {
   const listHostRef = useRef(null);
   const followFrameRef = useRef(0);
@@ -304,7 +309,6 @@ function LatestMessageList({ channelId }) {
   const interactionResetTimerRef = useRef(0);
   const [initialPositionReady, setInitialPositionReady] = useState(false);
   const [historyPaginationEnabled, setHistoryPaginationEnabled] = useState(false);
-  const [followingLatest, setFollowingLatest] = useState(true);
   const {
     channel,
     hasMore = false,
@@ -360,10 +364,9 @@ function LatestMessageList({ channelId }) {
     };
 
     const scrollAfterOwnSend = () => {
-      // Sending or tapping Latest is an explicit request to resume following.
+      // Sending is an explicit request to resume following.
       userIsScrollingRef.current = false;
       pinnedToLatestRef.current = true;
-      setFollowingLatest(true);
       moveToLatest();
     };
 
@@ -425,7 +428,6 @@ function LatestMessageList({ channelId }) {
     // Detach synchronously, BEFORE Safari emits any scroll/resize callbacks.
     // This choice persists beyond the gesture/momentum timer and keyboard use.
     pinnedToLatestRef.current = false;
-    setFollowingLatest(false);
     cancelAnimationFrame(followFrameRef.current);
     window.clearTimeout(keyboardSettleTimerRef.current);
     if (initialPositionReady && !historyPaginationEnabled) {
@@ -448,10 +450,9 @@ function LatestMessageList({ channelId }) {
     const distanceFromLatest =
       list.scrollHeight - list.clientHeight - list.scrollTop;
     // A viewport resize can make the list appear close to the bottom. Only
-    // an explicit Latest/send action may re-enable following after browsing.
+    // an explicit send action may re-enable following after browsing.
     if (distanceFromLatest > 48) {
       pinnedToLatestRef.current = false;
-      setFollowingLatest(false);
     }
     finishUserScroll();
   };
@@ -485,15 +486,6 @@ function LatestMessageList({ channelId }) {
         suppressAutoscroll
         scrolledUpThreshold={48}
       />
-      {!followingLatest && (
-        <button
-          className="sayup-follow-latest"
-          type="button"
-          onClick={() => window.dispatchEvent(new Event("sayup:whatsapp-send-follow"))}
-        >
-          ↓ Latest messages
-        </button>
-      )}
     </div>
   );
 }
@@ -1108,20 +1100,18 @@ function CallHeader({
                 flexShrink: 0,
               }}
             />
-            <span
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {inCall
-                ? callType === "video"
-                  ? "Video call active"
-                  : "Audio call active"
-                : joinedRoom
-                  ? "Online"
-                  : "Connecting..."}
-            </span>
+            <div className="sayup-header-presence" aria-live="polite" aria-atomic="true">
+              <span className="sayup-header-connection">
+                {inCall
+                  ? callType === "video"
+                    ? "Video call active"
+                    : "Audio call active"
+                  : joinedRoom
+                    ? "Online"
+                    : "Connecting..."}
+              </span>
+              {!inCall && <StreamTypingIndicator />}
+            </div>
           </div>
         </div>
       </div>
@@ -7261,6 +7251,8 @@ async function adminUpdateTicketStatus(requestId, status) {
             Attachment={CustomAttachment}
             Message={MyMessage}
             QuotedMessagePreview={WhatsAppQuotedMessagePreview}
+            TypingIndicator={HiddenBottomIndicator}
+            MessageNotification={HiddenBottomIndicator}
           >
             <RoomReadReceiptCoordinator
               channel={channel}
