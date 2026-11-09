@@ -1797,6 +1797,7 @@ function WebRTCCall({
   const relayCandidateSeenRef = useRef(false);
   const activeCallTypeRef = useRef(null);
   const connectionAttemptTimeoutRef = useRef(null);
+  const fastRecoveryUsedRef = useRef(false);
   const audioContextRef = useRef(null);
   const audioUnlockedRef = useRef(false);
 
@@ -2011,6 +2012,7 @@ function WebRTCCall({
 
   const cleanupCall = () => {
     callAttemptRef.current += 1;
+    fastRecoveryUsedRef.current = false;
     offerPreparationRef.current = null;
     if (connectionAttemptTimeoutRef.current) {
       clearTimeout(connectionAttemptTimeoutRef.current);
@@ -2091,18 +2093,24 @@ function WebRTCCall({
     if (connectionAttemptTimeoutRef.current) {
       clearTimeout(connectionAttemptTimeoutRef.current);
     }
-
+    const attemptId = callAttemptRef.current;
+    const peer = pcRef.current;
+    // Try the first stalled negotiation promptly. Later recovery keeps its
+    // backoff so a weak link is not torn down and restarted every 3 seconds.
+    const delay = fastRecoveryUsedRef.current ? 12000 : 3000;
     connectionAttemptTimeoutRef.current = setTimeout(() => {
       const pc = pcRef.current;
+      if (callAttemptRef.current !== attemptId || pc !== peer) return;
       if (
-        pc &&
+        pc && pc.signalingState !== "closed" &&
         pc.connectionState !== "connected" &&
         pc.iceConnectionState !== "connected" &&
         pc.iceConnectionState !== "completed"
       ) {
+        fastRecoveryUsedRef.current = true;
         restartIceAndRenegotiate(reason);
       }
-    }, 12000);
+    }, delay);
   };
 
   const restartIceAndRenegotiate = async (reason = "network-change") => {
@@ -2119,6 +2127,7 @@ function WebRTCCall({
     }
 
     lastIceRestartAtRef.current = now;
+    fastRecoveryUsedRef.current = true;
 
     if (!isCallerRef.current) {
       socket.emit("signal", {
@@ -2206,6 +2215,7 @@ function WebRTCCall({
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
+        fastRecoveryUsedRef.current = false;
         setConnectionMessage("");
         // Reacquire and reattach the microphone once the peer is connected.
         // This repairs iPhone Home Screen tracks that look live but send no
@@ -2551,7 +2561,6 @@ function WebRTCCall({
               }
             }
             setConnectionMessage("Connecting…");
-            armConnectionRecovery("initial-connect-timeout");
           }
           return;
         }
@@ -2584,6 +2593,7 @@ function WebRTCCall({
           }
           iceQueueRef.current = [];
 
+          armConnectionRecovery("initial-connect-timeout");
           callActiveRef.current = true;
           setInCall(true);
           return;
