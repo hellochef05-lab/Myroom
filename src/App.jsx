@@ -504,9 +504,11 @@ function ReliableMessageInput(props) {
   const messageComposer = useMessageComposer();
   const { updateMessage } = useChannelActionContext("ReliableMessageInput");
   const { channel } = useChannelStateContext("ReliableMessageInput");
-  const updateMessageRef = useRef(updateMessage);
-  useLayoutEffect(() => { updateMessageRef.current = updateMessage; }, [updateMessage]);
   const queueKey = `${SAYUP_OUTBOX_PREFIX}:${channel?.getClient?.().userID || "guest"}:${channel?.cid || "room"}`;
+  const updateMessageRef = useRef({ queueKey, updateMessage });
+  useLayoutEffect(() => {
+    updateMessageRef.current = { queueKey, updateMessage };
+  }, [queueKey, updateMessage]);
 
   const delivery = useMemo(() => {
     const readQueue = () => {
@@ -521,7 +523,11 @@ function ReliableMessageInput(props) {
       if (items.length) localStorage.setItem(queueKey, JSON.stringify(items));
       else localStorage.removeItem(queueKey);
     };
-    const showMessage = (message) => updateMessageRef.current?.(message);
+    const showMessage = (message) => {
+      const action = updateMessageRef.current;
+      // A send may finish after switching rooms; update only its own room UI.
+      if (action.queueKey === queueKey) action.updateMessage?.(message);
+    };
     // The factory stores showMessage; it never reads the ref during render.
     // eslint-disable-next-line react-hooks/refs
     const flush = createOutboxFlusher({

@@ -48,3 +48,13 @@ const disabled=createDraftSafeSubmit({composer:originalFalse,enqueue(){},flush:a
 disabled.submit({});disabled.dispose();await tick();assert.equal(originalFalse.config.text.publishTypingEvents,false);
 assert.throws(()=>createDraftSafeSubmit({composer,enqueue(){throw new Error('storage full');},flush(){}}).submit({}),/storage full/);
 console.log('Draft/outbox regression passed with actual SDK submit flow: slow first send, rapid second send, new draft, offline failure, reconnect and typing config restoration.');
+
+// Late delivery from an old room must not insert its messages into the new UI.
+const app=fs.readFileSync('src/App.jsx','utf8');
+const showStart=app.indexOf('    const showMessage =');
+const showEnd=app.indexOf('    // The factory stores',showStart);
+const updates=[];const actionRef={current:{queueKey:'room-a',updateMessage:m=>updates.push(m)}};
+const show=vm.runInNewContext(app.slice(showStart,showEnd)+'\nshowMessage',{updateMessageRef:actionRef,queueKey:'room-a'});
+show('own-room');actionRef.current={queueKey:'room-b',updateMessage:m=>updates.push(m)};show('old-room');
+assert.deepEqual(updates,['own-room']);
+console.log('Room isolation passed: old delivery cannot update the newly opened room.');
