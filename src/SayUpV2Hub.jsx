@@ -1,3 +1,5 @@
+import { useRoomPresenceMembers } from "./roomPresenceContext.js";
+import { presenceSummary, presenceTime } from "./useRoomPresence.js";
 import { useEffect, useState } from "react";
 
 const tabs = [
@@ -36,6 +38,7 @@ export default function SayUpV2Hub({
   uiTheme,
   onUiThemeChange,
 }) {
+  const roomPresence = useRoomPresenceMembers();
   const [tab, setTab] = useState("search");
   const [query, setQuery] = useState("");
   const [, setVersion] = useState(0);
@@ -167,8 +170,15 @@ export default function SayUpV2Hub({
             <h3>Room members <em>{members.length}</em></h3>
             <div className="sayup-hub-list">{members.map((member) => <div className="sayup-hub-member" key={member.user_id || member.user?.id}>
               <span className="sayup-hub-row-avatar">{String(member.user?.name || "U").slice(0, 1).toUpperCase()}</span>
-              <span><strong>{member.user?.name || member.user_id}</strong><small>{member.user?.id === currentUserId ? "You · online" : "Room member"}</small></span>
+              <span><strong>{member.user?.name || member.user_id}{(member.user?.id || member.user_id) === currentUserId ? " (You)" : ""}</strong>
+                {(() => {
+                  const presence = roomPresence.find(item => item.userId === (member.user?.id || member.user_id));
+                  return <><small>{presenceSummary(presence)}</small>
+                    {presence?.onlineSince && !presence.isOnline && <small>Came online {presenceTime(presence.onlineSince)}</small>}</>;
+                })()}
+              </span>
             </div>)}</div>
+            <p className="sayup-hub-help">Times use your device’s timezone. Online means the room is open in the foreground. Signal loss may take about 45 seconds to show as offline; Last seen is the last confirmed activity. Times begin recording after this update.</p>
             <p className="sayup-hub-help">Invite members using the same private Access Key and room number. Admin role management remains protected in the Admin app.</p>
           </>}
           {tab === "status" && <>

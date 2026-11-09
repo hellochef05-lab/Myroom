@@ -1,3 +1,4 @@
+import { reportRoomPresence, roomPresenceSnapshot } from "./roomPresence.js";
 import { createClient } from "@supabase/supabase-js";
 import { StreamChat } from "stream-chat";
 import express from "express";
@@ -2526,6 +2527,26 @@ app.post(
     });
   }
 );
+
+app.post("/api/room-presence", (req, res) => {
+  const { accessKey, deviceId, roomId, sessionId, sequence, online, name } = req.body || {};
+  if (typeof sessionId !== "string" || !/^[a-f0-9-]{36}$/i.test(sessionId) ||
+      !Number.isSafeInteger(sequence) || sequence < 1 || typeof online !== "boolean" ||
+      typeof roomId !== "string") {
+    return res.status(400).json({ error: "Invalid presence report" });
+  }
+  const db = readDB();
+  const auth = getActiveUserByAccessKey(db, accessKey);
+  if (auth.error) return res.status(auth.status).json({ error: auth.error });
+  const devices = db.devices.filter(device => sameValue(device.accessKey, auth.user.accessKey));
+  const device = devices.find(item => item.deviceId === deviceId && item.status === "active");
+  const room = db.rooms.find(item => item.id === roomId && sameValue(item.accessKey, auth.user.accessKey));
+  if (!device || !room) return res.status(403).json({ error: "Room access required" });
+  reportRoomPresence(device, roomId, { sessionId, sequence, online, name });
+  writeDB(db);
+  res.set("Cache-Control", "no-store");
+  return res.json({ members: roomPresenceSnapshot(devices, roomId) });
+});
 
 app.post("/api/activity", (req, res) => {
   const {

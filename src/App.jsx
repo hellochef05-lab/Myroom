@@ -1,3 +1,5 @@
+import { RoomPresenceProvider, useRoomPresenceMembers } from "./roomPresenceContext.js";
+import { presenceSummary } from "./useRoomPresence.js";
 import { createOutboxFlusher, createDraftSafeSubmit } from "./messageOutbox.js";
 import { createRoomJoiner, CALL_SIGNAL_ACK_TIMEOUT_MS } from "./callSignaling.js";
 import { createIceConfigLoader, callVideoConstraints, applyCallBandwidthLimits } from "./callNetwork.js";
@@ -21,6 +23,7 @@ import {
   TypingIndicator as StreamTypingIndicator,
   Window,
   MessageSimple,
+  useChatContext,
   useChannelActionContext,
   useChannelStateContext,
   useMessageComposer,
@@ -892,6 +895,16 @@ function CallHeader({
   clearingChat,
   onOpenV2,
 }) {
+  const roomPresence = useRoomPresenceMembers();
+  const { client: chatClient } = useChatContext();
+  const otherMembers = roomPresence.filter(member => member.userId !== chatClient?.userID);
+  const onlineMembers = otherMembers.filter(member => member.isOnline);
+  const presenceOnline = onlineMembers.length > 0;
+  const presenceLabel = presenceOnline
+    ? `${onlineMembers.map(member => member.name).join(", ")} · Online`
+    : otherMembers.length
+      ? `${otherMembers[0].name} · ${presenceSummary(otherMembers[0])}`
+      : "Presence unavailable";
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const compact = typeof window !== "undefined" && window.innerWidth <= 768;
@@ -1061,7 +1074,7 @@ function CallHeader({
                 width: compact ? 9 : 12,
                 height: compact ? 9 : 12,
                 borderRadius: "50%",
-                background: joinedRoom ? "#4ade80" : "#fbbf24",
+                background: presenceOnline ? "#4ade80" : "#cbd5e1",
                 border: "2px solid #fff",
               }}
             />
@@ -1096,7 +1109,7 @@ function CallHeader({
                 width: 7,
                 height: 7,
                 borderRadius: "50%",
-                background: joinedRoom ? "#4ade80" : "#fbbf24",
+                background: presenceOnline ? "#4ade80" : "#cbd5e1",
                 flexShrink: 0,
               }}
             />
@@ -1107,7 +1120,7 @@ function CallHeader({
                     ? "Video call active"
                     : "Audio call active"
                   : joinedRoom
-                    ? "Online"
+                    ? presenceLabel
                     : "Connecting..."}
               </span>
               {!inCall && <StreamTypingIndicator />}
@@ -7151,6 +7164,8 @@ async function adminUpdateTicketStatus(requestId, status) {
   }
 
   return (
+    <RoomPresenceProvider apiBase={API_BASE} accessKey={loggedUser?.accessKey}
+      deviceId={getDeviceId()} roomId={channel.id} name={name} client={client}>
     <div
       className="private-room-chat-page"
       style={{
@@ -7474,5 +7489,6 @@ async function adminUpdateTicketStatus(requestId, status) {
         })()}
       </div>
     </div>
+    </RoomPresenceProvider>
   );
 }
