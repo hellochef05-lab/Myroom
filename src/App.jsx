@@ -5,6 +5,8 @@ import { createRoomJoiner, CALL_SIGNAL_ACK_TIMEOUT_MS } from "./callSignaling.js
 import { createIceConfigLoader, callVideoConstraints, applyCallBandwidthLimits } from "./callNetwork.js";
 import { getChatViewportGeometry } from "./chatViewport.js";
 import {
+  createContext,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -306,7 +308,6 @@ function HiddenBottomIndicator() {
 function LatestMessageList({ channelId }) {
   const listHostRef = useRef(null);
   const followFrameRef = useRef(0);
-  const keyboardSettleTimerRef = useRef(0);
   const pinnedToLatestRef = useRef(true);
   const userIsScrollingRef = useRef(false);
   const interactionResetTimerRef = useRef(0);
@@ -322,8 +323,8 @@ function LatestMessageList({ channelId }) {
   useLayoutEffect(() => {
     if (!channel?.initialized || loading || initialPositionReady) return undefined;
 
-    // Position exactly once while hidden. The resize controller below owns all
-    // later bottom-pinning, so message hydration cannot restart this sequence.
+    // Position once when opening the room. After that, only an explicit send
+    // may move to latest; keyboard, receipt and incoming events never do.
     let revealFrame = 0;
     let positionFrame = 0;
     let attempts = 0;
@@ -373,55 +374,13 @@ function LatestMessageList({ channelId }) {
       moveToLatest();
     };
 
-    const keepLatestAboveKeyboard = (event) => {
-      if (!event.target?.closest?.(".private-room-message-composer")) return;
-      if (!pinnedToLatestRef.current || userIsScrollingRef.current) return;
-      window.clearTimeout(keyboardSettleTimerRef.current);
-      keyboardSettleTimerRef.current = window.setTimeout(moveToLatest, 180);
-    };
 
-    const settleKeyboardResize = () => {
-      if (!pinnedToLatestRef.current) return;
-      window.clearTimeout(keyboardSettleTimerRef.current);
-      // iOS emits several viewport heights while its keyboard animates. Wait
-      // for the final height and perform one correction instead of following
-      // every animation frame up and down.
-      keyboardSettleTimerRef.current = window.setTimeout(moveToLatest, 180);
-    };
-
-    const onNewMessage = () => {
-      if (pinnedToLatestRef.current) moveToLatest();
-    };
-
-    // History hydration and late-loading media can change content height after
-    // the initial positioning frames. Follow that growth only while pinned;
-    // reading older messages must never be interrupted by a resize callback.
-    const content = list.querySelector(".str-chat__message-list-scroll");
-    const contentResizeObserver = new ResizeObserver(() => {
-      if (pinnedToLatestRef.current && !userIsScrollingRef.current) moveToLatest();
-    });
-    contentResizeObserver.observe(list);
-    if (content) contentResizeObserver.observe(content);
-    moveToLatest();
-
-    window.visualViewport?.addEventListener("resize", settleKeyboardResize, { passive: true });
-    if (!window.visualViewport) {
-      window.addEventListener("resize", settleKeyboardResize, { passive: true });
-    }
-    document.addEventListener("focusin", keepLatestAboveKeyboard);
     window.addEventListener("sayup:whatsapp-send-follow", scrollAfterOwnSend);
-    channel.on("message.new", onNewMessage);
 
     return () => {
-      contentResizeObserver.disconnect();
       cancelAnimationFrame(followFrameRef.current);
-      window.clearTimeout(keyboardSettleTimerRef.current);
       window.clearTimeout(interactionResetTimerRef.current);
-      window.visualViewport?.removeEventListener("resize", settleKeyboardResize);
-      window.removeEventListener("resize", settleKeyboardResize);
-      document.removeEventListener("focusin", keepLatestAboveKeyboard);
       window.removeEventListener("sayup:whatsapp-send-follow", scrollAfterOwnSend);
-      channel.off("message.new", onNewMessage);
     };
   }, [channel, initialPositionReady]);
 
@@ -432,7 +391,6 @@ function LatestMessageList({ channelId }) {
     // This choice persists beyond the gesture/momentum timer and keyboard use.
     pinnedToLatestRef.current = false;
     cancelAnimationFrame(followFrameRef.current);
-    window.clearTimeout(keyboardSettleTimerRef.current);
     if (initialPositionReady && !historyPaginationEnabled) {
       setHistoryPaginationEnabled(true);
     }
@@ -4104,6 +4062,738 @@ function AdminDashboard({ API_BASE, onBack }) {
   );
 }
 
+const ChatMessageActionsContext = createContext(null);
+
+function CustomImage(props) {
+  const { normaliseMediaAttachment, openMediaPreview } = useContext(ChatMessageActionsContext);
+    const attachment = {
+      ...props,
+      type: "image",
+    };
+    const media = normaliseMediaAttachment(attachment);
+    if (!media) return null;
+
+    return (
+      <img
+        src={media.url}
+        alt={media.title || "attachment"}
+        onClick={() => openMediaPreview([attachment], 0)}
+        style={{
+          maxWidth: "100%",
+          borderRadius: 12,
+          cursor: "pointer",
+          display: "block",
+        }}
+      />
+    );
+}
+
+function CustomAttachment(props) {
+    return <Attachment {...props} Image={CustomImage} />;
+}
+
+function MyMessage(props) {
+  const { client, name, accessKey, renderMessageAttachments, toggleBookmark, bookmarkedIds } = useContext(ChatMessageActionsContext);
+    const context = useMessageContext();
+    const messageComposer = useMessageComposer();
+    const { jumpToMessage: jumpToOriginalMessage } = useChannelActionContext();
+    const { channel, read: roomReadState = {} } = useChannelStateContext("MyMessage");
+    const message = context?.message || props?.message;
+    const contextGroupStyles = context?.groupStyles || props?.groupStyles || [];
+    const [actionsOpen, setActionsOpen] = useState(false);
+    const [actionMenuPosition, setActionMenuPosition] = useState(null);
+    const messageBubbleRef = useRef(null);
+    const longPressTimerRef = useRef(0);
+    const longPressTriggeredRef = useRef(false);
+    const longPressStartRef = useRef(null);
+    const swipeStartRef = useRef(null);
+
+    useEffect(() => {
+      if (!actionsOpen) return undefined;
+
+      const closeOnEscape = (event) => {
+        if (event.key === "Escape") setActionsOpen(false);
+      };
+
+      document.addEventListener("keydown", closeOnEscape);
+      return () => document.removeEventListener("keydown", closeOnEscape);
+    }, [actionsOpen]);
+
+    useEffect(
+      () => () => window.clearTimeout(longPressTimerRef.current),
+      []
+    );
+
+    if (!message) return null;
+
+    if (message.type === "system") {
+      return (
+        <div
+          data-message-id={message.id}
+          className="private-room-system-message"
+          style={{
+            margin: "12px auto",
+            width: "fit-content",
+            maxWidth: "90%",
+            padding: "6px 13px",
+            borderRadius: 999,
+            background: "rgba(255,255,255,0.9)",
+            border: "1px solid rgba(15,23,42,0.06)",
+            color: "#64748b",
+            fontSize: 12,
+            fontWeight: 700,
+            textAlign: "center",
+            boxShadow: "0 2px 8px rgba(15,23,42,0.05)",
+          }}
+        >
+          {message.text || "System message"}
+        </div>
+      );
+    }
+
+    const isMine = message.user?.id === client?.userID;
+    const senderName =
+      message.user?.name ||
+      message.user?.id ||
+      (isMine ? name || "You" : "User");
+    const senderInitial =
+      String(senderName).trim().slice(0, 1).toUpperCase() || "U";
+    const senderImage = message.user?.image;
+    const sentAt = message.created_at || message.updated_at;
+    const messageCreatedAt = new Date(message.created_at || message.updated_at || 0).getTime();
+    const streamReaders = Array.isArray(context?.readBy)
+      ? context.readBy
+      : Array.isArray(props?.readBy)
+        ? props.readBy
+        : [];
+    const readEntries = Object.entries(roomReadState);
+    const hasBeenSeen =
+      isMine &&
+      (streamReaders.some((reader) => reader?.id !== client?.userID) ||
+        readEntries.some(([userId, readState]) => {
+          if (!userId || userId === client?.userID) return false;
+          const lastRead = new Date(readState?.last_read || 0).getTime();
+          return Number.isFinite(lastRead) && lastRead >= messageCreatedAt;
+        }));
+    // WhatsApp-style status: sending → single gray, delivered → double gray, read → double blue
+    const messageStatus = String(message.status || "").toLowerCase();
+    const isSending =
+      isMine &&
+      (messageStatus === "sending" ||
+        messageStatus === "pending" ||
+        message.sayup_queued === true);
+    const isFailed = isMine && (messageStatus === "failed" || messageStatus === "error");
+    const deliveryStatus = isFailed
+      ? "is-failed"
+      : isSending
+        ? "is-sending"
+        : hasBeenSeen
+          ? "is-seen"
+          : "is-delivered";
+
+    const rawGroupStyle = Array.isArray(contextGroupStyles)
+      ? contextGroupStyles[0]
+      : contextGroupStyles;
+    const groupStyle = ["top", "middle", "bottom", "single"].includes(
+      rawGroupStyle
+    )
+      ? rawGroupStyle
+      : "single";
+
+    const beginsGroup = groupStyle === "top" || groupStyle === "single";
+    const endsGroup = groupStyle === "bottom" || groupStyle === "single";
+    const isMiddle = groupStyle === "middle";
+    const hasAttachments =
+      Array.isArray(message.attachments) && message.attachments.length > 0;
+    const allowedActions = context?.getMessageActions?.() || [];
+    const canUseAction = (action) => allowedActions.includes(action);
+    const reactionOptions = [
+      { type: "love", emoji: "❤️", label: "Love" },
+      { type: "like", emoji: "👍", label: "Like" },
+      { type: "haha", emoji: "😂", label: "Laugh" },
+      { type: "wow", emoji: "😮", label: "Wow" },
+      { type: "sad", emoji: "😢", label: "Sad" },
+      { type: "pray", emoji: "🙏", label: "Thank you" },
+    ];
+    const clearLongPress = () => {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = 0;
+      longPressStartRef.current = null;
+    };
+
+    const openActions = () => {
+      clearLongPress();
+      const bubbleRect = messageBubbleRef.current?.getBoundingClientRect();
+      const menuWidth = Math.min(300, window.innerWidth - 24);
+      const estimatedMenuHeight = 490;
+      const preferredLeft = isMine
+        ? (bubbleRect?.right || window.innerWidth - 12) - menuWidth
+        : bubbleRect?.left || 12;
+
+      setActionMenuPosition({
+        left: Math.max(
+          12,
+          Math.min(preferredLeft, window.innerWidth - menuWidth - 12)
+        ),
+        top: Math.max(
+          12,
+          Math.min(
+            (bubbleRect?.top || 76) - 62,
+            window.innerHeight - estimatedMenuHeight - 12
+          )
+        ),
+        width: menuWidth,
+      });
+      longPressTriggeredRef.current = true;
+      setActionsOpen(true);
+      window.navigator.vibrate?.(15);
+    };
+
+    const startLongPress = (event) => {
+      if (event.pointerType === "mouse" || event.pointerType === "touch") return;
+      clearLongPress();
+      longPressTriggeredRef.current = false;
+      longPressStartRef.current = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+      };
+      longPressTimerRef.current = window.setTimeout(openActions, 450);
+    };
+
+    const trackLongPressMovement = (event) => {
+      const start = longPressStartRef.current;
+      if (!start || start.pointerId !== event.pointerId) return;
+      const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+      if (moved > 14) clearLongPress();
+    };
+
+    const startTouchLongPress = (event) => {
+      const touch = event.touches?.[0];
+      if (!touch) return;
+      swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+      clearLongPress();
+      longPressTriggeredRef.current = false;
+      longPressStartRef.current = {
+        pointerId: "touch",
+        x: touch.clientX,
+        y: touch.clientY,
+      };
+      longPressTimerRef.current = window.setTimeout(openActions, 420);
+    };
+
+    const trackTouchLongPressMovement = (event) => {
+      const start = longPressStartRef.current;
+      const touch = event.touches?.[0];
+      if (!start || start.pointerId !== "touch" || !touch) return;
+      const moved = Math.hypot(touch.clientX - start.x, touch.clientY - start.y);
+      if (moved > 14) clearLongPress();
+    };
+
+    const finishTouchGesture = (event) => {
+      const start = swipeStartRef.current;
+      const touch = event.changedTouches?.[0];
+      clearLongPress();
+      swipeStartRef.current = null;
+      if (!start || !touch || longPressTriggeredRef.current) return;
+      const horizontal = touch.clientX - start.x;
+      const vertical = Math.abs(touch.clientY - start.y);
+      const replyDistance = isMine ? -58 : 58;
+      if ((isMine ? horizontal <= replyDistance : horizontal >= replyDistance) && vertical < 48) {
+        quoteMessage();
+        window.navigator.vibrate?.(10);
+      }
+    };
+
+    const quoteMessage = () => {
+      messageComposer.setQuotedMessage(message);
+      setActionsOpen(false);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const textarea = document.querySelector(
+            ".private-room-chat-shell .str-chat__textarea__textarea"
+          );
+          if (!textarea) return;
+          try {
+            textarea.focus({ preventScroll: true });
+          } catch {
+            textarea.focus();
+          }
+        });
+      });
+    };
+
+    const addReaction = async (reactionType, event) => {
+      try {
+        if (context?.handleReaction) {
+          await context.handleReaction(reactionType, event);
+        } else {
+          await channel?.sendReaction(message.id, { type: reactionType });
+        }
+      } catch (error) {
+        console.error("Could not update reaction", error);
+      } finally {
+        setActionsOpen(false);
+      }
+    };
+
+    const deleteSelectedMessage = async (event) => {
+      if (!window.confirm("Delete this message?")) return;
+      setActionsOpen(false);
+      await context?.handleDelete?.(event);
+    };
+
+    const copySelectedMessage = async () => {
+      const copyText =
+        message.text ||
+        (message.attachments?.length ? "Attachment" : "Message");
+
+      try {
+        await navigator.clipboard.writeText(copyText);
+      } catch {
+        const copyArea = document.createElement("textarea");
+        copyArea.value = copyText;
+        copyArea.style.position = "fixed";
+        copyArea.style.opacity = "0";
+        document.body.appendChild(copyArea);
+        copyArea.select();
+        document.execCommand("copy");
+        copyArea.remove();
+      }
+      setActionsOpen(false);
+    };
+
+    const editSelectedMessage = async () => {
+      setActionsOpen(false);
+      const nextText = window.prompt("Edit message", message.text || "");
+      if (nextText === null || nextText.trim() === (message.text || "").trim()) return;
+      if (!nextText.trim() && !message.attachments?.length) return;
+      try {
+        await client?.updateMessage({ id: message.id, text: nextText.trim() });
+      } catch (error) {
+        console.error("Could not edit message", error);
+        alert("This message could not be edited.");
+      }
+    };
+
+    const forwardSelectedMessage = async () => {
+      setActionsOpen(false);
+      const destination = window.prompt("Forward to room number");
+      if (!destination?.trim() || !client) return;
+      try {
+        const destinationId = createPrivateRoomId(accessKey, destination.trim());
+        const destinationChannel = client.channel("messaging", destinationId, {
+          name: `Room ${destination.trim()}`,
+          accessKey,
+          roomCode: destination.trim(),
+        });
+        await destinationChannel.watch();
+        await destinationChannel.sendMessage({
+          text: message.text || "Forwarded attachment",
+          attachments: message.attachments || [],
+          sayup_forwarded: true,
+        });
+        alert(`Forwarded to Room ${destination.trim()}`);
+      } catch (error) {
+        console.error("Could not forward message", error);
+        alert("This message could not be forwarded to that room.");
+      }
+    };
+
+    const receivedRadius =
+      groupStyle === "single"
+        ? "7px 18px 18px 18px"
+        : groupStyle === "top"
+          ? "7px 18px 18px 7px"
+          : groupStyle === "middle"
+            ? "7px 18px 18px 7px"
+            : "7px 18px 18px 18px";
+
+    const sentRadius =
+      groupStyle === "single"
+        ? "18px 7px 18px 18px"
+        : groupStyle === "top"
+          ? "18px 7px 7px 18px"
+          : groupStyle === "middle"
+            ? "18px 7px 7px 18px"
+            : "18px 7px 18px 18px";
+
+    const messageGestureProps = {
+      ref: messageBubbleRef,
+      className: `private-room-message-bubble ${isMine ? "is-own" : "is-other"}`,
+      onPointerDown: startLongPress,
+      onPointerUp: clearLongPress,
+      onPointerCancel: clearLongPress,
+      onPointerMove: trackLongPressMovement,
+      onTouchStart: startTouchLongPress,
+      onTouchMove: trackTouchLongPressMovement,
+      onTouchEnd: finishTouchGesture,
+      onTouchCancel: clearLongPress,
+      onDragStart: (event) => event.preventDefault(),
+      onSelect: (event) => {
+        event.preventDefault();
+        window.getSelection?.()?.removeAllRanges();
+      },
+      onContextMenu: (event) => {
+        event.preventDefault();
+        openActions();
+        longPressTriggeredRef.current = false;
+      },
+      onClickCapture: (event) => {
+        if (!longPressTriggeredRef.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        longPressTriggeredRef.current = false;
+      },
+      "aria-label": "Message. Hold for reply, reactions, and more options.",
+    };
+
+    return (
+      <>
+      <div
+        data-message-id={message.id}
+        style={{
+          display: "flex",
+          justifyContent: isMine ? "flex-end" : "flex-start",
+          width: "100%",
+          padding: beginsGroup ? "10px 10px 1px" : "1px 10px",
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            alignItems: "flex-end",
+            justifyContent: isMine ? "flex-end" : "flex-start",
+            gap: 8,
+            width: "fit-content",
+            maxWidth: isMobile ? "92%" : "76%",
+          }}
+        >
+          {!isMine && (
+            <div
+              style={{
+                width: 34,
+                minWidth: 34,
+                height: 34,
+                flexShrink: 0,
+                visibility: endsGroup ? "visible" : "hidden",
+              }}
+            >
+              {senderImage ? (
+                <img
+                  src={senderImage}
+                  alt={senderName}
+                  title={senderName}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    display: "block",
+                    boxShadow: "0 4px 12px rgba(5,150,105,0.20)",
+                  }}
+                />
+              ) : (
+                <div
+                  title={senderName}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background:
+                      "linear-gradient(180deg, #10b981 0%, #059669 100%)",
+                    color: "#fff",
+                    fontSize: 14,
+                    fontWeight: 900,
+                    boxShadow: "0 4px 12px rgba(5,150,105,0.22)",
+                  }}
+                >
+                  {senderInitial}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div
+            style={{
+              minWidth: 0,
+              maxWidth: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: isMine ? "flex-end" : "flex-start",
+            }}
+          >
+            {!isMine && beginsGroup && (
+              <div
+                className="private-room-message-sender"
+                style={{
+                  margin: "0 0 5px 9px",
+                  color: "#07866f",
+                  fontSize: 13,
+                  lineHeight: 1.2,
+                  fontWeight: 900,
+                  maxWidth: "100%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {senderName}
+              </div>
+            )}
+
+            <div
+              {...messageGestureProps}
+              style={{
+                width: "fit-content",
+                minWidth: isMine ? 86 : 68,
+                maxWidth: "100%",
+                position: "relative",
+                padding: hasAttachments
+                  ? "7px 7px 22px"
+                  : "8px 12px 21px",
+                borderRadius: isMine ? sentRadius : receivedRadius,
+                background: isMine ? "#d9fdd3" : "#ffffff",
+                border: "1px solid rgba(15,23,42,0.06)",
+                boxShadow: "0 2px 8px rgba(15,23,42,0.10)",
+                color: "#111827",
+                overflowWrap: "anywhere",
+                boxSizing: "border-box",
+              }}
+            >
+              {message.quoted_message && (
+                <div
+                  className="private-room-message-quote"
+                  role="button"
+                  tabIndex={0}
+                  title="Go to original message"
+                  aria-label="Go to original message"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    jumpToOriginalMessage?.(message.quoted_message.id, 25, 1800);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    jumpToOriginalMessage?.(message.quoted_message.id, 25, 1800);
+                  }}
+                  style={{
+                    marginBottom: 7,
+                    padding: "7px 9px",
+                    borderLeft: "3px solid #10b981",
+                    borderRadius: 8,
+                    background: isMine
+                      ? "rgba(255,255,255,0.46)"
+                      : "#f1f5f9",
+                    color: "#475569",
+                    fontSize: 12,
+                  }}
+                >
+                  <div style={{ fontWeight: 900, marginBottom: 2 }}>
+                    {message.quoted_message.user?.name || "Message"}
+                  </div>
+                  <div>
+                    {message.quoted_message.text ||
+                      (message.quoted_message.attachments?.length
+                        ? "Attachment"
+                        : "Message")}
+            </div>
+
+            </div>
+              )}
+
+              {message.text && (
+                <div
+                  className="private-room-message-text"
+                  style={{
+                    fontSize: isMobile ? 14 : 15,
+                    lineHeight: 1.4,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {message.text}
+                </div>
+              )}
+
+              {hasAttachments && (
+                <div style={{ marginTop: message.text ? 7 : 0 }}>
+                  {renderMessageAttachments(message.attachments)}
+                </div>
+              )}
+
+              <div
+                className="private-room-message-meta"
+                style={{
+                  position: "absolute",
+                  right: 7,
+                  bottom: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  gap: 2,
+                  fontSize: 10,
+                  lineHeight: 1,
+                  color: "#667781",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span>{sentAt ? formatTime(sentAt) : ""}</span>
+                {isMine && (
+                  <span
+                    className={`private-room-message-status ${deliveryStatus}`}
+                    aria-label={
+                      deliveryStatus === "is-seen"
+                        ? "Read"
+                        : deliveryStatus === "is-sending"
+                          ? "Sending"
+                          : deliveryStatus === "is-failed"
+                            ? "Failed"
+                            : "Delivered"
+                    }
+                    title={
+                      deliveryStatus === "is-seen"
+                        ? "Read"
+                        : deliveryStatus === "is-sending"
+                          ? "Sending"
+                          : deliveryStatus === "is-failed"
+                            ? "Failed to send"
+                            : "Delivered"
+                    }
+                  >
+                    {deliveryStatus === "is-sending" || deliveryStatus === "is-failed" ? (
+                      <Check className="private-room-check is-single" aria-hidden="true" />
+                    ) : (
+                      <>
+                        <Check className="private-room-check is-first" aria-hidden="true" />
+                        <Check className="private-room-check is-second" aria-hidden="true" />
+                      </>
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="private-room-live-reactions">
+              <SimpleReactionsList />
+            </div>
+
+            {endsGroup && !isMiddle && (
+              <div style={{ height: 2 }} aria-hidden="true" />
+            )}
+          </div>
+        </div>
+      </div>
+      {actionsOpen &&
+        createPortal(
+          <div
+            className="private-room-message-actions-backdrop"
+            role="presentation"
+            onPointerDown={() => setActionsOpen(false)}
+          >
+            <div
+              className="private-room-message-actions-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Message options"
+              onPointerDown={(event) => event.stopPropagation()}
+              style={{
+                left: actionMenuPosition?.left ?? 12,
+                top: actionMenuPosition?.top ?? 12,
+                width: actionMenuPosition?.width ?? "calc(100% - 24px)",
+              }}
+            >
+              <div className="private-room-reaction-picker" aria-label="React to message">
+                {reactionOptions.map((reaction) => (
+                  <button
+                    type="button"
+                    key={reaction.type}
+                    onClick={(event) => addReaction(reaction.type, event)}
+                    aria-label={reaction.label}
+                  >
+                    {reaction.emoji}
+                  </button>
+                ))}
+              </div>
+
+              <div className="private-room-message-action-list">
+                <button type="button" onClick={quoteMessage}>
+                  <span><Reply size={19} /></span>
+                  Reply
+                </button>
+
+                <button type="button" onClick={copySelectedMessage}>
+                  <span><Copy size={19} /></span>
+                  Copy
+                </button>
+
+                <button type="button" onClick={() => { toggleBookmark(message.id); setActionsOpen(false); }}>
+                  <span>★</span>
+                  {bookmarkedIds.includes(message.id) ? "Remove from saved" : "Save message"}
+                </button>
+
+                <button type="button" onClick={forwardSelectedMessage}>
+                  <span>➜</span>
+                  Forward
+                </button>
+
+                {isMine && canUseAction("edit") && (
+                  <button type="button" onClick={editSelectedMessage}>
+                    <span>✎</span>
+                    Edit message
+                  </button>
+                )}
+
+                {canUseAction("pin") && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      setActionsOpen(false);
+                      context?.handlePin?.(event);
+                    }}
+                  >
+                    <span><Pin size={19} /></span>
+                    {message.pinned ? "Unpin" : "Pin message"}
+                  </button>
+                )}
+
+                {canUseAction("markUnread") && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      setActionsOpen(false);
+                      context?.handleMarkUnread?.(event);
+                    }}
+                  >
+                    <span><CircleDot size={19} /></span>
+                    Mark as unread
+                  </button>
+                )}
+
+                {isMine && canUseAction("delete") && (
+                  <button
+                    type="button"
+                    className="is-destructive"
+                    onClick={deleteSelectedMessage}
+                  >
+                    <span><Trash2 size={19} /></span>
+                    Delete message
+                  </button>
+                )}
+              </div>
+
+            </div>
+          </div>,
+          document.body
+        )}
+      </>
+    );
+  }
+
 export default function App() {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
@@ -5628,32 +6318,6 @@ async function adminUpdateTicketStatus(requestId, status) {
     document.activeElement?.blur?.();
   };
 
-  const CustomImage = (props) => {
-    const attachment = {
-      ...props,
-      type: "image",
-    };
-    const media = normaliseMediaAttachment(attachment);
-    if (!media) return null;
-
-    return (
-      <img
-        src={media.url}
-        alt={media.title || "attachment"}
-        onClick={() => openMediaPreview([attachment], 0)}
-        style={{
-          maxWidth: "100%",
-          borderRadius: 12,
-          cursor: "pointer",
-          display: "block",
-        }}
-      />
-    );
-  };
-
-  const CustomAttachment = (props) => {
-    return <Attachment {...props} Image={CustomImage} />;
-  };
 
   const renderMessageAttachments = (attachments) => {
     const source = Array.isArray(attachments) ? attachments : [];
@@ -5710,706 +6374,7 @@ async function adminUpdateTicketStatus(requestId, status) {
     );
   };
 
-  const MyMessage = (props) => {
-    const context = useMessageContext();
-    const messageComposer = useMessageComposer();
-    const { jumpToMessage: jumpToOriginalMessage } = useChannelActionContext();
-    const { read: roomReadState = {} } = useChannelStateContext("MyMessage");
-    const message = context?.message || props?.message;
-    const contextGroupStyles = context?.groupStyles || props?.groupStyles || [];
-    const [actionsOpen, setActionsOpen] = useState(false);
-    const [actionMenuPosition, setActionMenuPosition] = useState(null);
-    const messageBubbleRef = useRef(null);
-    const longPressTimerRef = useRef(0);
-    const longPressTriggeredRef = useRef(false);
-    const longPressStartRef = useRef(null);
-    const swipeStartRef = useRef(null);
 
-    useEffect(() => {
-      if (!actionsOpen) return undefined;
-
-      const closeOnEscape = (event) => {
-        if (event.key === "Escape") setActionsOpen(false);
-      };
-
-      document.addEventListener("keydown", closeOnEscape);
-      return () => document.removeEventListener("keydown", closeOnEscape);
-    }, [actionsOpen]);
-
-    useEffect(
-      () => () => window.clearTimeout(longPressTimerRef.current),
-      []
-    );
-
-    if (!message) return null;
-
-    if (message.type === "system") {
-      return (
-        <div
-          data-message-id={message.id}
-          className="private-room-system-message"
-          style={{
-            margin: "12px auto",
-            width: "fit-content",
-            maxWidth: "90%",
-            padding: "6px 13px",
-            borderRadius: 999,
-            background: "rgba(255,255,255,0.9)",
-            border: "1px solid rgba(15,23,42,0.06)",
-            color: "#64748b",
-            fontSize: 12,
-            fontWeight: 700,
-            textAlign: "center",
-            boxShadow: "0 2px 8px rgba(15,23,42,0.05)",
-          }}
-        >
-          {message.text || "System message"}
-        </div>
-      );
-    }
-
-    const isMine = message.user?.id === client?.userID;
-    const senderName =
-      message.user?.name ||
-      message.user?.id ||
-      (isMine ? name || "You" : "User");
-    const senderInitial =
-      String(senderName).trim().slice(0, 1).toUpperCase() || "U";
-    const senderImage = message.user?.image;
-    const sentAt = message.created_at || message.updated_at;
-    const messageCreatedAt = new Date(message.created_at || message.updated_at || 0).getTime();
-    const streamReaders = Array.isArray(context?.readBy)
-      ? context.readBy
-      : Array.isArray(props?.readBy)
-        ? props.readBy
-        : [];
-    const readEntries = Object.entries(roomReadState);
-    const hasBeenSeen =
-      isMine &&
-      (streamReaders.some((reader) => reader?.id !== client?.userID) ||
-        readEntries.some(([userId, readState]) => {
-          if (!userId || userId === client?.userID) return false;
-          const lastRead = new Date(readState?.last_read || 0).getTime();
-          return Number.isFinite(lastRead) && lastRead >= messageCreatedAt;
-        }));
-    // WhatsApp-style status: sending → single gray, delivered → double gray, read → double blue
-    const messageStatus = String(message.status || "").toLowerCase();
-    const isSending =
-      isMine &&
-      (messageStatus === "sending" ||
-        messageStatus === "pending" ||
-        message.sayup_queued === true);
-    const isFailed = isMine && (messageStatus === "failed" || messageStatus === "error");
-    const deliveryStatus = isFailed
-      ? "is-failed"
-      : isSending
-        ? "is-sending"
-        : hasBeenSeen
-          ? "is-seen"
-          : "is-delivered";
-
-    const rawGroupStyle = Array.isArray(contextGroupStyles)
-      ? contextGroupStyles[0]
-      : contextGroupStyles;
-    const groupStyle = ["top", "middle", "bottom", "single"].includes(
-      rawGroupStyle
-    )
-      ? rawGroupStyle
-      : "single";
-
-    const beginsGroup = groupStyle === "top" || groupStyle === "single";
-    const endsGroup = groupStyle === "bottom" || groupStyle === "single";
-    const isMiddle = groupStyle === "middle";
-    const hasAttachments =
-      Array.isArray(message.attachments) && message.attachments.length > 0;
-    const allowedActions = context?.getMessageActions?.() || [];
-    const canUseAction = (action) => allowedActions.includes(action);
-    const reactionOptions = [
-      { type: "love", emoji: "❤️", label: "Love" },
-      { type: "like", emoji: "👍", label: "Like" },
-      { type: "haha", emoji: "😂", label: "Laugh" },
-      { type: "wow", emoji: "😮", label: "Wow" },
-      { type: "sad", emoji: "😢", label: "Sad" },
-      { type: "pray", emoji: "🙏", label: "Thank you" },
-    ];
-    const clearLongPress = () => {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = 0;
-      longPressStartRef.current = null;
-    };
-
-    const openActions = () => {
-      clearLongPress();
-      const bubbleRect = messageBubbleRef.current?.getBoundingClientRect();
-      const menuWidth = Math.min(300, window.innerWidth - 24);
-      const estimatedMenuHeight = 490;
-      const preferredLeft = isMine
-        ? (bubbleRect?.right || window.innerWidth - 12) - menuWidth
-        : bubbleRect?.left || 12;
-
-      setActionMenuPosition({
-        left: Math.max(
-          12,
-          Math.min(preferredLeft, window.innerWidth - menuWidth - 12)
-        ),
-        top: Math.max(
-          12,
-          Math.min(
-            (bubbleRect?.top || 76) - 62,
-            window.innerHeight - estimatedMenuHeight - 12
-          )
-        ),
-        width: menuWidth,
-      });
-      longPressTriggeredRef.current = true;
-      setActionsOpen(true);
-      window.navigator.vibrate?.(15);
-    };
-
-    const startLongPress = (event) => {
-      if (event.pointerType === "mouse" || event.pointerType === "touch") return;
-      clearLongPress();
-      longPressTriggeredRef.current = false;
-      longPressStartRef.current = {
-        pointerId: event.pointerId,
-        x: event.clientX,
-        y: event.clientY,
-      };
-      longPressTimerRef.current = window.setTimeout(openActions, 450);
-    };
-
-    const trackLongPressMovement = (event) => {
-      const start = longPressStartRef.current;
-      if (!start || start.pointerId !== event.pointerId) return;
-      const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y);
-      if (moved > 14) clearLongPress();
-    };
-
-    const startTouchLongPress = (event) => {
-      const touch = event.touches?.[0];
-      if (!touch) return;
-      swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
-      clearLongPress();
-      longPressTriggeredRef.current = false;
-      longPressStartRef.current = {
-        pointerId: "touch",
-        x: touch.clientX,
-        y: touch.clientY,
-      };
-      longPressTimerRef.current = window.setTimeout(openActions, 420);
-    };
-
-    const trackTouchLongPressMovement = (event) => {
-      const start = longPressStartRef.current;
-      const touch = event.touches?.[0];
-      if (!start || start.pointerId !== "touch" || !touch) return;
-      const moved = Math.hypot(touch.clientX - start.x, touch.clientY - start.y);
-      if (moved > 14) clearLongPress();
-    };
-
-    const finishTouchGesture = (event) => {
-      const start = swipeStartRef.current;
-      const touch = event.changedTouches?.[0];
-      clearLongPress();
-      swipeStartRef.current = null;
-      if (!start || !touch || longPressTriggeredRef.current) return;
-      const horizontal = touch.clientX - start.x;
-      const vertical = Math.abs(touch.clientY - start.y);
-      const replyDistance = isMine ? -58 : 58;
-      if ((isMine ? horizontal <= replyDistance : horizontal >= replyDistance) && vertical < 48) {
-        quoteMessage();
-        window.navigator.vibrate?.(10);
-      }
-    };
-
-    const quoteMessage = () => {
-      messageComposer.setQuotedMessage(message);
-      setActionsOpen(false);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const textarea = document.querySelector(
-            ".private-room-chat-shell .str-chat__textarea__textarea"
-          );
-          if (!textarea) return;
-          try {
-            textarea.focus({ preventScroll: true });
-          } catch {
-            textarea.focus();
-          }
-        });
-      });
-    };
-
-    const addReaction = async (reactionType, event) => {
-      try {
-        if (context?.handleReaction) {
-          await context.handleReaction(reactionType, event);
-        } else {
-          await channel?.sendReaction(message.id, { type: reactionType });
-        }
-      } catch (error) {
-        console.error("Could not update reaction", error);
-      } finally {
-        setActionsOpen(false);
-      }
-    };
-
-    const deleteSelectedMessage = async (event) => {
-      if (!window.confirm("Delete this message?")) return;
-      setActionsOpen(false);
-      await context?.handleDelete?.(event);
-    };
-
-    const copySelectedMessage = async () => {
-      const copyText =
-        message.text ||
-        (message.attachments?.length ? "Attachment" : "Message");
-
-      try {
-        await navigator.clipboard.writeText(copyText);
-      } catch {
-        const copyArea = document.createElement("textarea");
-        copyArea.value = copyText;
-        copyArea.style.position = "fixed";
-        copyArea.style.opacity = "0";
-        document.body.appendChild(copyArea);
-        copyArea.select();
-        document.execCommand("copy");
-        copyArea.remove();
-      }
-      setActionsOpen(false);
-    };
-
-    const editSelectedMessage = async () => {
-      setActionsOpen(false);
-      const nextText = window.prompt("Edit message", message.text || "");
-      if (nextText === null || nextText.trim() === (message.text || "").trim()) return;
-      if (!nextText.trim() && !message.attachments?.length) return;
-      try {
-        await client?.updateMessage({ id: message.id, text: nextText.trim() });
-      } catch (error) {
-        console.error("Could not edit message", error);
-        alert("This message could not be edited.");
-      }
-    };
-
-    const forwardSelectedMessage = async () => {
-      setActionsOpen(false);
-      const destination = window.prompt("Forward to room number");
-      if (!destination?.trim() || !client) return;
-      try {
-        const destinationId = createPrivateRoomId(accessKey, destination.trim());
-        const destinationChannel = client.channel("messaging", destinationId, {
-          name: `Room ${destination.trim()}`,
-          accessKey,
-          roomCode: destination.trim(),
-        });
-        await destinationChannel.watch();
-        await destinationChannel.sendMessage({
-          text: message.text || "Forwarded attachment",
-          attachments: message.attachments || [],
-          sayup_forwarded: true,
-        });
-        alert(`Forwarded to Room ${destination.trim()}`);
-      } catch (error) {
-        console.error("Could not forward message", error);
-        alert("This message could not be forwarded to that room.");
-      }
-    };
-
-    const receivedRadius =
-      groupStyle === "single"
-        ? "7px 18px 18px 18px"
-        : groupStyle === "top"
-          ? "7px 18px 18px 7px"
-          : groupStyle === "middle"
-            ? "7px 18px 18px 7px"
-            : "7px 18px 18px 18px";
-
-    const sentRadius =
-      groupStyle === "single"
-        ? "18px 7px 18px 18px"
-        : groupStyle === "top"
-          ? "18px 7px 7px 18px"
-          : groupStyle === "middle"
-            ? "18px 7px 7px 18px"
-            : "18px 7px 18px 18px";
-
-    const messageGestureProps = {
-      ref: messageBubbleRef,
-      className: `private-room-message-bubble ${isMine ? "is-own" : "is-other"}`,
-      onPointerDown: startLongPress,
-      onPointerUp: clearLongPress,
-      onPointerCancel: clearLongPress,
-      onPointerMove: trackLongPressMovement,
-      onTouchStart: startTouchLongPress,
-      onTouchMove: trackTouchLongPressMovement,
-      onTouchEnd: finishTouchGesture,
-      onTouchCancel: clearLongPress,
-      onDragStart: (event) => event.preventDefault(),
-      onSelect: (event) => {
-        event.preventDefault();
-        window.getSelection?.()?.removeAllRanges();
-      },
-      onContextMenu: (event) => {
-        event.preventDefault();
-        openActions();
-        longPressTriggeredRef.current = false;
-      },
-      onClickCapture: (event) => {
-        if (!longPressTriggeredRef.current) return;
-        event.preventDefault();
-        event.stopPropagation();
-        longPressTriggeredRef.current = false;
-      },
-      "aria-label": "Message. Hold for reply, reactions, and more options.",
-    };
-
-    return (
-      <>
-      <div
-        data-message-id={message.id}
-        style={{
-          display: "flex",
-          justifyContent: isMine ? "flex-end" : "flex-start",
-          width: "100%",
-          padding: beginsGroup ? "10px 10px 1px" : "1px 10px",
-          boxSizing: "border-box",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "row",
-            alignItems: "flex-end",
-            justifyContent: isMine ? "flex-end" : "flex-start",
-            gap: 8,
-            width: "fit-content",
-            maxWidth: isMobile ? "92%" : "76%",
-          }}
-        >
-          {!isMine && (
-            <div
-              style={{
-                width: 34,
-                minWidth: 34,
-                height: 34,
-                flexShrink: 0,
-                visibility: endsGroup ? "visible" : "hidden",
-              }}
-            >
-              {senderImage ? (
-                <img
-                  src={senderImage}
-                  alt={senderName}
-                  title={senderName}
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: "50%",
-                    objectFit: "cover",
-                    display: "block",
-                    boxShadow: "0 4px 12px rgba(5,150,105,0.20)",
-                  }}
-                />
-              ) : (
-                <div
-                  title={senderName}
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: "50%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background:
-                      "linear-gradient(180deg, #10b981 0%, #059669 100%)",
-                    color: "#fff",
-                    fontSize: 14,
-                    fontWeight: 900,
-                    boxShadow: "0 4px 12px rgba(5,150,105,0.22)",
-                  }}
-                >
-                  {senderInitial}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div
-            style={{
-              minWidth: 0,
-              maxWidth: "100%",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: isMine ? "flex-end" : "flex-start",
-            }}
-          >
-            {!isMine && beginsGroup && (
-              <div
-                className="private-room-message-sender"
-                style={{
-                  margin: "0 0 5px 9px",
-                  color: "#07866f",
-                  fontSize: 13,
-                  lineHeight: 1.2,
-                  fontWeight: 900,
-                  maxWidth: "100%",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {senderName}
-              </div>
-            )}
-
-            <div
-              {...messageGestureProps}
-              style={{
-                width: "fit-content",
-                minWidth: isMine ? 86 : 68,
-                maxWidth: "100%",
-                position: "relative",
-                padding: hasAttachments
-                  ? "7px 7px 22px"
-                  : "8px 12px 21px",
-                borderRadius: isMine ? sentRadius : receivedRadius,
-                background: isMine ? "#d9fdd3" : "#ffffff",
-                border: "1px solid rgba(15,23,42,0.06)",
-                boxShadow: "0 2px 8px rgba(15,23,42,0.10)",
-                color: "#111827",
-                overflowWrap: "anywhere",
-                boxSizing: "border-box",
-              }}
-            >
-              {message.quoted_message && (
-                <div
-                  className="private-room-message-quote"
-                  role="button"
-                  tabIndex={0}
-                  title="Go to original message"
-                  aria-label="Go to original message"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    jumpToOriginalMessage?.(message.quoted_message.id, 25, 1800);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
-                    event.preventDefault();
-                    jumpToOriginalMessage?.(message.quoted_message.id, 25, 1800);
-                  }}
-                  style={{
-                    marginBottom: 7,
-                    padding: "7px 9px",
-                    borderLeft: "3px solid #10b981",
-                    borderRadius: 8,
-                    background: isMine
-                      ? "rgba(255,255,255,0.46)"
-                      : "#f1f5f9",
-                    color: "#475569",
-                    fontSize: 12,
-                  }}
-                >
-                  <div style={{ fontWeight: 900, marginBottom: 2 }}>
-                    {message.quoted_message.user?.name || "Message"}
-                  </div>
-                  <div>
-                    {message.quoted_message.text ||
-                      (message.quoted_message.attachments?.length
-                        ? "Attachment"
-                        : "Message")}
-            </div>
-
-            </div>
-              )}
-
-              {message.text && (
-                <div
-                  className="private-room-message-text"
-                  style={{
-                    fontSize: isMobile ? 14 : 15,
-                    lineHeight: 1.4,
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {message.text}
-                </div>
-              )}
-
-              {hasAttachments && (
-                <div style={{ marginTop: message.text ? 7 : 0 }}>
-                  {renderMessageAttachments(message.attachments)}
-                </div>
-              )}
-
-              <div
-                className="private-room-message-meta"
-                style={{
-                  position: "absolute",
-                  right: 7,
-                  bottom: 4,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  gap: 2,
-                  fontSize: 10,
-                  lineHeight: 1,
-                  color: "#667781",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <span>{sentAt ? formatTime(sentAt) : ""}</span>
-                {isMine && (
-                  <span
-                    className={`private-room-message-status ${deliveryStatus}`}
-                    aria-label={
-                      deliveryStatus === "is-seen"
-                        ? "Read"
-                        : deliveryStatus === "is-sending"
-                          ? "Sending"
-                          : deliveryStatus === "is-failed"
-                            ? "Failed"
-                            : "Delivered"
-                    }
-                    title={
-                      deliveryStatus === "is-seen"
-                        ? "Read"
-                        : deliveryStatus === "is-sending"
-                          ? "Sending"
-                          : deliveryStatus === "is-failed"
-                            ? "Failed to send"
-                            : "Delivered"
-                    }
-                  >
-                    {deliveryStatus === "is-sending" || deliveryStatus === "is-failed" ? (
-                      <Check className="private-room-check is-single" aria-hidden="true" />
-                    ) : (
-                      <>
-                        <Check className="private-room-check is-first" aria-hidden="true" />
-                        <Check className="private-room-check is-second" aria-hidden="true" />
-                      </>
-                    )}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="private-room-live-reactions">
-              <SimpleReactionsList />
-            </div>
-
-            {endsGroup && !isMiddle && (
-              <div style={{ height: 2 }} aria-hidden="true" />
-            )}
-          </div>
-        </div>
-      </div>
-      {actionsOpen &&
-        createPortal(
-          <div
-            className="private-room-message-actions-backdrop"
-            role="presentation"
-            onPointerDown={() => setActionsOpen(false)}
-          >
-            <div
-              className="private-room-message-actions-sheet"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Message options"
-              onPointerDown={(event) => event.stopPropagation()}
-              style={{
-                left: actionMenuPosition?.left ?? 12,
-                top: actionMenuPosition?.top ?? 12,
-                width: actionMenuPosition?.width ?? "calc(100% - 24px)",
-              }}
-            >
-              <div className="private-room-reaction-picker" aria-label="React to message">
-                {reactionOptions.map((reaction) => (
-                  <button
-                    type="button"
-                    key={reaction.type}
-                    onClick={(event) => addReaction(reaction.type, event)}
-                    aria-label={reaction.label}
-                  >
-                    {reaction.emoji}
-                  </button>
-                ))}
-              </div>
-
-              <div className="private-room-message-action-list">
-                <button type="button" onClick={quoteMessage}>
-                  <span><Reply size={19} /></span>
-                  Reply
-                </button>
-
-                <button type="button" onClick={copySelectedMessage}>
-                  <span><Copy size={19} /></span>
-                  Copy
-                </button>
-
-                <button type="button" onClick={() => { toggleBookmark(message.id); setActionsOpen(false); }}>
-                  <span>★</span>
-                  {bookmarkedIds.includes(message.id) ? "Remove from saved" : "Save message"}
-                </button>
-
-                <button type="button" onClick={forwardSelectedMessage}>
-                  <span>➜</span>
-                  Forward
-                </button>
-
-                {isMine && canUseAction("edit") && (
-                  <button type="button" onClick={editSelectedMessage}>
-                    <span>✎</span>
-                    Edit message
-                  </button>
-                )}
-
-                {canUseAction("pin") && (
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      setActionsOpen(false);
-                      context?.handlePin?.(event);
-                    }}
-                  >
-                    <span><Pin size={19} /></span>
-                    {message.pinned ? "Unpin" : "Pin message"}
-                  </button>
-                )}
-
-                {canUseAction("markUnread") && (
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      setActionsOpen(false);
-                      context?.handleMarkUnread?.(event);
-                    }}
-                  >
-                    <span><CircleDot size={19} /></span>
-                    Mark as unread
-                  </button>
-                )}
-
-                {isMine && canUseAction("delete") && (
-                  <button
-                    type="button"
-                    className="is-destructive"
-                    onClick={deleteSelectedMessage}
-                  >
-                    <span><Trash2 size={19} /></span>
-                    Delete message
-                  </button>
-                )}
-              </div>
-
-            </div>
-          </div>,
-          document.body
-        )}
-      </>
-    );
-  };
 
   const isAdminHostname = window.location.hostname === "sayup-admin.vercel.app";
   const isAdminPage =
@@ -7270,6 +7235,9 @@ async function adminUpdateTicketStatus(requestId, status) {
           }
         `}</style>
 
+        <ChatMessageActionsContext.Provider value={{ client, name, accessKey,
+          renderMessageAttachments, toggleBookmark, bookmarkedIds,
+          normaliseMediaAttachment, openMediaPreview }}>
         <Chat client={client} theme="messaging light">
           <Channel
             channel={channel}
@@ -7370,6 +7338,7 @@ async function adminUpdateTicketStatus(requestId, status) {
             </RoomReadReceiptCoordinator>
           </Channel>
         </Chat>
+        </ChatMessageActionsContext.Provider>
 
         <SupportModal
   open={supportOpen}
