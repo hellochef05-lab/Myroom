@@ -23,14 +23,9 @@ const list={scrollHeight:1000,clientHeight:500,scrollTop:500};
 scrolling.current=true;
 recordUserScrollPosition({target:{closest(){return list;}}});
 assert.equal(pinned.current,false); // resize/scroll reaching bottom cannot opt in
-// Check that a delayed focus event cannot resume following either.
-const focusStart=source.indexOf('    const keepLatestAboveKeyboard =');
-const focusEnd=source.indexOf('    const settleKeyboardResize =',focusStart);
 let moves=0;
-vm.runInNewContext(source.slice(focusStart,focusEnd)+'\nkeepLatestAboveKeyboard({target:{closest(){return true;}}})',{...context,moveToLatest(){moves++;}});
-assert.equal(moves,0);assert.equal(pinned.current,false);
 const sendStart=source.indexOf('    const scrollAfterOwnSend =');
-const sendEnd=source.indexOf('    const keepLatestAboveKeyboard =',sendStart);
+const sendEnd=source.indexOf('    window.addEventListener',sendStart);
 vm.runInNewContext(source.slice(sendStart,sendEnd)+'\nscrollAfterOwnSend()',{...context,moveToLatest(){moves++;}});
 assert.equal(pinned.current,true);assert.equal(scrolling.current,false);assert.equal(moves,1);
-console.log('History follow passed: delayed iOS events, expired gesture timer, keyboard focus, resize-to-bottom and explicit resume.');
+console.log('History follow passed: delayed iOS events, expired gesture timer, resize-to-bottom and explicit resume.');
