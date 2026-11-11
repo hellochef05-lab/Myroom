@@ -66,7 +66,7 @@ export function createOutboxFlusher({ readQueue, writeQueue, sendMessage, update
       if (pending !== current) return;
       pending = undefined;
       if (!active || !canSend() || !hasPending()) return;
-      const delay = Math.min(1000 * 2 ** Math.min(failures++, 4), 10000);
+      const delay = Math.min(500 * 2 ** Math.min(failures++, 5), 10000);
       retryTimer = schedule(() => { retryTimer = undefined; return flush(); }, delay);
       retryTimer?.unref?.();
     };
