@@ -313,6 +313,9 @@ function LatestMessageList({ channelId }) {
   const followFrameRef = useRef(0);
   const pinnedToLatestRef = useRef(true);
   const userIsScrollingRef = useRef(false);
+  const lastUserScrollTopRef = useRef(0);
+  const gestureViewportHeightRef = useRef(0);
+  const resumeAtLatestRef = useRef(false);
   const interactionResetTimerRef = useRef(0);
   const [initialPositionReady, setInitialPositionReady] = useState(false);
   const [historyPaginationEnabled, setHistoryPaginationEnabled] = useState(false);
@@ -326,8 +329,8 @@ function LatestMessageList({ channelId }) {
   useLayoutEffect(() => {
     if (!channel?.initialized || loading || initialPositionReady) return undefined;
 
-    // Position once when opening the room. After that, only an explicit send
-    // may move to latest; keyboard, receipt and incoming events never do.
+    // Position once when opening the room. Later incoming messages may follow
+    // only when already at latest; keyboard and receipt updates never move it.
     let revealFrame = 0;
     let positionFrame = 0;
     let attempts = 0;
@@ -378,20 +381,33 @@ function LatestMessageList({ channelId }) {
     };
 
 
+    const followIncomingAtLatest = () => {
+      // Read the position before React inserts the incoming bubble. Never
+      // infer intent from a later resize, which can make history look pinned.
+      const gap = list.scrollHeight - list.clientHeight - list.scrollTop;
+      if (!pinnedToLatestRef.current || userIsScrollingRef.current || Math.abs(gap) > 2) return;
+      moveToLatest();
+    };
+    channel.on("message.new", followIncomingAtLatest);
     window.addEventListener("sayup:whatsapp-send-follow", scrollAfterOwnSend);
 
     return () => {
       cancelAnimationFrame(followFrameRef.current);
       window.clearTimeout(interactionResetTimerRef.current);
       window.removeEventListener("sayup:whatsapp-send-follow", scrollAfterOwnSend);
+      channel.off("message.new", followIncomingAtLatest);
     };
   }, [channel, initialPositionReady]);
 
   const beginUserScroll = () => {
     window.clearTimeout(interactionResetTimerRef.current);
     userIsScrollingRef.current = true;
-    // Detach synchronously, BEFORE Safari emits any scroll/resize callbacks.
-    // This choice persists beyond the gesture/momentum timer and keyboard use.
+    const list = listHostRef.current?.querySelector(".str-chat__list");
+    lastUserScrollTopRef.current = list?.scrollTop || 0;
+    gestureViewportHeightRef.current = list?.clientHeight || 0;
+    resumeAtLatestRef.current = Boolean(list && Math.abs(list.scrollHeight - list.clientHeight - list.scrollTop) <= 2);
+    // Detach before Safari emits scroll/resize callbacks. Only an actual
+    // downward scroll to the bottom (or a tap already there) can opt back in.
     pinnedToLatestRef.current = false;
     cancelAnimationFrame(followFrameRef.current);
     if (initialPositionReady && !historyPaginationEnabled) {
@@ -403,6 +419,12 @@ function LatestMessageList({ channelId }) {
     window.clearTimeout(interactionResetTimerRef.current);
     interactionResetTimerRef.current = window.setTimeout(() => {
       userIsScrollingRef.current = false;
+      const list = listHostRef.current?.querySelector(".str-chat__list");
+      if (resumeAtLatestRef.current && list &&
+          list.clientHeight === gestureViewportHeightRef.current &&
+          Math.abs(list.scrollHeight - list.clientHeight - list.scrollTop) <= 2) {
+        pinnedToLatestRef.current = true;
+      }
     }, 220);
   };
 
@@ -413,11 +435,12 @@ function LatestMessageList({ channelId }) {
     if (!list) return;
     const distanceFromLatest =
       list.scrollHeight - list.clientHeight - list.scrollTop;
-    // A viewport resize can make the list appear close to the bottom. Only
-    // an explicit send action may re-enable following after browsing.
-    if (distanceFromLatest > 48) {
-      pinnedToLatestRef.current = false;
+    if (list.clientHeight !== gestureViewportHeightRef.current || Math.abs(distanceFromLatest) > 2) {
+      resumeAtLatestRef.current = false;
+    } else if (list.scrollTop > lastUserScrollTopRef.current + 0.5) {
+      resumeAtLatestRef.current = true;
     }
+    lastUserScrollTopRef.current = list.scrollTop;
     finishUserScroll();
   };
 
