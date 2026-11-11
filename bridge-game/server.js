@@ -22,7 +22,7 @@ $('mic').onclick=()=>{const t=stream?.getAudioTracks()[0];if(t){t.enabled=!t.ena
 $('cam').onclick=()=>{const t=stream?.getVideoTracks()[0];if(t){t.enabled=!t.enabled;$('cam').textContent=t.enabled?'Turn camera off':'Turn camera on'}};
 $('leave').onclick=()=>{send({type:'leave'});ws?.close();reset()};
 </script></body></html>`;
-const server=http.createServer((req,res)=>{if(req.url==='/api/config'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({iceServers:ice}))}if(req.url==='/'||req.url==='/index.html'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','x-content-type-options':'nosniff','referrer-policy':'no-referrer'});return res.end(html)}res.writeHead(404);res.end('Not found')});
+const server=http.createServer((req,res)=>{if(req.url==='/api/config'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({iceServers:ice}))}if(req.method==='GET'&&req.url==='/health'){res.writeHead(200,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,app:'Bridge Game'}))}if(req.method==='GET'){res.writeHead(200,{'content-type':'text/html; charset=utf-8','x-content-type-options':'nosniff','referrer-policy':'no-referrer'});return res.end(html)}res.writeHead(405);res.end('Method not allowed')});
 const wss=new WebSocketServer({server,maxPayload:131072});
 function send(ws,x){if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(x))}
 function leave(ws){if(!ws.key)return;const k=ws.key;ws.key=null,r=rooms.get(k);if(!r)return;r.members.delete(ws);for(const p of r.members)send(p,{type:'peer-left'});if(!r.members.size)rooms.delete(k)}
