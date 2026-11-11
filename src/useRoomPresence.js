@@ -23,7 +23,7 @@ export function useRoomPresence({ apiBase, accessKey, deviceId, roomId, name, cl
     let sequence = 0;
     let lastSuccess = 0;
     let appliedSequence = 0;
-    let connected = client.wsConnection?.isHealthy !== false;
+    let connected = Boolean(client.wsFallback?.isHealthy?.() || client.wsConnection?.isHealthy !== false);
     const sessionId = crypto.randomUUID();
     const send = async (leaving = false) => {
       const online = !leaving && !document.hidden && navigator.onLine && connected;

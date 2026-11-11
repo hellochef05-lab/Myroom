@@ -1,3 +1,4 @@
+import { ensureChannelWatched, createChatConnectionRecovery } from "./chatConnection.js";
 import { RoomPresenceProvider, useRoomPresenceMembers } from "./roomPresenceContext.js";
 import { presenceSummary } from "./useRoomPresence.js";
 import { createOutboxFlusher, createDraftSafeSubmit } from "./messageOutbox.js";
@@ -74,6 +75,7 @@ function getStreamClient() {
   return StreamChat.getInstance(apiKey, {
     timeout: STREAM_REQUEST_TIMEOUT_MS,
     recoverStateOnReconnect: true,
+    enableWSFallback: true,
     enableInsights: false,
   });
 }
@@ -486,6 +488,7 @@ function ReliableMessageInput(props) {
     const flush = createOutboxFlusher({
       readQueue, writeQueue, updateMessage: showMessage,
       sendMessage: (message, options) => channel.sendMessage(message, options),
+      canSend: () => navigator.onLine,
     });
     const reportError = (error) => console.warn("Message remains queued", error);
     // This factory also stores callbacks without executing them during render.
@@ -518,26 +521,68 @@ function ReliableMessageInput(props) {
         });
       }
     };
-    return { restoreQueuedMessages, submit: submitter.submit, dispose: submitter.dispose,
+    return { restoreQueuedMessages, submit: submitter.submit,
+      start: () => { void flush.start().catch(reportError); },
+      pause: flush.pause,
+      acknowledge: flush.acknowledge,
+      dispose: () => { flush.dispose(); submitter.dispose(); },
       flush: () => { void flush().catch(reportError); } };
   }, [channel, messageComposer, queueKey]);
 
   useEffect(() => {
     if (!channel) return undefined;
+    delivery.start();
     delivery.restoreQueuedMessages();
+    const messageSubscription = channel.on("message.new", event => {
+      delivery.acknowledge(event.message);
+    });
     const connectionSubscription = channel.getClient().on("connection.changed", (event) => {
       if (event.online) delivery.flush();
     });
-    window.addEventListener("online", delivery.flush);
+    const onVisibility = () => {
+      if (!document.hidden) delivery.start();
+    };
+    const onOnline = () => delivery.start();
+    window.addEventListener("online", onOnline);
+    window.addEventListener("pageshow", onOnline);
+    window.addEventListener("offline", delivery.pause);
+    document.addEventListener("visibilitychange", onVisibility);
     if (navigator.onLine) delivery.flush();
     return () => {
-      window.removeEventListener("online", delivery.flush);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("pageshow", onOnline);
+      window.removeEventListener("offline", delivery.pause);
+      document.removeEventListener("visibilitychange", onVisibility);
       connectionSubscription.unsubscribe();
+      messageSubscription.unsubscribe();
       delivery.dispose();
     };
   }, [channel, delivery]);
 
   return <MessageInput {...props} overrideSubmitHandler={delivery.submit} />;
+}
+
+function ChatConnectionRecovery({ client, channel }) {
+  useEffect(() => {
+    const recovery = createChatConnectionRecovery({ client, channel,
+      canRecover: () => navigator.onLine && !document.hidden,
+    });
+    const resume = () => { void recovery.resume(); };
+    const visibility = () => { if (document.hidden) recovery.pause(); else resume(); };
+    const changed = client.on("connection.changed", event => { if (event.online) resume(); });
+    window.addEventListener("online", resume);
+    window.addEventListener("pageshow", resume);
+    document.addEventListener("visibilitychange", visibility);
+    resume();
+    return () => {
+      recovery.dispose();
+      changed.unsubscribe();
+      window.removeEventListener("online", resume);
+      window.removeEventListener("pageshow", resume);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [client, channel]);
+  return null;
 }
 
 function RoomReadReceiptCoordinator({ channel, clientUserId, children }) {
@@ -6065,13 +6110,13 @@ async function adminUpdateTicketStatus(requestId, status) {
       });
       // Open the room even if watch is slow. Messages catch up in the background.
       const watchResult = await Promise.race([
-        roomChannel.watch().then(() => ({ ready: true })).catch((error) => ({ error })),
+        ensureChannelWatched(roomChannel).then(() => ({ ready: true })).catch((error) => ({ error })),
         wait(ROOM_OPEN_WAIT_MS).then(() => ({ timedOut: true })),
       ]);
       if (watchResult.error && !/timeout/i.test(String(watchResult.error?.message || ""))) {
         // Non-timeout failures still retry once, then enter the room anyway.
         await wait(1200);
-        await roomChannel.watch().catch(() => {});
+        await ensureChannelWatched(roomChannel).catch(() => {});
       }
 
       // WhatsApp-style 1:1 rooms — max 2 people, same display name allowed.
@@ -7239,6 +7284,7 @@ async function adminUpdateTicketStatus(requestId, status) {
           renderMessageAttachments, toggleBookmark, bookmarkedIds,
           normaliseMediaAttachment, openMediaPreview }}>
         <Chat client={client} theme="messaging light">
+          <ChatConnectionRecovery client={client} channel={channel} />
           <Channel
             channel={channel}
             Attachment={CustomAttachment}

@@ -1,14 +1,24 @@
-export function createOutboxFlusher({ readQueue, writeQueue, sendMessage, updateMessage }) {
+export function createOutboxFlusher({ readQueue, writeQueue, sendMessage, updateMessage,
+  canSend = () => true, schedule = setTimeout, cancel = clearTimeout,
+}) {
   let pending;
-  return () => {
+  let retryTimer;
+  let failures = 0;
+  let active = true;
+  const rejected = new Set();
+  const acknowledgments = new Map();
+  const hasPending = () => readQueue().some(item => !rejected.has(item.id));
+  const clearRetry = () => { cancel(retryTimer); retryTimer = undefined; };
+  const flush = () => {
+    clearRetry();
     if (pending) return pending;
+    if (!active || !canSend()) return Promise.resolve();
     const attempted = new Set();
     const run = async () => {
-      // Read the current queue after each request: a second send may have
-      // arrived while the first request was pending. Never replace it with an
-      // older snapshot of the queue.
       for (;;) {
-        const item = readQueue().find(entry => !attempted.has(entry.id));
+        if (!active || !canSend()) return;
+        // Reread after each acknowledgment; never overwrite a newer queued send.
+        const item = readQueue().find(entry => !attempted.has(entry.id) && !rejected.has(entry.id));
         if (!item) return;
         attempted.add(item.id);
         const localMessage = {
@@ -19,10 +29,30 @@ export function createOutboxFlusher({ readQueue, writeQueue, sendMessage, update
         updateMessage?.(localMessage);
         let response;
         try {
-          response = await sendMessage(item.message, item.sendOptions);
-        } catch {
-          // Leave this item in storage for reconnection, without a tight retry.
+          // Reuse the original message ID on every attempt. A lost response
+          // must not create a second copy when the server accepted the first.
+          const acknowledged = new Promise(resolve => acknowledgments.set(item.id, resolve));
+          response = await Promise.race([
+            sendMessage({ ...item.message, id: item.message.id || item.id }, item.sendOptions),
+            acknowledged,
+          ]);
+          failures = 0;
+        } catch (error) {
+          // Match the installed SDK's duplicate-message acknowledgment rule.
+          if (Number(error?.code) === 4 && String(error?.message).includes('already exists')) {
+            writeQueue(readQueue().filter(entry => entry.id !== item.id));
+            updateMessage?.({ ...localMessage, status: 'received', sayup_queued: false });
+            failures = 0;
+            continue;
+          }
+          const status = Number(error?.status || error?.response?.status);
+          if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+            rejected.add(item.id);
+            updateMessage?.({ ...localMessage, status: 'failed', sayup_queued: false });
+          }
           continue;
+        } finally {
+          acknowledgments.delete(item.id);
         }
         writeQueue(readQueue().filter(entry => entry.id !== item.id));
         if (response?.message) {
@@ -32,10 +62,27 @@ export function createOutboxFlusher({ readQueue, writeQueue, sendMessage, update
     };
     pending = Promise.resolve().then(run);
     const current = pending;
-    const release = () => { if (pending === current) pending = undefined; };
+    const release = () => {
+      if (pending !== current) return;
+      pending = undefined;
+      if (!active || !canSend() || !hasPending()) return;
+      const delay = Math.min(1000 * 2 ** Math.min(failures++, 4), 10000);
+      retryTimer = schedule(() => { retryTimer = undefined; return flush(); }, delay);
+      retryTimer?.unref?.();
+    };
     current.then(release, release);
     return current;
   };
+  flush.acknowledge = message => {
+    if (!message?.id || !readQueue().some(item => item.id === message.id)) return;
+    writeQueue(readQueue().filter(item => item.id !== message.id));
+    updateMessage?.({ ...message, status: 'received', sayup_queued: false });
+    acknowledgments.get(message.id)?.({ message });
+  };
+  flush.pause = () => { active = false; clearRetry(); };
+  flush.dispose = flush.pause;
+  flush.start = () => { active = true; failures = 0; return flush(); };
+  return flush;
 }
 
 export function createDraftSafeSubmit({ composer, enqueue, flush, onQueued, onError = () => {},
