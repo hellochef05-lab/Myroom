@@ -488,7 +488,7 @@ function ReliableMessageInput(props) {
     const flush = createOutboxFlusher({
       readQueue, writeQueue, updateMessage: showMessage,
       sendMessage: (message, options) => channel.sendMessage(message, options),
-      canSend: () => navigator.onLine && !document.hidden,
+      canSend: () => navigator.onLine,
     });
     const reportError = (error) => console.warn("Message remains queued", error);
     // This factory also stores callbacks without executing them during render.
@@ -540,8 +540,7 @@ function ReliableMessageInput(props) {
       if (event.online) delivery.flush();
     });
     const onVisibility = () => {
-      if (document.hidden) delivery.pause();
-      else delivery.start();
+      if (!document.hidden) delivery.start();
     };
     const onOnline = () => delivery.start();
     window.addEventListener("online", onOnline);
