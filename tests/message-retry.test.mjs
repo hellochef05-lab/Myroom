@@ -12,7 +12,7 @@ const flush = createOutboxFlusher({
 await flush();
 assert.equal(queue.length, 1);
 assert.equal(timers.length, 1, 'a transient send failure must retry without waiting for a new message or network-change event');
-assert.equal(timers[0].ms, 1000);
+assert.equal(timers[0].ms, 500);
 await timers.shift().fn();
 assert.equal(requests, 2);
 assert.equal(queue.length, 0);
@@ -53,7 +53,7 @@ const controlled = createOutboxFlusher({
   cancel(timer) { const index = retryTimers.indexOf(timer); if (index >= 0) retryTimers.splice(index, 1); },
 });
 await controlled();
-for (const expected of [1000, 2000, 4000, 8000, 10000, 10000]) {
+for (const expected of [500, 1000, 2000, 4000, 8000, 10000, 10000]) {
   const timer = retryTimers.shift(); assert.equal(timer.ms, expected); await timer.fn();
 }
 controlled.pause(); assert.equal(retryTimers.length, 0);
@@ -68,4 +68,4 @@ const forbidden = createOutboxFlusher({ readQueue: () => queue, writeQueue: valu
   schedule: fn => permanentTimers.push(fn),
 });
 await forbidden(); assert.equal(permanentTimers.length, 0); assert.equal(states.at(-1).status, 'failed'); forbidden.dispose();
-console.log('Delivery backoff is bounded; offline/background/unmount pause it, foreground resumes it and permanent errors stop retrying.');
+console.log('Delivery backoff is bounded; offline/pause/unmount stop retries, foreground resumes it and permanent errors stop retrying.');

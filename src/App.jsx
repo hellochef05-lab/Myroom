@@ -1,3 +1,4 @@
+import { configureFastMessageRequests } from "./fastMessageRequests.js";
 import { ensureChannelWatched, createChatConnectionRecovery } from "./chatConnection.js";
 import { RoomPresenceProvider, useRoomPresenceMembers } from "./roomPresenceContext.js";
 import { presenceSummary } from "./useRoomPresence.js";
@@ -72,12 +73,12 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
 const loadCallIceConfig = createIceConfigLoader(`${API_BASE}/api/call/ice-servers`);
 
 function getStreamClient() {
-  return StreamChat.getInstance(apiKey, {
+  return configureFastMessageRequests(StreamChat.getInstance(apiKey, {
     timeout: STREAM_REQUEST_TIMEOUT_MS,
     recoverStateOnReconnect: true,
     enableWSFallback: true,
     enableInsights: false,
-  });
+  }));
 }
 
 async function connectStreamUserWithRetry(chatClient, user, token) {
