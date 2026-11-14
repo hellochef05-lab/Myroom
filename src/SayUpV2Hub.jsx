@@ -178,7 +178,7 @@ export default function SayUpV2Hub({
                 })()}
               </span>
             </div>)}</div>
-            <p className="sayup-hub-help">Times use your device’s timezone. Online means the room is open in the foreground. Signal loss may take about 45 seconds to show as offline; Last seen is the last confirmed activity. Times begin recording after this update.</p>
+            <p className="sayup-hub-help">Times use your device’s timezone. Online status comes from the chat connection. Last seen is the last confirmed activity, not an exact departure time. Recorded times may be unavailable while reconnecting.</p>
             <p className="sayup-hub-help">Invite members using the same private Access Key and room number. Admin role management remains protected in the Admin app.</p>
           </>}
           {tab === "status" && <>

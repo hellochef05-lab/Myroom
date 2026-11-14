@@ -931,7 +931,7 @@ function CallHeader({
     ? `${onlineMembers.map(member => member.name).join(", ")} · Online`
     : otherMembers.length
       ? `${otherMembers[0].name} · ${presenceSummary(otherMembers[0])}`
-      : "Presence unavailable";
+      : "Status unknown";
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const compact = typeof window !== "undefined" && window.innerWidth <= 768;
@@ -7199,7 +7199,7 @@ async function adminUpdateTicketStatus(requestId, status) {
 
   return (
     <RoomPresenceProvider apiBase={API_BASE} accessKey={loggedUser?.accessKey}
-      deviceId={getDeviceId()} roomId={channel.id} name={name} client={client}>
+      deviceId={getDeviceId()} roomId={channel.id} name={name} client={client} channel={channel}>
     <div
       className="private-room-chat-page"
       style={{

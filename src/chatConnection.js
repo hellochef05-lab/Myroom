@@ -4,7 +4,7 @@ const watches = new WeakMap();
 export function ensureChannelWatched(channel) {
   if (channel.initialized) return Promise.resolve();
   if (watches.has(channel)) return watches.get(channel);
-  const pending = Promise.resolve().then(() => channel.watch());
+  const pending = Promise.resolve().then(() => channel.watch({ presence: true }));
   watches.set(channel, pending);
   const release = () => { if (watches.get(channel) === pending) watches.delete(channel); };
   pending.then(release, release);
