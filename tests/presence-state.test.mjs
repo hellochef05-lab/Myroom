@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { mergeRoomPresence } from '../src/presenceState.js';
+const recorded = [{ userId: 'bob', name: 'Bob', isOnline: false, onlineSince: '2026-11-14T10:00:00Z', leftAt: '2026-11-14T11:00:00Z', lastSeenAt: '2026-11-14T10:59:00Z' }];
+let result = mergeRoomPresence([{ userId: 'bob', name: 'Bob', isOnline: true }], recorded)[0];
+assert.equal(result.isOnline, true); assert.equal(result.onlineSince, null, 'old arrival time must not describe a new connection'); assert.equal(result.leftAt, null);
+result = mergeRoomPresence([{ userId: 'bob', isOnline: false, lastSeenAt: '2026-11-14T10:45:00Z' }], recorded)[0];
+assert.equal(result.lastSeenAt, '2026-11-14T10:59:00Z', 'use latest confirmed activity'); assert.equal(result.leftAt, null, 'live status does not imply a precise departure time');
+assert.equal(mergeRoomPresence([], recorded)[0].leftAt, recorded[0].leftAt, 'recorded-only status remains available as fallback');
+result = mergeRoomPresence([{ userId: 'bob', name: 'Bob', isOnline: true }], [])[0];
+assert.equal(result.isOnline, true, 'online does not require historical timestamps');
+console.log('Presence merge passed: live source wins, historical times are retained conservatively and unknown times are not invented.');
