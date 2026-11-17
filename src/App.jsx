@@ -49,6 +49,8 @@ import {
   Copy,
   Download,
   Headphones,
+  Maximize2,
+  Minimize2,
   Mic,
   MicOff,
   MoreHorizontal,
@@ -1294,8 +1296,10 @@ function CallHeader({
   );
 }
 
-function FullScreenCallOverlay({
+function CallOverlay({
   visible,
+  minimized,
+  onToggleMinimized,
   inCall,
   incoming,
   callType,
@@ -1322,6 +1326,8 @@ function FullScreenCallOverlay({
   if (!visible) return null;
 
   const isVideo = callType === "video";
+  const canMinimize = isVideo && inCall && !incoming;
+  const isMini = canMinimize && minimized;
   const statusText = incoming
     ? incoming.callType === "video"
       ? "Incoming video call"
@@ -1333,7 +1339,7 @@ function FullScreenCallOverlay({
       : connectionMessage || "Calling...";
 
   return (
-    <div className={`video-call-overlay ${isVideo ? "is-video" : "is-audio"}`}>
+    <div className={`video-call-overlay ${isVideo ? "is-video" : "is-audio"}${isMini ? " is-minimized" : ""}`}>
       <audio ref={remoteAudioRef} autoPlay playsInline className="video-call-remote-audio" />
 
       <div className="video-call-topbar">
@@ -1345,15 +1351,26 @@ function FullScreenCallOverlay({
           </div>
         </div>
 
-        {onOpenSupport && (
-          <button
-            type="button"
-            className="video-call-support-button"
-            onClick={onOpenSupport}
-          >
-            Support
-          </button>
-        )}
+        <div className="video-call-top-actions">
+          {canMinimize && (
+            <button
+              type="button"
+              className="video-call-size-button"
+              onClick={onToggleMinimized}
+              aria-label={isMini ? "Restore full video call" : "Minimize video call and open chat"}
+            >
+              <span>
+                {isMini ? <Maximize2 size={16} aria-hidden="true" /> : <Minimize2 size={16} aria-hidden="true" />}
+                {isMini ? "Expand" : "Minimize"}
+              </span>
+            </button>
+          )}
+          {onOpenSupport && (
+            <button type="button" className="video-call-support-button" onClick={onOpenSupport}>
+              Support
+            </button>
+          )}
+        </div>
       </div>
 
       {connectionMessage && (
@@ -1805,7 +1822,7 @@ function WebRTCCall({
   myName,
   onExitRoom,
   onOpenSupport,
-  onCallStateChange,
+  onFullscreenChange,
   onClearChat,
   clearingChat,
   onOpenV2,
@@ -1849,6 +1866,7 @@ function WebRTCCall({
   const [remoteStream, setRemoteStream] = useState(null);
   const [incoming, setIncoming] = useState(null);
   const [inCall, setInCall] = useState(false);
+  const [callMinimized, setCallMinimized] = useState(false);
   const [callType, setCallType] = useState(null);
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
@@ -2083,6 +2101,7 @@ function WebRTCCall({
 
     setConnectionMessage("");
     setInCall(false);
+    setCallMinimized(false);
     setIncoming(null);
     setCallType(null);
     setMuted(false);
@@ -2673,26 +2692,15 @@ function WebRTCCall({
   }, [roomId, myName]);
 
   const overlayVisible = Boolean(incoming || inCall);
+  const minimized = callMinimized && inCall && !incoming && callType === "video";
+  const fullScreen = overlayVisible && !minimized;
 
   useEffect(() => {
-    onCallStateChange?.({
-      active: overlayVisible,
-      inCall,
-      incoming: Boolean(incoming),
-      callType: incoming?.callType || callType || null,
-    });
-
-    if (overlayVisible && typeof document !== "undefined") {
-      const activeElement = document.activeElement;
-      if (activeElement && typeof activeElement.blur === "function") {
-        activeElement.blur();
-      }
-      window.setTimeout(() => {
-        document.activeElement?.blur?.();
-        window.scrollTo?.(0, 0);
-      }, 60);
+    onFullscreenChange?.(fullScreen);
+    if (fullScreen && document.activeElement?.closest(".private-room-message-composer")) {
+      document.activeElement.blur();
     }
-  }, [overlayVisible, inCall, incoming, callType, onCallStateChange]);
+  }, [fullScreen, onFullscreenChange]);
 
   useEffect(() => {
     callActiveRef.current = inCall;
@@ -3124,7 +3132,7 @@ function WebRTCCall({
   };
 
   return (
-    <>
+    <div className="room-call-container">
       <CallHeader
         room={displayRoomId || roomId}
         callsEnabled={callsEnabled}
@@ -3140,8 +3148,10 @@ function WebRTCCall({
         onOpenV2={onOpenV2}
       />
 
-      <FullScreenCallOverlay
+      <CallOverlay
         visible={overlayVisible}
+        minimized={minimized}
+        onToggleMinimized={() => setCallMinimized(current => !current)}
         inCall={inCall}
         incoming={incoming}
         callType={incoming?.callType || callType}
@@ -3165,7 +3175,7 @@ function WebRTCCall({
         audioPlaybackBlocked={audioPlaybackBlocked}
         onResumeAudio={() => unlockRemoteAudio({ fromUserGesture: true })}
       />
-    </>
+    </div>
   );
 }
 
@@ -4950,7 +4960,7 @@ useEffect(() => {
   const [joining, setJoining] = useState(false);
   const [mediaPreview, setMediaPreview] = useState(null);
   const [mediaDownloads, setMediaDownloads] = useState({});
-  const [callUiState, setCallUiState] = useState({ active: false, callType: null });
+  const [callFullScreen, setCallFullScreen] = useState(false);
   const [accessKey, setAccessKey] = useState("");
   const [authMode, setAuthMode] = useState("login");
   const [loggedUser, setLoggedUser] = useState(null);
@@ -6280,7 +6290,7 @@ async function adminUpdateTicketStatus(requestId, status) {
       setLoggedUser(null);
       setJoining(false);
       setMediaPreview(null);
-      setCallUiState({ active: false, callType: null });
+      setCallFullScreen(false);
     }
   };
 
@@ -7391,7 +7401,7 @@ async function adminUpdateTicketStatus(requestId, status) {
                   myName={name}
                   onExitRoom={exitRoom}
                   onOpenSupport={openRoomSupport}
-                  onCallStateChange={setCallUiState}
+                  onFullscreenChange={setCallFullScreen}
                   onClearChat={clearChatForEveryone}
                   clearingChat={clearingChat}
                   onOpenV2={openRoomTools}
@@ -7423,9 +7433,9 @@ async function adminUpdateTicketStatus(requestId, status) {
                   <LatestMessageList key={channel.cid} channelId={channel.cid} />
                 </div>
 
-                {!callUiState.active && (
                 <div
                   className="private-room-message-composer"
+                  inert={callFullScreen}
                   style={{
                     flexShrink: 0,
                     padding: "6px 9px max(6px, env(safe-area-inset-bottom))",
@@ -7452,7 +7462,6 @@ async function adminUpdateTicketStatus(requestId, status) {
                     />
                   </div>
                 </div>
-                )}
               </div>
               </Window>
 

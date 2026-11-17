@@ -5115,3 +5115,95 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
   cursor: wait;
   opacity: 0.7;
 }
+
+.room-call-container {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.private-room-chat-page .private-room-message-composer[inert] {
+  visibility: hidden !important;
+}
+
+.video-call-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.video-call-size-button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.video-call-size-button > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.video-call-overlay.is-minimized {
+  position: absolute !important;
+  z-index: 3500 !important;
+  inset: calc(100% + 8px) max(10px, env(safe-area-inset-right)) auto auto !important;
+  width: clamp(128px, 34vw, 200px) !important;
+  height: clamp(68px, 23vh, 148px) !important;
+  max-height: max(52px, calc(var(--private-room-visible-height, 100dvh) - 145px)) !important;
+  display: block !important;
+  border: 1px solid #ffffff50;
+  border-radius: 14px;
+  box-shadow: 0 5px 18px #0005;
+}
+
+.video-call-overlay.is-minimized :is(.video-call-stage, .video-call-topbar, .video-call-size-button) {
+  position: absolute;
+  inset: 0;
+}
+
+.video-call-overlay.is-minimized .video-call-topbar {
+  display: block;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.video-call-overlay.is-minimized .video-call-size-button {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 6px;
+  background: transparent;
+}
+
+.video-call-overlay.is-minimized .video-call-size-button > span {
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #000b;
+}
+
+.video-call-overlay.is-minimized :is(
+  .video-call-contact, .video-call-support-button, .video-call-controls,
+  .video-call-local-video, .video-call-connection-message
+) {
+  display: none !important;
+}
+
+.video-call-overlay.is-minimized .video-call-audio-unlock {
+  top: 4px;
+  min-height: 32px;
+  width: max-content;
+  max-width: calc(100% - 8px);
+  padding: 0 5px;
+  font-size: 10px;
+}
