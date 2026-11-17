@@ -1,3 +1,4 @@
+import { isMessageHidden } from "./messageDeletion.js";
 import { useRoomPresenceMembers } from "./roomPresenceContext.js";
 import { presenceSummary, presenceTime } from "./useRoomPresence.js";
 import { useEffect, useState } from "react";
@@ -32,6 +33,7 @@ export default function SayUpV2Hub({
   currentUserId,
   room,
   bookmarkedIds,
+  pendingDeleteIds,
   onOpenMedia,
   onJumpToMessage,
   initialTab = "search",
@@ -65,7 +67,7 @@ export default function SayUpV2Hub({
     if (tabs.some(([id]) => id === initialTab)) setTab(initialTab);
   }, [open, initialTab]);
 
-  const messages = (channel?.state?.messages || []).filter((message) => message.type !== "system");
+  const messages = (channel?.state?.messages || []).filter((message) => message.type !== "system" && !isMessageHidden(message, pendingDeleteIds));
   const members = Object.values(channel?.state?.members || {});
   const savedMessages = messages.filter((message) => bookmarkedIds.includes(message.id));
   const results = query.trim()
@@ -160,7 +162,7 @@ export default function SayUpV2Hub({
               {media.map(({ message, attachment }, index) => {
                 const url = attachment.image_url || attachment.thumb_url || attachment.asset_url;
                 const isVideo = attachment.type === "video" || String(attachment.mime_type || "").startsWith("video/");
-                return <button key={`${message.id}-${index}`} onClick={() => onOpenMedia(message.attachments, index)} onContextMenu={(event) => event.preventDefault()}>
+                return <button key={`${message.id}-${index}`} onClick={() => onOpenMedia(message.attachments, message.attachments.indexOf(attachment), message.id)} onContextMenu={(event) => event.preventDefault()}>
                   {url && !isVideo ? <img src={url} alt="Private attachment" draggable="false" /> : <span>{isVideo ? "▶ Video" : "▤ Document"}</span>}
                 </button>;
               })}
