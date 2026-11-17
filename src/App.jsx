@@ -1,4 +1,3 @@
-import { useMovableCallWindow } from "./callWindow.js";
 import { deleteMessageImmediately, isMessageHidden } from "./messageDeletion.js";
 import { configureFastMessageRequests } from "./fastMessageRequests.js";
 import { ensureChannelWatched, createChatConnectionRecovery } from "./chatConnection.js";
@@ -1305,7 +1304,6 @@ function CallOverlay({
   visible,
   minimized,
   onToggleMinimized,
-  movableWindow,
   inCall,
   incoming,
   callType,
@@ -1347,8 +1345,6 @@ function CallOverlay({
 
   return (
     <div
-      ref={movableWindow?.windowRef}
-      style={isMini ? movableWindow?.style : undefined}
       className={`video-call-overlay ${isVideo ? "is-video" : "is-audio"}${isMini ? " is-minimized" : ""}${isRinging ? " is-ringing" : ""}`}
     >
       <audio ref={remoteAudioRef} autoPlay playsInline className="video-call-remote-audio" />
@@ -1367,10 +1363,7 @@ function CallOverlay({
             <button
               type="button"
               className="video-call-size-button"
-              {...(isMini ? movableWindow?.controls : undefined)}
-              onClick={event => {
-                if (!isMini || !movableWindow?.consumeDragClick(event)) onToggleMinimized();
-              }}
+              onClick={onToggleMinimized}
               aria-label={isMini ? "Restore full video call" : "Minimize video call and open chat"}
             >
               <span>
@@ -1899,7 +1892,6 @@ function WebRTCCall({
   const minimized = callMinimized && overlayVisible && (incoming?.callType || callType) === "video";
   const fullScreen = overlayVisible && !minimized;
 
-  const movableWindow = useMovableCallWindow(minimized);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -2130,7 +2122,6 @@ function WebRTCCall({
     setConnectionMessage("");
     setInCall(false);
     setCallMinimized(false);
-    movableWindow.reset();
     setIncoming(null);
     setCallType(null);
     setMuted(false);
@@ -3160,7 +3151,7 @@ function WebRTCCall({
   };
 
   return (
-    <div className="room-call-container" ref={movableWindow.roomRef}>
+    <div className="room-call-container">
       <CallHeader
         room={displayRoomId || roomId}
         callsEnabled={callsEnabled}
@@ -3179,7 +3170,6 @@ function WebRTCCall({
       <CallOverlay
         visible={overlayVisible}
         minimized={minimized}
-        movableWindow={movableWindow}
         onToggleMinimized={() => setCallMinimized(current => !current)}
         inCall={inCall}
         incoming={incoming}
