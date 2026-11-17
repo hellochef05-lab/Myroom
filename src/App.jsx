@@ -911,6 +911,7 @@ function roundActionButton(background) {
 
 function CallHeader({
   room,
+  callsEnabled,
   onStartAudio,
   onStartVideo,
   inCall,
@@ -940,17 +941,17 @@ function CallHeader({
   const actions = [
     {
       label: "Call",
-      title: "Start audio call",
+      title: callsEnabled ? "Start audio call" : "Calls disabled for this room",
       onClick: onStartAudio,
-      disabled: inCall,
+      disabled: !callsEnabled || !joinedRoom || inCall,
       background: "rgba(255,255,255,0.18)",
       icon: <Phone size={compact ? 17 : 21} color="#fff" />,
     },
     {
       label: "Video",
-      title: "Start video call",
+      title: callsEnabled ? "Start video call" : "Calls disabled for this room",
       onClick: onStartVideo,
-      disabled: inCall,
+      disabled: !callsEnabled || !joinedRoom || inCall,
       background: "rgba(255,255,255,0.22)",
       icon: <Video size={compact ? 17 : 21} color="#fff" />,
     },
@@ -977,13 +978,13 @@ function CallHeader({
       label: "Audio call",
       icon: <Phone size={18} />,
       onClick: onStartAudio,
-      disabled: !joinedRoom || inCall,
+      disabled: !callsEnabled || !joinedRoom || inCall,
     },
     {
       label: "Video call",
       icon: <Video size={18} />,
       onClick: onStartVideo,
-      disabled: !joinedRoom || inCall,
+      disabled: !callsEnabled || !joinedRoom || inCall,
     },
     { label: "Search messages", icon: <Search size={18} />, onClick: () => onOpenV2("search") },
     { label: "Saved messages", icon: <Bookmark size={18} />, onClick: () => onOpenV2("saved") },
@@ -1146,9 +1147,9 @@ function CallHeader({
                   ? callType === "video"
                     ? "Video call active"
                     : "Audio call active"
-                  : joinedRoom
-                    ? presenceLabel
-                    : "Connecting..."}
+                  : !callsEnabled
+                    ? "Calls disabled"
+                    : joinedRoom ? presenceLabel : "Connecting..."}
               </span>
               {!inCall && <StreamTypingIndicator />}
             </div>
@@ -1844,6 +1845,7 @@ function WebRTCCall({
   // Call controls become ready only after actual signaling membership is
   // confirmed; chat availability alone does not mean the call route is ready.
   const [joinedRoom, setJoinedRoom] = useState(false);
+  const [callsEnabled, setCallsEnabled] = useState(true);
   const [remoteStream, setRemoteStream] = useState(null);
   const [incoming, setIncoming] = useState(null);
   const [inCall, setInCall] = useState(false);
@@ -2446,6 +2448,7 @@ function WebRTCCall({
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     await applyCallBandwidthLimits(pc);
+    if (pcRef.current !== pc || pc.signalingState === "closed") return;
 
     socketRef.current?.emit("signal", {
       roomId,
@@ -2539,6 +2542,8 @@ function WebRTCCall({
       if (!s.connected) s.connect();
       joiner.ensure();
     };
+    const onCallPolicy = (policy) => setCallsEnabled(policy?.callsEnabled !== false);
+    s.on("room-call-policy", onCallPolicy);
     s.on("connect", joinCurrentRoom);
     document.addEventListener("visibilitychange", resume);
     window.addEventListener("online", resume);
@@ -2548,6 +2553,7 @@ function WebRTCCall({
       document.removeEventListener("visibilitychange", resume);
       window.removeEventListener("online", resume);
       s.off("connect", joinCurrentRoom);
+      s.off("room-call-policy", onCallPolicy);
       joiner.dispose();
       if (roomJoinerRef.current === joiner) roomJoinerRef.current = null;
       if (roomId && s.connected) s.emit("leave-room", { roomId });
@@ -2633,6 +2639,7 @@ function WebRTCCall({
           }
           iceQueueRef.current = [];
 
+          if (pcRef.current !== pc || pc.signalingState === "closed") return;
           armConnectionRecovery("initial-connect-timeout");
           callActiveRef.current = true;
           setInCall(true);
@@ -2836,7 +2843,7 @@ function WebRTCCall({
       return;
     }
 
-    if (inCall) return;
+    if (!callsEnabled || inCall) return;
 
     cleanupCall();
     const attemptId = callAttemptRef.current;
@@ -2883,6 +2890,10 @@ function WebRTCCall({
               },
             },
             (signalError, result) => {
+              if (result?.code === "CALLS_DISABLED") {
+                setCallsEnabled(false);
+                if (isCurrentAttempt()) cleanupCall();
+              }
               if (signalError || !result?.ok) {
                 resolve({ ok: false });
                 return;
@@ -2943,6 +2954,7 @@ function WebRTCCall({
   };
 
   const answerCall = async () => {
+    if (!callsEnabled) return;
     const attemptId = callAttemptRef.current;
     try {
       unlockRemoteAudio({ fromUserGesture: true }).catch(() => {});
@@ -3115,6 +3127,7 @@ function WebRTCCall({
     <>
       <CallHeader
         room={displayRoomId || roomId}
+        callsEnabled={callsEnabled}
         onStartAudio={() => startCall("audio")}
         onStartVideo={() => startCall("video")}
         inCall={inCall}
@@ -3228,6 +3241,7 @@ function AdminDashboard({ API_BASE, onBack }) {
   const [users, setUsers] = useState([]);
   const [devices, setDevices] = useState([]);
   const [rooms, setRooms] = useState([]);
+  const [savingRoomCalls, setSavingRoomCalls] = useState({});
   const [payments, setPayments] = useState([]);
   const [support, setSupport] = useState([]);
   const [plans, setPlans] = useState(() => {
@@ -3505,6 +3519,21 @@ function AdminDashboard({ API_BASE, onBack }) {
       await loadAll();
     } catch (error) {
       alert(error.message);
+    }
+  }
+
+  async function toggleRoomCalls(room) {
+    setSavingRoomCalls(current => ({ ...current, [room.id]: true }));
+    try {
+      const { callsEnabled } = await request(`/api/admin/rooms/${encodeURIComponent(room.id)}/calls`, {
+        method: "PATCH",
+        body: JSON.stringify({ callsEnabled: room.callsEnabled === false }),
+      });
+      setRooms(current => current.map(item => item.id === room.id ? { ...item, callsEnabled } : item));
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setSavingRoomCalls(current => ({ ...current, [room.id]: false }));
     }
   }
 
@@ -4011,8 +4040,22 @@ function AdminDashboard({ API_BASE, onBack }) {
                   </div>
                   <div className="admin-table-wrap">
                     <table>
-                      <thead><tr><th><input type="checkbox" checked={rooms.length > 0 && rooms.every((room) => selectedRoomIds.includes(room.id))} onChange={toggleAllRooms} /></th><th>Room</th><th>Owner</th><th>Access Key</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
-                      <tbody>{rooms.map((room) => <tr key={room.id}><td><input type="checkbox" checked={selectedRoomIds.includes(room.id)} onChange={() => toggleRoomSelection(room.id)} /></td><td>{room.roomName || room.roomId}</td><td>{room.username || room.ownerName || "Unknown"}</td><td>{room.accessKey}</td><td>{room.status || "active"}</td><td>{formatDate(room.createdAt)}</td><td><button className="table-danger" onClick={() => deleteRoom(room.id)}>Delete</button></td></tr>)}</tbody>
+                      <thead><tr><th><input type="checkbox" checked={rooms.length > 0 && rooms.every((room) => selectedRoomIds.includes(room.id))} onChange={toggleAllRooms} /></th><th>Room</th><th>Owner</th><th>Access Key</th><th>Status</th><th>Created</th><th>Calls</th><th>Action</th></tr></thead>
+                      <tbody>{rooms.map((room) => <tr key={room.id}><td><input type="checkbox" checked={selectedRoomIds.includes(room.id)} onChange={() => toggleRoomSelection(room.id)} /></td><td>{room.roomName || room.roomId}</td><td>{room.username || room.ownerName || "Unknown"}</td><td>{room.accessKey}</td><td>{room.status || "active"}</td><td>{formatDate(room.createdAt)}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="room-calls-toggle"
+                            role="switch"
+                            aria-label={`Calls for room ${room.roomName || room.roomId}`}
+                            aria-checked={room.callsEnabled !== false}
+                            disabled={Boolean(savingRoomCalls[room.id])}
+                            onClick={() => toggleRoomCalls(room)}
+                          >
+                            {savingRoomCalls[room.id] ? "Saving…" : room.callsEnabled === false ? "Off" : "On"}
+                          </button>
+                        </td>
+                        <td><button className="table-danger" onClick={() => deleteRoom(room.id)}>Delete</button></td></tr>)}</tbody>
                     </table>
                   </div>
                 </div>

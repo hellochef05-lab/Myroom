@@ -10,7 +10,7 @@ async function scenario(action){
  const statuses=[];
  const socket={timeout(ms){timeout=ms;return this;},emit(_name,_data,cb){signals++;ack=cb;}};
  const noop=()=>{};
- const context={roomId:'test',myName:'Test',socketRef:{current:socket},inCall:false,callAttemptRef:generation,pcRef:{current:{connectionState:'new'}},
+ const context={callsEnabled:true,roomId:'test',myName:'Test',socketRef:{current:socket},inCall:false,callAttemptRef:generation,pcRef:{current:{connectionState:'new'}},
  cleanupCall(){generation.current++;},unlockRemoteAudio:async()=>{},setCallType:noop,activeCallTypeRef:{},setRemoteName:noop,setConnectionMessage:m=>statuses.push(m),setInCall:noop,isCallerRef:{},acceptedRef:accepted,pendingOfferRef:{},iceQueueRef:{},startLocalMedia:async()=>{},ensureCallRoomReady:async()=>true,startOfferFlow:async()=>true,offerPreparedRef:{},CALL_SIGNAL_ACK_TIMEOUT_MS,wait:async()=>{},console};
  const run=vm.runInNewContext(source.slice(start,end)+'\nstartCall',context);
  const pending=run('audio');await new Promise(resolve=>setTimeout(resolve,0));

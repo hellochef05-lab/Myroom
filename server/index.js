@@ -216,10 +216,11 @@ function writeDB(db) {
         "Supabase save failed:",
         error.message
       );
-      return;
+      return false;
     }
 
     lastSaveError = "";
+    return true;
   });
 
   return saveQueue;
@@ -2970,6 +2971,31 @@ app.post("/api/admin/users/delete-all", async (req, res) => {
   }
 });
 
+app.patch("/api/admin/rooms/:roomId/calls", async (req, res) => {
+  if (!checkAdminPin(req, res)) return;
+  const { callsEnabled } = req.body || {};
+  if (typeof callsEnabled !== "boolean") {
+    return res.status(400).json({ error: "callsEnabled must be true or false" });
+  }
+
+  const db = readDB();
+  const rooms = db.rooms.filter(room => room.id === req.params.roomId);
+  if (!rooms.length) return res.status(404).json({ error: "Room not found" });
+
+  for (const room of rooms) room.callsEnabled = callsEnabled;
+  const roomSockets = io.to(req.params.roomId);
+  roomSockets.emit("room-call-policy", { callsEnabled });
+  // Older clients also understand the existing hangup event.
+  if (!callsEnabled) roomSockets.emit("signal", { type: "hangup" });
+
+  try {
+    if (await writeDB(db)) return res.json({ callsEnabled });
+  } catch (error) {
+    console.error("Failed to save room call policy:", error.message);
+  }
+  return res.status(503).json({ error: "Call setting applied but could not be saved. Try again." });
+});
+
 app.delete("/api/admin/rooms/:roomId", async (req, res) => {
   try {
     if (!checkAdminPin(req, res)) return;
@@ -4488,6 +4514,10 @@ const io = new Server(
   }
 );
 
+function roomCallsEnabled(roomId) {
+  return !readDB().rooms.some(room => room.id === roomId && room.callsEnabled === false);
+}
+
 io.on(
   "connection",
   (socket) => {
@@ -4515,6 +4545,7 @@ io.on(
         }
 
         socket.join(roomId);
+        socket.emit("room-call-policy", { callsEnabled: roomCallsEnabled(roomId) });
 
         if (ack) {
           ack({
@@ -4544,6 +4575,13 @@ io.on(
           roomId &&
           data
         ) {
+          if (!roomCallsEnabled(roomId) && data.type !== "hangup") {
+            if (typeof ack === "function") {
+              ack({ ok: false, recipients: 0, code: "CALLS_DISABLED" });
+            }
+            return;
+          }
+
           const roomSize =
             io.sockets.adapter.rooms.get(roomId)?.size || 0;
           const recipients = Math.max(0, roomSize - 1);
