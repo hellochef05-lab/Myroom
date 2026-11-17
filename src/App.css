@@ -5089,9 +5089,14 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
 }
 
 
+.admin-room-name {
+  margin-bottom: 6px;
+}
+
 .room-calls-toggle {
-  min-width: 70px;
-  min-height: 36px;
+  min-width: 84px;
+  min-height: 44px;
+  white-space: nowrap;
   padding: 6px 12px;
   border: 1px solid transparent;
   border-radius: 8px;

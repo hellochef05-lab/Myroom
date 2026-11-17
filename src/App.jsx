@@ -4040,22 +4040,31 @@ function AdminDashboard({ API_BASE, onBack }) {
                   </div>
                   <div className="admin-table-wrap">
                     <table>
-                      <thead><tr><th><input type="checkbox" checked={rooms.length > 0 && rooms.every((room) => selectedRoomIds.includes(room.id))} onChange={toggleAllRooms} /></th><th>Room</th><th>Owner</th><th>Access Key</th><th>Status</th><th>Created</th><th>Calls</th><th>Action</th></tr></thead>
-                      <tbody>{rooms.map((room) => <tr key={room.id}><td><input type="checkbox" checked={selectedRoomIds.includes(room.id)} onChange={() => toggleRoomSelection(room.id)} /></td><td>{room.roomName || room.roomId}</td><td>{room.username || room.ownerName || "Unknown"}</td><td>{room.accessKey}</td><td>{room.status || "active"}</td><td>{formatDate(room.createdAt)}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="room-calls-toggle"
-                            role="switch"
-                            aria-label={`Calls for room ${room.roomName || room.roomId}`}
-                            aria-checked={room.callsEnabled !== false}
-                            disabled={Boolean(savingRoomCalls[room.id])}
-                            onClick={() => toggleRoomCalls(room)}
-                          >
-                            {savingRoomCalls[room.id] ? "Saving…" : room.callsEnabled === false ? "Off" : "On"}
-                          </button>
-                        </td>
-                        <td><button className="table-danger" onClick={() => deleteRoom(room.id)}>Delete</button></td></tr>)}</tbody>
+                      <thead><tr><th><input type="checkbox" checked={rooms.length > 0 && rooms.every((room) => selectedRoomIds.includes(room.id))} onChange={toggleAllRooms} /></th><th>Room</th><th>Owner</th><th>Access Key</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
+                      <tbody>{rooms.map((room) => (
+                        <tr key={room.id}>
+                          <td><input type="checkbox" checked={selectedRoomIds.includes(room.id)} onChange={() => toggleRoomSelection(room.id)} /></td>
+                          <td>
+                            <div className="admin-room-name">{room.roomName || room.roomId}</div>
+                            <button
+                              type="button"
+                              className="room-calls-toggle"
+                              role="switch"
+                              aria-label={`Calls for room ${room.roomName || room.roomId}`}
+                              aria-checked={room.callsEnabled !== false}
+                              disabled={Boolean(savingRoomCalls[room.id])}
+                              onClick={() => toggleRoomCalls(room)}
+                            >
+                              {savingRoomCalls[room.id] ? "Saving…" : room.callsEnabled === false ? "Calls off" : "Calls on"}
+                            </button>
+                          </td>
+                          <td>{room.username || room.ownerName || "Unknown"}</td>
+                          <td>{room.accessKey}</td>
+                          <td>{room.status || "active"}</td>
+                          <td>{formatDate(room.createdAt)}</td>
+                          <td><button className="table-danger" onClick={() => deleteRoom(room.id)}>Delete</button></td>
+                        </tr>
+                      ))}</tbody>
                     </table>
                   </div>
                 </div>
