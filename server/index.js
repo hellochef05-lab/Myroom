@@ -4545,7 +4545,9 @@ io.on(
         }
 
         socket.join(roomId);
-        socket.emit("room-call-policy", { callsEnabled: roomCallsEnabled(roomId) });
+        const callsEnabled = roomCallsEnabled(roomId);
+        socket.emit("room-call-policy", { callsEnabled });
+        if (!callsEnabled) socket.emit("signal", { type: "hangup" });
 
         if (ack) {
           ack({

@@ -48,7 +48,8 @@ assert.equal((await update('a', false)).data.callsEnabled, false);
 assert.equal(JSON.parse(persisted).rooms[0].callsEnabled, false);
 assert.equal(broadcasts.at(-1).data.type, 'hangup', 'disabling tells open clients to end calls');
 handlers.get('join-room')({ roomId: 'a' }, () => {});
-assert.equal(broadcasts.at(-1).data.callsEnabled, false, 'new clients receive the room policy on join');
+assert.equal(broadcasts.at(-2).data.callsEnabled, false, 'new clients receive the room policy on join');
+assert.equal(broadcasts.at(-1).data.type, 'hangup', 'reconnecting clients close calls if they missed the setting change');
 for (const type of ['call', 'offer', 'answer', 'accept', 'ice']) {
   const count = broadcasts.length;
   assert.equal(signal('a', type).code, 'CALLS_DISABLED');
