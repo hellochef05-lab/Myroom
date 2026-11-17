@@ -61,3 +61,26 @@ export function createRoomJoiner(socket, roomId, {
 }
 
 export const CALL_SIGNAL_ACK_TIMEOUT_MS = 4000;
+
+export function callTransports(userAgent) {
+  return /Instagram/i.test(userAgent) ? ['polling', 'websocket'] : ['websocket', 'polling'];
+}
+
+export function callFailureMessage(error, userAgent) {
+  const embedded = /Instagram/i.test(userAgent);
+  const browserHint = 'Open Sayup in Chrome or Safari and try again.';
+  if (error?.name === 'CallUnsupportedError') {
+    return `This browser does not support Sayup calls. ${browserHint}`;
+  }
+  if (['NotAllowedError', 'SecurityError'].includes(error?.name)) {
+    return embedded
+      ? `Instagram could not access your microphone or camera. ${browserHint}`
+      : 'Allow microphone and camera access in your browser, then try the call again.';
+  }
+  if (['NotFoundError', 'NotReadableError', 'OverconstrainedError'].includes(error?.name)) {
+    return 'Could not start your microphone or camera. Check your device or try a voice call.';
+  }
+  return embedded
+    ? `Could not set up the call in Instagram. ${browserHint}`
+    : 'Could not set up the call. Check your connection and try again.';
+}
