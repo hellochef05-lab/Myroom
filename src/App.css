@@ -3178,6 +3178,8 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
   inset: 0 !important;
   z-index: 20000 !important;
   width: 100% !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
   height: 100dvh !important;
   max-height: 100dvh !important;
   display: grid !important;
@@ -5194,7 +5196,7 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
 
 .video-call-overlay.is-minimized :is(
   .video-call-contact, .video-call-support-button, .video-call-controls,
-  .video-call-incoming-actions, .video-call-local-video, .video-call-connection-message
+  .video-call-local-video, .video-call-connection-message
 ) {
   display: none !important;
 }
@@ -5206,4 +5208,71 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
   max-width: calc(100% - 8px);
   padding: 0 5px;
   font-size: 10px;
+}
+
+
+@media (max-width: 400px) {
+  .video-call-overlay.is-video:not(.is-minimized) .video-call-topbar {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .video-call-overlay.is-video:not(.is-minimized) .video-call-top-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .video-call-overlay.is-video:not(.is-minimized) .video-call-connection-message {
+    top: calc(112px + env(safe-area-inset-top));
+    pointer-events: none;
+  }
+
+  .video-call-overlay.is-video:not(.is-minimized) .video-call-audio-unlock {
+    top: calc(150px + env(safe-area-inset-top));
+  }
+}
+
+.video-call-overlay.is-minimized:not(.is-ringing) .video-call-incoming-actions {
+  display: none;
+}
+
+.video-call-overlay.is-minimized.is-ringing {
+  min-height: 108px;
+}
+
+.video-call-overlay.is-minimized.is-ringing .video-call-size-button {
+  bottom: 44px;
+  height: auto;
+  min-height: 0;
+}
+
+.video-call-overlay.is-minimized.is-ringing .video-call-waiting {
+  justify-content: flex-start;
+  padding-top: 5px;
+  font-size: 11px;
+}
+
+.video-call-overlay.is-minimized.is-ringing .video-call-incoming-actions {
+  position: absolute;
+  inset: auto 0 0;
+  display: flex;
+  gap: 4px;
+  padding: 0;
+}
+
+.video-call-overlay.is-minimized.is-ringing .video-call-incoming-actions .video-call-action {
+  min-width: 44px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+}
+
+.video-call-overlay.is-minimized.is-ringing .video-call-incoming-actions .video-call-action > svg {
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+}
+
+.video-call-overlay.is-minimized.is-ringing .video-call-incoming-actions .video-call-action > span {
+  display: none;
 }

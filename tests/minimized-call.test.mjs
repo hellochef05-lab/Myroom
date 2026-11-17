@@ -5,7 +5,7 @@ import React from 'react';
 import { transformSync } from 'esbuild';
 
 const app = readFileSync('src/App.jsx', 'utf8');
-const start = app.indexOf('function canMinimizeCall(');
+const start = app.indexOf('function CallOverlay(');
 const end = app.indexOf('function SupportModal(', start);
 const jsx = transformSync(app.slice(start, end), { loader: 'jsx' }).code;
 const icon = () => null;
@@ -44,10 +44,19 @@ assert.equal(restore.path, minimize.path, 'the toggle stays mounted so focus is 
 minimize.element.props.onClick();
 restore.element.props.onClick();
 assert.equal(toggles, 2);
-for (const overrides of [{ callType: 'audio' }, { inCall: false, incoming: { callType: 'video' } }]) {
+for (const overrides of [{ callType: 'audio' }, { inCall: false, incoming: { callType: 'audio' } }]) {
   const overlay = CallOverlay({ ...props, ...overrides, minimized: true });
   assert.doesNotMatch(overlay.props.className, /is-minimized/);
   assert.equal(find(overlay, node => node.props.className === 'video-call-size-button'), undefined);
+}
+const ringing = { ...props, inCall: false, incoming: { callType: 'video' }, answering: false };
+assert.ok(find(CallOverlay(ringing), node => node.props['aria-label'] === 'Minimize video call and open chat'),
+  'receiver can minimize a ringing video call before tapping Answer');
+const ringingMini = CallOverlay({ ...ringing, minimized: true });
+assert.match(ringingMini.props.className, /is-minimized/);
+assert.match(ringingMini.props.className, /is-ringing/);
+for (const label of ['Answer call', 'Decline call']) {
+  assert.ok(find(ringingMini, node => node.props['aria-label'] === label), 'call actions remain available');
 }
 const receiver = { ...props, inCall: false, incoming: { callType: 'video' }, answering: true };
 const connectingFull = CallOverlay(receiver);
@@ -57,4 +66,4 @@ assert.match(connectingMini.props.className, /is-minimized/);
 assert.equal(find(connectingMini, node => node.props.ref === remoteVideoRef).path,
   find(mini, node => node.props.ref === remoteVideoRef).path, 'receiving video keeps its window when setup completes');
 assert.equal(CallOverlay({ ...props, visible: false }), null);
-console.log('Call minimization passed: media stays mounted, toggle retains focus, incoming and audio-only screens stay full size.');
+console.log('Call minimization passed: media stays mounted, toggle retains focus, both sides can minimize from ringing through connection, and audio-only calls stay full size.');
