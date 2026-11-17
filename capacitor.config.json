@@ -3,7 +3,7 @@
   "appName": "SayUp",
   "webDir": "dist",
   "server": {
-    "url": "https://myroom-n1bl.vercel.app",
+    "url": "https://sayup-chat.vercel.app",
     "cleartext": false,
     "androidScheme": "https"
   },
