@@ -1309,6 +1309,7 @@ function CallOverlay({
   remoteVideoRef,
   remoteAudioRef,
   onAnswer,
+  answering,
   onDecline,
   onHangup,
   onToggleMute,
@@ -1328,7 +1329,7 @@ function CallOverlay({
   const isVideo = callType === "video";
   const canMinimize = isVideo && inCall && !incoming;
   const isMini = canMinimize && minimized;
-  const statusText = incoming
+  const statusText = answering ? "Connecting…" : incoming
     ? incoming.callType === "video"
       ? "Incoming video call"
       : "Incoming audio call"
@@ -1435,12 +1436,13 @@ function CallOverlay({
           <button
             type="button"
             onClick={onAnswer}
+            disabled={answering}
             className="video-call-action is-answer"
             title="Answer"
             aria-label="Answer call"
           >
             <Phone size={24} color="#fff" />
-            <span>Answer</span>
+            <span>{answering ? "Connecting…" : "Answer"}</span>
           </button>
         </div>
       ) : (
@@ -1839,6 +1841,9 @@ function WebRTCCall({
   const iceQueueRef = useRef([]);
   const localIceCandidatesRef = useRef([]);
   const acceptedRef = useRef(false);
+  const answeringRef = useRef(false);
+  const incomingRoutesRef = useRef(null);
+  const answerPreparedPeerRef = useRef(null);
   const isCallerRef = useRef(false);
   const offerPreparedRef = useRef(false);
   const disconnectTimeoutRef = useRef(null);
@@ -1865,6 +1870,7 @@ function WebRTCCall({
   const [callsEnabled, setCallsEnabled] = useState(true);
   const [remoteStream, setRemoteStream] = useState(null);
   const [incoming, setIncoming] = useState(null);
+  const [answering, setAnswering] = useState(false);
   const [inCall, setInCall] = useState(false);
   const [callMinimized, setCallMinimized] = useState(false);
   const [callType, setCallType] = useState(null);
@@ -1947,10 +1953,10 @@ function WebRTCCall({
     };
   }, []);
 
-  const prepareCallRoutes = async (pc) => {
+  const prepareCallRoutes = async (pc, lookup = loadCallIceConfig()) => {
     try {
-      const data = await loadCallIceConfig();
-      iceServersRef.current = mergeIceServers(data.iceServers, defaultIceServers);
+      const data = await lookup;
+      if (data) iceServersRef.current = mergeIceServers(data.iceServers, defaultIceServers);
     } catch {
       // A sleeping backend must not prevent trying already available routes.
     }
@@ -2110,6 +2116,10 @@ function WebRTCCall({
     setRemoteName("Contact");
 
     acceptedRef.current = false;
+    answeringRef.current = false;
+    incomingRoutesRef.current = null;
+    answerPreparedPeerRef.current = null;
+    setAnswering(false);
     isCallerRef.current = false;
     offerPreparedRef.current = false;
     pendingOfferRef.current = null;
@@ -2456,7 +2466,9 @@ function WebRTCCall({
     setCallType(nextCallType);
     setRemoteName(data.from || "Contact");
 
-    await Promise.all([startLocalMedia(nextCallType), prepareCallRoutes(pc)]);
+    if (answerPreparedPeerRef.current !== pc || data.iceRestart) {
+      await Promise.all([startLocalMedia(nextCallType), prepareCallRoutes(pc)]);
+    }
     await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
 
     for (const candidate of iceQueueRef.current) {
@@ -2466,17 +2478,18 @@ function WebRTCCall({
 
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    await applyCallBandwidthLimits(pc);
     if (pcRef.current !== pc || pc.signalingState === "closed") return;
 
     socketRef.current?.emit("signal", {
       roomId,
       data: { type: "answer", answer },
     });
+    void applyCallBandwidthLimits(pc).catch(() => {});
 
     callActiveRef.current = true;
     setInCall(true);
     setIncoming(null);
+    setAnswering(false);
   };
 
   const startOfferFlow = (type) => {
@@ -2589,6 +2602,8 @@ function WebRTCCall({
     const onSignal = async (data) => {
       try {
         if (data.type === "call") {
+          if (answeringRef.current || callActiveRef.current) return;
+          incomingRoutesRef.current ??= loadCallIceConfig().catch(() => null);
           setIncoming({
             callType: data.callType,
             from: data.from || "Contact",
@@ -2787,43 +2802,23 @@ function WebRTCCall({
     if (!remoteStream) return;
     if (!overlayVisible) return;
 
-    const attachRemoteMedia = async () => {
-      if (callType === "video") {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
-          remoteVideoRef.current.autoplay = true;
-          remoteVideoRef.current.playsInline = true;
-          remoteVideoRef.current.muted = true;
-          remoteVideoRef.current.volume = 1;
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = remoteStream;
+      void unlockRemoteAudio();
+    }
 
-          try {
-            await remoteVideoRef.current.play();
-          } catch (err) {
-            console.error("Remote video play failed:", err);
-          }
-        }
+    const video = remoteVideoRef.current;
+    if (!video) return;
+    if (callType !== "video") {
+      video.srcObject = null;
+      return;
+    }
 
-        if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = remoteStream;
-          await unlockRemoteAudio();
-        }
-      } else {
-        if (remoteAudioRef.current) {
-          remoteAudioRef.current.srcObject = remoteStream;
-          await unlockRemoteAudio();
-        }
-
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = null;
-        }
-      }
-    };
-
-    const id = setTimeout(() => {
-      attachRemoteMedia();
-    }, 100);
-
-    return () => clearTimeout(id);
+    video.srcObject = remoteStream;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    video.play().catch(err => console.warn("Remote video playback failed:", err));
   }, [remoteStream, callType, overlayVisible]);
 
   useEffect(() => {
@@ -2962,39 +2957,35 @@ function WebRTCCall({
   };
 
   const answerCall = async () => {
-    if (!callsEnabled) return;
+    if (!callsEnabled || !incoming || answeringRef.current) return;
+    answeringRef.current = true;
+    setAnswering(true);
     const attemptId = callAttemptRef.current;
+    const type = incoming.callType || "audio";
+
     try {
       unlockRemoteAudio({ fromUserGesture: true }).catch(() => {});
       setConnectionMessage("Connecting…");
 
-      const [, roomReady] = await Promise.all([
-        startLocalMedia(incoming?.callType || "audio"),
-        ensureCallRoomReady(),
-      ]);
-      if (callAttemptRef.current !== attemptId) return;
-      if (!roomReady) {
-        throw new Error("Call signaling room is unavailable");
-      }
-
-      acceptedRef.current = true;
-      socketRef.current?.emit("signal", {
-        roomId,
-        data: {
-          type: "accept",
-          callType: incoming?.callType || "audio",
-          offerReady: Boolean(pendingOfferRef.current),
-        },
+      const mediaReady = startLocalMedia(type);
+      const pc = pcRef.current;
+      const routesReady = prepareCallRoutes(pc, incomingRoutesRef.current ?? undefined);
+      const accept = ensureCallRoomReady().then(roomReady => {
+        if (callAttemptRef.current !== attemptId) return;
+        if (!roomReady) throw new Error("Call signaling room is unavailable");
+        socketRef.current?.emit("signal", {
+          roomId,
+          data: { type: "accept", callType: type, offerReady: Boolean(pendingOfferRef.current) },
+        });
       });
+      await Promise.all([mediaReady, routesReady, accept]);
+      if (callAttemptRef.current !== attemptId || pcRef.current !== pc) return;
 
-      if (pendingOfferRef.current) {
-        const offerData = pendingOfferRef.current;
-        pendingOfferRef.current = null;
-        setIncoming(null);
-        await handleOffer(offerData);
-      } else {
-        setIncoming(null);
-      }
+      answerPreparedPeerRef.current = pc;
+      acceptedRef.current = true;
+      const offer = pendingOfferRef.current;
+      pendingOfferRef.current = null;
+      if (offer) await handleOffer(offer);
     } catch (err) {
       if (callAttemptRef.current !== attemptId) return;
       console.error("answerCall failed", err);
@@ -3161,6 +3152,7 @@ function WebRTCCall({
         remoteVideoRef={remoteVideoRef}
         remoteAudioRef={remoteAudioRef}
         onAnswer={answerCall}
+        answering={answering}
         onDecline={declineCall}
         onHangup={hangup}
         onToggleMute={toggleMute}
