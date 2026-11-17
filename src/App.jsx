@@ -1,3 +1,4 @@
+import { deleteMessageImmediately, isMessageHidden } from "./messageDeletion.js";
 import { configureFastMessageRequests } from "./fastMessageRequests.js";
 import { ensureChannelWatched, createChatConnectionRecovery } from "./chatConnection.js";
 import { RoomPresenceProvider, useRoomPresenceMembers } from "./roomPresenceContext.js";
@@ -9,6 +10,7 @@ import { getChatViewportGeometry } from "./chatViewport.js";
 import {
   createContext,
   useContext,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -182,10 +184,11 @@ const quotedMessageSelector = (state) => ({
 
 function WhatsAppQuotedMessagePreview() {
   const messageComposer = useMessageComposer();
+  const { pendingDeleteIds } = useContext(ChatMessageActionsContext);
   const { quotedMessage } =
     useStateStore(messageComposer.state, quotedMessageSelector) || {};
 
-  if (!quotedMessage) return null;
+  if (isMessageHidden(quotedMessage, pendingDeleteIds)) return null;
 
   const attachment = quotedMessage.attachments?.[0];
   const thumbnail =
@@ -473,6 +476,7 @@ function LatestMessageList({ channelId }) {
         hasMoreNewer={historyPaginationEnabled && hasMoreNewer}
         returnAllReadData
         suppressAutoscroll
+        hideDeletedMessages
         scrolledUpThreshold={48}
       />
     </div>
@@ -4193,6 +4197,7 @@ const ChatMessageActionsContext = createContext(null);
 
 function CustomImage(props) {
   const { normaliseMediaAttachment, openMediaPreview } = useContext(ChatMessageActionsContext);
+  const { message } = useMessageContext();
     const attachment = {
       ...props,
       type: "image",
@@ -4204,7 +4209,7 @@ function CustomImage(props) {
       <img
         src={media.url}
         alt={media.title || "attachment"}
-        onClick={() => openMediaPreview([attachment], 0)}
+        onClick={() => openMediaPreview([attachment], 0, message?.id)}
         style={{
           maxWidth: "100%",
           borderRadius: 12,
@@ -4220,10 +4225,10 @@ function CustomAttachment(props) {
 }
 
 function MyMessage(props) {
-  const { client, name, accessKey, renderMessageAttachments, toggleBookmark, bookmarkedIds } = useContext(ChatMessageActionsContext);
+  const { client, name, accessKey, renderMessageAttachments, toggleBookmark, bookmarkedIds, pendingDeleteIds, setMessageDeletePending, closeDeletedMedia } = useContext(ChatMessageActionsContext);
     const context = useMessageContext();
     const messageComposer = useMessageComposer();
-    const { jumpToMessage: jumpToOriginalMessage } = useChannelActionContext();
+    const { jumpToMessage: jumpToOriginalMessage, deleteMessage, updateMessage } = useChannelActionContext();
     const { channel, read: roomReadState = {} } = useChannelStateContext("MyMessage");
     const message = context?.message || props?.message;
     const contextGroupStyles = context?.groupStyles || props?.groupStyles || [];
@@ -4251,7 +4256,7 @@ function MyMessage(props) {
       []
     );
 
-    if (!message) return null;
+    if (isMessageHidden(message, pendingDeleteIds)) return null;
 
     if (message.type === "system") {
       return (
@@ -4465,9 +4470,20 @@ function MyMessage(props) {
     };
 
     const deleteSelectedMessage = async (event) => {
+      event.preventDefault();
       if (!window.confirm("Delete this message?")) return;
       setActionsOpen(false);
-      await context?.handleDelete?.(event);
+      try {
+        await deleteMessageImmediately(message, {
+          setPending: setMessageDeletePending, deleteMessage,
+          updateMessage: deleted => {
+            updateMessage(deleted);
+            closeDeletedMedia(message.id);
+          },
+        });
+      } catch {
+        window.alert("Couldn't delete the message. Please try again.");
+      }
     };
 
     const copySelectedMessage = async () => {
@@ -4693,7 +4709,7 @@ function MyMessage(props) {
                 boxSizing: "border-box",
               }}
             >
-              {message.quoted_message && (
+              {!isMessageHidden(message.quoted_message, pendingDeleteIds) && (
                 <div
                   className="private-room-message-quote"
                   role="button"
@@ -4749,7 +4765,7 @@ function MyMessage(props) {
 
               {hasAttachments && (
                 <div style={{ marginTop: message.text ? 7 : 0 }}>
-                  {renderMessageAttachments(message.attachments)}
+                  {renderMessageAttachments(message.attachments, message.id)}
                 </div>
               )}
 
@@ -4975,6 +4991,27 @@ const [supportLoading, setSupportLoading] = useState(false);
   const [v2Open, setV2Open] = useState(false);
   const [v2InitialTab, setV2InitialTab] = useState("search");
   const [bookmarkedIds, setBookmarkedIds] = useState([]);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState(() => new Set());
+  const setMessageDeletePending = (messageId, pending) => {
+    setPendingDeleteIds(current => {
+      const next = new Set(current);
+      if (pending) next.add(messageId);
+      else next.delete(messageId);
+      return next;
+    });
+  };
+
+  const closeDeletedMedia = useCallback((messageId) => {
+    if (!messageId) return;
+    setMediaPreview(current => current?.messageId === messageId ? null : current);
+  }, []);
+
+  useEffect(() => {
+    if (!channel) return undefined;
+    const subscription = channel.on("message.deleted", ({ message }) => closeDeletedMedia(message?.id));
+    return () => subscription.unsubscribe();
+  }, [channel, closeDeletedMedia]);
+
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [uiTheme, setUiTheme] = useState(() => {
     const saved = localStorage.getItem("sayup_ui_theme");
@@ -6433,7 +6470,7 @@ async function adminUpdateTicketStatus(requestId, status) {
     return `${Math.max(1, Math.round((progress.bytes || 0) / 1024))} KB`;
   };
 
-  const openMediaPreview = (attachments, startIndex = 0) => {
+  const openMediaPreview = (attachments, startIndex = 0, messageId) => {
     const items = (Array.isArray(attachments) ? attachments : [attachments])
       .map(normaliseMediaAttachment)
       .filter(Boolean);
@@ -6441,12 +6478,12 @@ async function adminUpdateTicketStatus(requestId, status) {
     if (!items.length) return;
 
     const safeIndex = Math.min(Math.max(Number(startIndex) || 0, 0), items.length - 1);
-    setMediaPreview({ items, index: safeIndex });
+    setMediaPreview({ items, index: safeIndex, messageId });
     document.activeElement?.blur?.();
   };
 
 
-  const renderMessageAttachments = (attachments) => {
+  const renderMessageAttachments = (attachments, messageId) => {
     const source = Array.isArray(attachments) ? attachments : [];
     const mediaItems = source.map(normaliseMediaAttachment);
     const visualItems = mediaItems.filter(Boolean);
@@ -6465,7 +6502,7 @@ async function adminUpdateTicketStatus(requestId, status) {
                 <button
                   type="button"
                   className="private-room-media-open"
-                  onClick={() => openMediaPreview(source, mediaIndex)}
+                  onClick={() => openMediaPreview(source, mediaIndex, messageId)}
                   aria-label={`Open ${media.type} ${mediaIndex + 1} of ${visualItems.length}`}
                 >
                   {media.type === "video" ? (
@@ -7364,7 +7401,7 @@ async function adminUpdateTicketStatus(requestId, status) {
 
         <ChatMessageActionsContext.Provider value={{ client, name, accessKey,
           renderMessageAttachments, toggleBookmark, bookmarkedIds,
-          normaliseMediaAttachment, openMediaPreview }}>
+          normaliseMediaAttachment, openMediaPreview, pendingDeleteIds, setMessageDeletePending, closeDeletedMedia }}>
         <Chat client={client} theme="messaging light">
           <ChatConnectionRecovery client={client} channel={channel} />
           <Channel
@@ -7490,22 +7527,23 @@ async function adminUpdateTicketStatus(requestId, status) {
           currentUserId={client?.userID}
           room={room}
           bookmarkedIds={bookmarkedIds}
+          pendingDeleteIds={pendingDeleteIds}
           onOpenMedia={openMediaPreview}
           onJumpToMessage={jumpToMessage}
           uiTheme={uiTheme}
           onUiThemeChange={setUiTheme}
         />
 
-        {mediaPreview?.items?.length > 0 && (() => {
+        {mediaPreview?.items?.length > 0 && !pendingDeleteIds.has(mediaPreview.messageId) && (() => {
           const currentMedia = mediaPreview.items[mediaPreview.index] || mediaPreview.items[0];
           const hasMultiple = mediaPreview.items.length > 1;
           const goPrevious = () =>
-            setMediaPreview((current) => ({
+            setMediaPreview((current) => current && ({
               ...current,
               index: (current.index - 1 + current.items.length) % current.items.length,
             }));
           const goNext = () =>
-            setMediaPreview((current) => ({
+            setMediaPreview((current) => current && ({
               ...current,
               index: (current.index + 1) % current.items.length,
             }));
