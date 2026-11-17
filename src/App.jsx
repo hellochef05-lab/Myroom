@@ -1296,6 +1296,10 @@ function CallHeader({
   );
 }
 
+function canMinimizeCall({ callType, inCall, incoming, answering }) {
+  return callType === "video" && (answering || (inCall && !incoming));
+}
+
 function CallOverlay({
   visible,
   minimized,
@@ -1327,7 +1331,7 @@ function CallOverlay({
   if (!visible) return null;
 
   const isVideo = callType === "video";
-  const canMinimize = isVideo && inCall && !incoming;
+  const canMinimize = canMinimizeCall({ callType, inCall, incoming, answering });
   const isMini = canMinimize && minimized;
   const statusText = answering ? "Connecting…" : incoming
     ? incoming.callType === "video"
@@ -2707,7 +2711,7 @@ function WebRTCCall({
   }, [roomId, myName]);
 
   const overlayVisible = Boolean(incoming || inCall);
-  const minimized = callMinimized && inCall && !incoming && callType === "video";
+  const minimized = callMinimized && canMinimizeCall({ callType, inCall, incoming, answering });
   const fullScreen = overlayVisible && !minimized;
 
   useEffect(() => {

@@ -5,7 +5,7 @@ import React from 'react';
 import { transformSync } from 'esbuild';
 
 const app = readFileSync('src/App.jsx', 'utf8');
-const start = app.indexOf('function CallOverlay(');
+const start = app.indexOf('function canMinimizeCall(');
 const end = app.indexOf('function SupportModal(', start);
 const jsx = transformSync(app.slice(start, end), { loader: 'jsx' }).code;
 const icon = () => null;
@@ -49,5 +49,12 @@ for (const overrides of [{ callType: 'audio' }, { inCall: false, incoming: { cal
   assert.doesNotMatch(overlay.props.className, /is-minimized/);
   assert.equal(find(overlay, node => node.props.className === 'video-call-size-button'), undefined);
 }
+const receiver = { ...props, inCall: false, incoming: { callType: 'video' }, answering: true };
+const connectingFull = CallOverlay(receiver);
+const connectingMini = CallOverlay({ ...receiver, minimized: true });
+assert.ok(find(connectingFull, node => node.props['aria-label'] === 'Minimize video call and open chat'));
+assert.match(connectingMini.props.className, /is-minimized/);
+assert.equal(find(connectingMini, node => node.props.ref === remoteVideoRef).path,
+  find(mini, node => node.props.ref === remoteVideoRef).path, 'receiving video keeps its window when setup completes');
 assert.equal(CallOverlay({ ...props, visible: false }), null);
 console.log('Call minimization passed: media stays mounted, toggle retains focus, incoming and audio-only screens stay full size.');

@@ -5194,7 +5194,7 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
 
 .video-call-overlay.is-minimized :is(
   .video-call-contact, .video-call-support-button, .video-call-controls,
-  .video-call-local-video, .video-call-connection-message
+  .video-call-incoming-actions, .video-call-local-video, .video-call-connection-message
 ) {
   display: none !important;
 }
