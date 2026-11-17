@@ -1300,10 +1300,6 @@ function CallHeader({
   );
 }
 
-function canMinimizeCall({ callType, inCall, incoming, answering }) {
-  return callType === "video" && (answering || (inCall && !incoming));
-}
-
 function CallOverlay({
   visible,
   minimized,
@@ -1334,9 +1330,9 @@ function CallOverlay({
 }) {
   if (!visible) return null;
 
-  const isVideo = callType === "video";
-  const canMinimize = canMinimizeCall({ callType, inCall, incoming, answering });
-  const isMini = canMinimize && minimized;
+  const isVideo = (incoming?.callType || callType) === "video";
+  const isMini = isVideo && minimized;
+  const isRinging = Boolean(incoming && !inCall && !answering);
   const statusText = answering ? "Connecting…" : incoming
     ? incoming.callType === "video"
       ? "Incoming video call"
@@ -1348,7 +1344,7 @@ function CallOverlay({
       : connectionMessage || "Calling...";
 
   return (
-    <div className={`video-call-overlay ${isVideo ? "is-video" : "is-audio"}${isMini ? " is-minimized" : ""}`}>
+    <div className={`video-call-overlay ${isVideo ? "is-video" : "is-audio"}${isMini ? " is-minimized" : ""}${isRinging ? " is-ringing" : ""}`}>
       <audio ref={remoteAudioRef} autoPlay playsInline className="video-call-remote-audio" />
 
       <div className="video-call-topbar">
@@ -1361,7 +1357,7 @@ function CallOverlay({
         </div>
 
         <div className="video-call-top-actions">
-          {canMinimize && (
+          {isVideo && (
             <button
               type="button"
               className="video-call-size-button"
@@ -1408,7 +1404,7 @@ function CallOverlay({
             />
 
             {!remoteStream && (
-              <div className="video-call-waiting">Connecting video…</div>
+              <div className="video-call-waiting">{isRinging ? "Incoming video" : "Connecting video…"}</div>
             )}
 
             <video
@@ -2715,7 +2711,7 @@ function WebRTCCall({
   }, [roomId, myName]);
 
   const overlayVisible = Boolean(incoming || inCall);
-  const minimized = callMinimized && canMinimizeCall({ callType, inCall, incoming, answering });
+  const minimized = callMinimized && overlayVisible && (incoming?.callType || callType) === "video";
   const fullScreen = overlayVisible && !minimized;
 
   useEffect(() => {
