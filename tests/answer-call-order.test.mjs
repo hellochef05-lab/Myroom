@@ -38,7 +38,7 @@ function setup() {
     applyCallBandwidthLimits() { events.push('bandwidth'); return new Promise(noop); },
     activeCallTypeRef: {}, callActiveRef: {}, unlockRemoteAudio: async () => {},
     setAnswering: noop, setCallType: noop, setRemoteName: noop, setConnectionMessage: noop,
-    setInCall: noop, setIncoming: noop, cleanupCall: noop, console,
+    setInCall: noop, setIncoming: noop, cleanupCall: noop, armCallSetupDeadline: noop, console,
   };
   const answer = vm.runInNewContext(source.slice(offerStart, offerEnd) + source.slice(start, end) + '\nanswerCall', context);
   return { answer, events, context, releaseRoom: () => finishRoom(true), releaseMedia: () => finishMedia(), releaseRoutes: () => finishRoutes() };

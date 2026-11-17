@@ -1,10 +1,11 @@
+import { useMovableCallWindow } from "./callWindow.js";
 import { deleteMessageImmediately, isMessageHidden } from "./messageDeletion.js";
 import { configureFastMessageRequests } from "./fastMessageRequests.js";
 import { ensureChannelWatched, createChatConnectionRecovery } from "./chatConnection.js";
 import { RoomPresenceProvider, useRoomPresenceMembers } from "./roomPresenceContext.js";
 import { presenceSummary } from "./useRoomPresence.js";
 import { createOutboxFlusher, createDraftSafeSubmit } from "./messageOutbox.js";
-import { createRoomJoiner, CALL_SIGNAL_ACK_TIMEOUT_MS } from "./callSignaling.js";
+import { createRoomJoiner, callTransports, callFailureMessage, CALL_SIGNAL_ACK_TIMEOUT_MS } from "./callSignaling.js";
 import { createIceConfigLoader, callVideoConstraints, applyCallBandwidthLimits } from "./callNetwork.js";
 import { getChatViewportGeometry } from "./chatViewport.js";
 import {
@@ -1304,6 +1305,7 @@ function CallOverlay({
   visible,
   minimized,
   onToggleMinimized,
+  movableWindow,
   inCall,
   incoming,
   callType,
@@ -1344,7 +1346,11 @@ function CallOverlay({
       : connectionMessage || "Calling...";
 
   return (
-    <div className={`video-call-overlay ${isVideo ? "is-video" : "is-audio"}${isMini ? " is-minimized" : ""}${isRinging ? " is-ringing" : ""}`}>
+    <div
+      ref={movableWindow?.windowRef}
+      style={isMini ? movableWindow?.style : undefined}
+      className={`video-call-overlay ${isVideo ? "is-video" : "is-audio"}${isMini ? " is-minimized" : ""}${isRinging ? " is-ringing" : ""}`}
+    >
       <audio ref={remoteAudioRef} autoPlay playsInline className="video-call-remote-audio" />
 
       <div className="video-call-topbar">
@@ -1361,7 +1367,10 @@ function CallOverlay({
             <button
               type="button"
               className="video-call-size-button"
-              onClick={onToggleMinimized}
+              {...(isMini ? movableWindow?.controls : undefined)}
+              onClick={event => {
+                if (!isMini || !movableWindow?.consumeDragClick(event)) onToggleMinimized();
+              }}
               aria-label={isMini ? "Restore full video call" : "Minimize video call and open chat"}
             >
               <span>
@@ -1865,6 +1874,7 @@ function WebRTCCall({
   const activeCallTypeRef = useRef(null);
   const connectionAttemptTimeoutRef = useRef(null);
   const fastRecoveryUsedRef = useRef(false);
+  const callSetupTimerRef = useRef(null);
   const audioContextRef = useRef(null);
   const audioUnlockedRef = useRef(false);
 
@@ -1884,6 +1894,12 @@ function WebRTCCall({
   const [remoteName, setRemoteName] = useState("Contact");
   const [connectionMessage, setConnectionMessage] = useState("");
   const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
+
+  const overlayVisible = Boolean(incoming || inCall);
+  const minimized = callMinimized && overlayVisible && (incoming?.callType || callType) === "video";
+  const fullScreen = overlayVisible && !minimized;
+
+  const movableWindow = useMovableCallWindow(minimized);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -2083,6 +2099,8 @@ function WebRTCCall({
   const cleanupCall = () => {
     callAttemptRef.current += 1;
     fastRecoveryUsedRef.current = false;
+    clearTimeout(callSetupTimerRef.current);
+    callSetupTimerRef.current = null;
     offerPreparationRef.current = null;
     if (connectionAttemptTimeoutRef.current) {
       clearTimeout(connectionAttemptTimeoutRef.current);
@@ -2112,6 +2130,7 @@ function WebRTCCall({
     setConnectionMessage("");
     setInCall(false);
     setCallMinimized(false);
+    movableWindow.reset();
     setIncoming(null);
     setCallType(null);
     setMuted(false);
@@ -2162,6 +2181,20 @@ function WebRTCCall({
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+  };
+
+  const armCallSetupDeadline = () => {
+    if (callSetupTimerRef.current !== null) return;
+    const attemptId = callAttemptRef.current;
+    callSetupTimerRef.current = setTimeout(() => {
+      callSetupTimerRef.current = null;
+      if (callAttemptRef.current !== attemptId) return;
+      const pc = pcRef.current;
+      if (pc?.connectionState === "connected" || ["connected", "completed"].includes(pc?.iceConnectionState)) return;
+      socketRef.current?.emit("signal", { roomId, data: { type: "hangup" } });
+      cleanupCall();
+      window.alert(callFailureMessage(null, navigator.userAgent));
+    }, 30000);
   };
 
   const armConnectionRecovery = (reason) => {
@@ -2290,6 +2323,8 @@ function WebRTCCall({
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
+        clearTimeout(callSetupTimerRef.current);
+        callSetupTimerRef.current = null;
         fastRecoveryUsedRef.current = false;
         setConnectionMessage("");
         // Reacquire and reattach the microphone once the peer is connected.
@@ -2358,6 +2393,8 @@ function WebRTCCall({
         pc.iceConnectionState === "connected" ||
         pc.iceConnectionState === "completed"
       ) {
+        clearTimeout(callSetupTimerRef.current);
+        callSetupTimerRef.current = null;
         setConnectionMessage("");
         return;
       }
@@ -2373,6 +2410,9 @@ function WebRTCCall({
   };
 
   const startLocalMedia = async (type) => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection !== "function") {
+      throw Object.assign(new Error("Browser calling unavailable"), { name: "CallUnsupportedError" });
+    }
     let pc = pcRef.current;
     if (!pc) {
       pc = createPC();
@@ -2397,17 +2437,7 @@ function WebRTCCall({
           }
         : { audio: preferredAudioConstraints, video: false };
 
-    let stream;
-
-    try {
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (err) {
-      console.error("getUserMedia failed:", err);
-      alert(
-        "Microphone/Camera access failed. Please allow permissions in your browser."
-      );
-      throw err;
-    }
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
     if (pcRef.current !== pc || pc.signalingState === "closed") {
       stream.getTracks().forEach((track) => track.stop());
@@ -2558,7 +2588,7 @@ function WebRTCCall({
 
   useEffect(() => {
     const s = io(API_BASE, {
-      transports: ["websocket", "polling"],
+      transports: callTransports(navigator.userAgent),
       tryAllTransports: true,
       reconnection: true,
       reconnectionAttempts: Infinity,
@@ -2604,6 +2634,7 @@ function WebRTCCall({
     if (!s) return;
 
     const onSignal = async (data) => {
+      const attemptId = callAttemptRef.current;
       try {
         if (data.type === "call") {
           if (answeringRef.current || callActiveRef.current) return;
@@ -2620,6 +2651,7 @@ function WebRTCCall({
         if (data.type === "accept") {
           if (isCallerRef.current) {
             acceptedRef.current = true;
+            armCallSetupDeadline();
             if (!offerPreparedRef.current) {
               await startOfferFlow(data.callType || "audio");
             } else if (!data.offerReady) {
@@ -2700,7 +2732,13 @@ function WebRTCCall({
           cleanupCall();
         }
       } catch (err) {
+        if (callAttemptRef.current !== attemptId) return;
         console.error("Signal error:", err);
+        if ((data.type === "accept" || data.type === "offer") && !data.iceRestart) {
+          s.emit("signal", { roomId, data: { type: "hangup" } });
+          cleanupCall();
+          window.alert(callFailureMessage(err, navigator.userAgent));
+        }
       }
     };
 
@@ -2709,10 +2747,6 @@ function WebRTCCall({
     // Signal handlers read the current call refs; reconnect only when identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, myName]);
-
-  const overlayVisible = Boolean(incoming || inCall);
-  const minimized = callMinimized && overlayVisible && (incoming?.callType || callType) === "video";
-  const fullScreen = overlayVisible && !minimized;
 
   useEffect(() => {
     onFullscreenChange?.(fullScreen);
@@ -2943,10 +2977,7 @@ function WebRTCCall({
       await routePreparation;
       if (!isCurrentAttempt() || acceptedRef.current || pcRef.current?.connectionState === "connected") return;
 
-      if (!result.ok) {
-        setConnectionMessage("Unable to reach the call server. Please retry.");
-        return;
-      }
+      if (!result.ok) throw new Error("Unable to reach the call server");
 
       setConnectionMessage(
         result.recipients > 0
@@ -2957,6 +2988,7 @@ function WebRTCCall({
       if (!isCurrentAttempt()) return;
       console.error("startCall failed", err);
       cleanupCall();
+      window.alert(callFailureMessage(err, navigator.userAgent));
     }
   };
 
@@ -2970,6 +3002,7 @@ function WebRTCCall({
     try {
       unlockRemoteAudio({ fromUserGesture: true }).catch(() => {});
       setConnectionMessage("Connecting…");
+      armCallSetupDeadline();
 
       const mediaReady = startLocalMedia(type);
       const pc = pcRef.current;
@@ -2993,7 +3026,9 @@ function WebRTCCall({
     } catch (err) {
       if (callAttemptRef.current !== attemptId) return;
       console.error("answerCall failed", err);
+      socketRef.current?.emit("signal", { roomId, data: { type: "hangup" } });
       cleanupCall();
+      window.alert(callFailureMessage(err, navigator.userAgent));
     }
   };
 
@@ -3002,9 +3037,7 @@ function WebRTCCall({
       roomId,
       data: { type: "hangup" },
     });
-    setIncoming(null);
-    acceptedRef.current = false;
-    pendingOfferRef.current = null;
+    cleanupCall();
   };
 
   const hangup = () => {
@@ -3127,7 +3160,7 @@ function WebRTCCall({
   };
 
   return (
-    <div className="room-call-container">
+    <div className="room-call-container" ref={movableWindow.roomRef}>
       <CallHeader
         room={displayRoomId || roomId}
         callsEnabled={callsEnabled}
@@ -3146,6 +3179,7 @@ function WebRTCCall({
       <CallOverlay
         visible={overlayVisible}
         minimized={minimized}
+        movableWindow={movableWindow}
         onToggleMinimized={() => setCallMinimized(current => !current)}
         inCall={inCall}
         incoming={incoming}

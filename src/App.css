@@ -5156,7 +5156,7 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
 .video-call-overlay.is-minimized {
   position: absolute !important;
   z-index: 3500 !important;
-  inset: calc(100% + 8px) max(10px, env(safe-area-inset-right)) auto auto !important;
+  inset: var(--call-window-y, calc(100% + 8px)) var(--call-window-right, max(10px, env(safe-area-inset-right))) auto var(--call-window-x, auto) !important;
   width: clamp(128px, 34vw, 200px) !important;
   height: clamp(68px, 23vh, 148px) !important;
   max-height: max(52px, calc(var(--private-room-visible-height, 100dvh) - 145px)) !important;
@@ -5186,6 +5186,13 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
   justify-content: flex-end;
   padding: 6px;
   background: transparent;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.video-call-overlay.is-minimized .video-call-size-button:active {
+  cursor: grabbing;
 }
 
 .video-call-overlay.is-minimized .video-call-size-button > span {
