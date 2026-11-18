@@ -5035,11 +5035,13 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
 
   html.private-room-chat-active .private-room-chat-page,
   html.private-room-keyboard-open .private-room-chat-page {
+    /* A stale viewport offset must never push the composer below the screen. */
+    --private-room-frame-height: min(var(--private-room-visible-height, 100dvh), 100dvh);
     position: fixed !important;
-    top: var(--private-room-viewport-top, 0px) !important;
+    top: clamp(0px, var(--private-room-viewport-top, 0px), calc(100dvh - var(--private-room-frame-height))) !important;
     bottom: auto !important;
-    height: var(--private-room-visible-height, 100dvh) !important;
-    max-height: var(--private-room-visible-height, 100dvh) !important;
+    height: var(--private-room-frame-height) !important;
+    max-height: var(--private-room-frame-height) !important;
     transform: none !important;
     transition: none !important;
   }
