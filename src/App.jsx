@@ -283,12 +283,18 @@ function SyncChatViewport({ channelId }) {
       scheduleViewportWrite();
     };
 
+    const restoreViewport = () => {
+      if (document.visibilityState === "visible") scheduleViewportWrite();
+    };
+
     // Safari can pan the visual viewport without resizing it when focusing
     // an input. Update the frame origin as well as its height, in the same RAF.
     viewport?.addEventListener("scroll", scheduleViewportWrite, { passive: true });
     viewport?.addEventListener("resize", onViewportResize, { passive: true });
     window.addEventListener("resize", onViewportResize, { passive: true });
     window.addEventListener("orientationchange", scheduleViewportWrite);
+    window.addEventListener("pageshow", restoreViewport);
+    document.addEventListener("visibilitychange", restoreViewport);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
     writeViewport();
@@ -299,6 +305,8 @@ function SyncChatViewport({ channelId }) {
       viewport?.removeEventListener("resize", onViewportResize);
       window.removeEventListener("resize", onViewportResize);
       window.removeEventListener("orientationchange", scheduleViewportWrite);
+      window.removeEventListener("pageshow", restoreViewport);
+      document.removeEventListener("visibilitychange", restoreViewport);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
       root.style.removeProperty("--private-room-viewport-top");
@@ -2753,11 +2761,13 @@ function WebRTCCall({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, myName]);
 
-  useEffect(() => {
-    onFullscreenChange?.(fullScreen);
-    if (fullScreen && document.activeElement?.closest(".private-room-message-composer")) {
+  useLayoutEffect(() => {
+    if (!fullScreen) return undefined;
+    onFullscreenChange?.(true);
+    if (document.activeElement?.closest(".private-room-message-composer")) {
       document.activeElement.blur();
     }
+    return () => onFullscreenChange?.(false);
   }, [fullScreen, onFullscreenChange]);
 
   useEffect(() => {
