@@ -136,9 +136,15 @@ export function useRoomPresence({ apiBase, accessKey, deviceId, roomId, name, cl
       applyUser(event.user, event.created_at);
       publish();
     });
-    const recoveredSubscription = client.on('connection.recovered', () => { void refreshLive(); });
-    const addedSubscription = channel?.on('member.added', () => { void refreshLive(); });
-    const removedSubscription = channel?.on('member.removed', () => { publish(); void refreshLive(); });
+    const refreshMembers = () => { publish(); void refreshLive(); };
+    const recoveredSubscription = client.on('connection.recovered', refreshMembers);
+    const queriedSubscription = client.on('channels.queried', event => {
+      if (channel && event.queriedChannels?.channels.some(state => state.channel.cid === channel.cid)) {
+        refreshMembers();
+      }
+    });
+    const addedSubscription = channel?.on('member.added', refreshMembers);
+    const removedSubscription = channel?.on('member.removed', refreshMembers);
     const resumeLive = () => { if (!document.hidden) void refreshLive(); };
     document.addEventListener('visibilitychange', resumeLive);
     window.addEventListener('online', resumeLive);
@@ -158,6 +164,7 @@ export function useRoomPresence({ apiBase, accessKey, deviceId, roomId, name, cl
       subscription.unsubscribe();
       liveSubscription.unsubscribe();
       recoveredSubscription.unsubscribe();
+      queriedSubscription.unsubscribe();
       addedSubscription?.unsubscribe();
       removedSubscription?.unsubscribe();
       document.removeEventListener('visibilitychange', resumeLive);

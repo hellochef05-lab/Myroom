@@ -7,7 +7,8 @@ const effects = [], requests = [], callbacks = new Map(), memberCallbacks = new 
 let snapshot = { roomId: null, members: [] };
 const source = fs.readFileSync('src/useRoomPresence.js', 'utf8').replace(/^import .*;\n/gm, '').replaceAll('export function', 'function');
 const surface = { addEventListener() {}, removeEventListener() {} };
-const channel = { state: { members: { bob: { user: { id: 'bob', name: 'Bob' } } } }, on(type, fn) { memberCallbacks.set(type, fn); return { unsubscribe() { memberCallbacks.delete(type); } }; } };
+const bob = { user: { id: 'bob', name: 'Bob' } };
+const channel = { cid: 'messaging:r', state: { members: { bob } }, on(type, fn) { memberCallbacks.set(type, fn); return { unsubscribe() { memberCallbacks.delete(type); } }; } };
 const client = {
   wsConnection: { isHealthy: true },
   on(type, fn) { callbacks.set(type, fn); return { unsubscribe() { callbacks.delete(type); } }; },
@@ -23,8 +24,9 @@ const hook = vm.runInNewContext(source + '\nuseRoomPresence', {
   navigator: { onLine: true }, crypto: { randomUUID: () => '12345678-1234-1234-1234-123456789abc' },
   AbortSignal, AbortController, Date, Intl, Map, Set,
   setInterval: () => 1, clearInterval() {}, setTimeout: () => 2, clearTimeout() {},
-  fetch: async () => ({ ok: false, status: 503 }),
+  fetch: async () => presenceResponse,
 });
+let presenceResponse = { ok: false, status: 503 };
 hook({ apiBase: '', accessKey: 'a', deviceId: 'd', roomId: 'r', name: 'Alice', client, channel });
 const cleanup = effects[0]();
 await new Promise(resolve => setImmediate(resolve));
@@ -48,4 +50,22 @@ assert.equal(snapshot.members.length, 0, 'former room members must not remain di
 cleanup();
 assert.equal(callbacks.size, 0);
 assert.equal(memberCallbacks.size, 0);
+
+// A quick rejoin can open before Stream finishes loading the room roster.
+// Reuse the already authenticated room heartbeat as soon as the roster arrives.
+let finishLiveQuery;
+client.queryUsers = () => new Promise(resolve => { finishLiveQuery = resolve; });
+presenceResponse = { ok: true, json: async () => ({ members: [{ userId: 'bob', name: 'Bob', isOnline: true }] }) };
+const cleanupRejoin = effects[0]();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(snapshot.members.length, 0);
+channel.state.members = { bob };
+callbacks.get('channels.queried')?.({ queriedChannels: { channels: [{ channel: { cid: 'messaging:other' } }] } });
+assert.equal(snapshot.members.length, 0, 'another room query cannot publish this room’s presence');
+callbacks.get('channels.queried')?.({ queriedChannels: { channels: [{ channel: { cid: channel.cid } }] } });
+assert.equal(snapshot.members.find(member => member.userId === 'bob')?.isOnline, true,
+  'the rejoined room shows confirmed presence immediately when its roster arrives');
+finishLiveQuery({ users: [] });
+await new Promise(resolve => setImmediate(resolve));
+cleanupRejoin();
 console.log('Presence source passed: live chat works despite backend failure, presence events update immediately and subscriptions clean up.');
