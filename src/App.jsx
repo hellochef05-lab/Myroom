@@ -24,6 +24,7 @@ import {
   Channel,
   MessageInput,
   MessageList,
+  SendButton as StreamSendButton,
   SimpleReactionsList,
   Thread,
   TypingIndicator as StreamTypingIndicator,
@@ -34,6 +35,7 @@ import {
   useChannelStateContext,
   useMessageComposer,
   useMessageContext,
+  useMessageInputContext,
   useStateStore,
 } from "stream-chat-react";
 import { createPortal } from "react-dom";
@@ -484,6 +486,18 @@ function LatestMessageList({ channelId }) {
 }
 
 const SAYUP_OUTBOX_PREFIX = "sayup_outbox_v1";
+
+function KeepTypingSendButton({ sendMessage }) {
+  const { textareaRef } = useMessageInputContext();
+  const keepFocus = (event) => {
+    const textarea = textareaRef.current;
+    if (event.button === 0 && textarea && textarea.ownerDocument.activeElement === textarea) {
+      // Let the click submit without moving focus off the iPhone keyboard.
+      event.preventDefault();
+    }
+  };
+  return <StreamSendButton sendMessage={sendMessage} onPointerDown={keepFocus} onMouseDown={keepFocus} />;
+}
 
 function ReliableMessageInput(props) {
   const messageComposer = useMessageComposer();
@@ -7429,6 +7443,7 @@ async function adminUpdateTicketStatus(requestId, status) {
             Attachment={CustomAttachment}
             Message={MyMessage}
             QuotedMessagePreview={WhatsAppQuotedMessagePreview}
+            SendButton={KeepTypingSendButton}
             TypingIndicator={HiddenBottomIndicator}
             MessageNotification={HiddenBottomIndicator}
           >
