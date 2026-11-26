@@ -1,6 +1,8 @@
 import { mergeRoomPresence } from "./presenceState.js";
 import { useEffect, useState } from 'react';
 
+const PRESENCE_MAX_AGE = 45000;
+
 export function presenceTime(value) {
   if (!value || !Number.isFinite(new Date(value).getTime())) return '';
   return new Intl.DateTimeFormat(undefined, {
@@ -36,11 +38,15 @@ export function useRoomPresence({ apiBase, accessKey, deviceId, roomId, name, cl
     const publish = () => {
       if (stopped) return;
       const ids = memberIds();
-      const recorded = Date.now() - lastSuccess < 45000
+      const now = Date.now();
+      const recorded = now - lastSuccess < PRESENCE_MAX_AGE
         ? recordedMembers.filter(member => !channel || ids.has(member.userId)) : [];
-      setSnapshot({ roomId, members: mergeRoomPresence(
-        [...liveMembers.values()].filter(member => ids.has(member.userId)), recorded,
-      ) });
+      const live = [...liveMembers.values()].filter(member => ids.has(member.userId)).map(member =>
+        member.isOnline && now - member.confirmedAt >= PRESENCE_MAX_AGE
+          ? { ...member, isOnline: undefined, onlineSince: null }
+          : member,
+      );
+      setSnapshot({ roomId, members: mergeRoomPresence(live, recorded) });
     };
     const applyUser = (user, eventTime) => {
       if (!user?.id || !memberIds().has(user.id) || typeof user.online !== 'boolean') return;
@@ -48,6 +54,7 @@ export function useRoomPresence({ apiBase, accessKey, deviceId, roomId, name, cl
       liveMembers.set(user.id, {
         userId: user.id, name: user.name || previous?.name || 'Room member',
         isOnline: user.online,
+        confirmedAt: Date.now(),
         onlineSince: user.online ? previous?.isOnline ? previous.onlineSince : eventTime || null : null,
         lastSeenAt: user.last_active || previous?.lastSeenAt || null,
       });
@@ -91,7 +98,7 @@ export function useRoomPresence({ apiBase, accessKey, deviceId, roomId, name, cl
     const send = async (leaving = false) => {
       if (!accessKey || !deviceId) return;
       const online = !leaving && !document.hidden && navigator.onLine && connected;
-      if (!stopped && lastSuccess && Date.now() - lastSuccess >= 45000) {
+      if (!stopped && lastSuccess && Date.now() - lastSuccess >= PRESENCE_MAX_AGE) {
         recordedMembers = [];
         publish();
       }
@@ -116,7 +123,7 @@ export function useRoomPresence({ apiBase, accessKey, deviceId, roomId, name, cl
         }
       } catch {
         // Never keep displaying an old green status through an outage.
-        if (!stopped && Date.now() - lastSuccess >= 45000) {
+        if (!stopped && Date.now() - lastSuccess >= PRESENCE_MAX_AGE) {
           recordedMembers = [];
           publish();
         }
@@ -135,6 +142,7 @@ export function useRoomPresence({ apiBase, accessKey, deviceId, roomId, name, cl
       revisions.set(event.user?.id, ++revision);
       applyUser(event.user, event.created_at);
       publish();
+      refresh();
     });
     const refreshMembers = () => { publish(); void refreshLive(); };
     const recoveredSubscription = client.on('connection.recovered', refreshMembers);
@@ -150,7 +158,7 @@ export function useRoomPresence({ apiBase, accessKey, deviceId, roomId, name, cl
     window.addEventListener('online', resumeLive);
     void refreshLive();
     refresh();
-    const timer = setInterval(refresh, 15000);
+    const timer = setInterval(() => { publish(); refresh(); }, 15000);
     document.addEventListener('visibilitychange', refresh);
     window.addEventListener('pagehide', leave);
     window.addEventListener('pageshow', refresh);
