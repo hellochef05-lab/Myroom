@@ -2,6 +2,20 @@ import { createHash, randomUUID } from "node:crypto";
 
 const ALERT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const ALERT_LIMIT = 100;
+const regionNames = new Intl.DisplayNames(["en"], { type: "region", fallback: "none" });
+
+export function resolveAlertLocation({ countryCode, timezone }) {
+  const code = typeof countryCode === "string" ? countryCode.trim().toUpperCase() : "";
+  const country = /^[A-Z]{2}$/.test(code) && code !== "ZZ" ? regionNames.of(code) || "" : "";
+  let normalizedTimezone = "";
+  if (typeof timezone === "string" && /^[A-Za-z][A-Za-z0-9_+/-]{0,63}$/.test(timezone)) {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: timezone });
+      normalizedTimezone = timezone;
+    } catch { /* Invalid time zones fall back to UTC in the dashboard. */ }
+  }
+  return { country, timezone: normalizedTimezone };
+}
 
 function alertText(value, excluded = [], maxLength = 80) {
   if (typeof value !== "string") return "";
@@ -19,7 +33,7 @@ function isRecent(event, now) {
   return time >= now - ALERT_AGE_MS && time <= now;
 }
 
-export function recordLoginAttempt(db, { displayName, roomCode, accessKey, allowed }, now = Date.now()) {
+export function recordLoginAttempt(db, { displayName, roomCode, accessKey, allowed, countryCode, timezone }, now = Date.now()) {
   const excluded = [accessKey];
   const entries = db.accessLoginAlerts ||= [];
   const recent = entries.filter(event => isRecent(event, now)).slice(-(ALERT_LIMIT - 1));
@@ -29,6 +43,7 @@ export function recordLoginAttempt(db, { displayName, roomCode, accessKey, allow
     displayName: alertText(displayName, excluded) || "Guest",
     roomCode: alertText(roomCode, excluded, 32),
     allowed: allowed === true,
+    ...resolveAlertLocation({ countryCode, timezone }),
     createdAt: new Date(now).toISOString(),
   });
 }
@@ -45,6 +60,8 @@ export function recentAccessAlerts(db, now = Date.now()) {
       displayName: alertText(payment.username, excluded) || "Guest",
       contact: alertText(payment.contact, excluded, 150),
       planName: alertText(payment.planName, excluded),
+      country: payment.alertLocation?.country || "",
+      timezone: payment.alertLocation?.timezone || "",
       createdAt: payment.createdAt,
     };
   });

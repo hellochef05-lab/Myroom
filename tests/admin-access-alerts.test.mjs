@@ -1,23 +1,32 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { recordLoginAttempt, recentAccessAlerts } from '../server/accessAlerts.js';
+import { recordLoginAttempt, recentAccessAlerts, resolveAlertLocation } from '../server/accessAlerts.js';
 
 const now = Date.parse('2026-11-27T12:00:00Z');
 const database = {
   accessLoginAlerts: [],
   payments: [
     { id: 'signup', username: 'Asha', contact: 'asha@example.com', planName: 'Monthly',
+      alertLocation: { country: 'India', timezone: 'Asia/Kolkata' },
       createdAt: new Date(now - 1000).toISOString(), upiReference: 'payment-secret', accessKey: '56789' },
   ],
 };
-recordLoginAttempt(database, { displayName: 'Arun', roomCode: '1101', accessKey: '12345', allowed: true }, now);
-recordLoginAttempt(database, { displayName: 'Guest 54321', roomCode: '2202', accessKey: '54321', allowed: false }, now + 1);
+recordLoginAttempt(database, { displayName: 'Arun', roomCode: '1101', accessKey: '12345', allowed: true,
+  countryCode: 'AE', timezone: 'Asia/Dubai' }, now);
+recordLoginAttempt(database, { displayName: 'Guest 54321', roomCode: '2202', accessKey: '54321', allowed: false,
+  countryCode: '54321', timezone: 'invalid-zone' }, now + 1);
 const alerts = recentAccessAlerts(database, now + 2);
 assert.deepEqual(alerts.map(alert => alert.type), ['login', 'login', 'signup']);
 assert.equal(alerts[0].allowed, false);
 assert.equal(alerts[0].displayName, 'Guest [redacted]');
 assert.equal(alerts[1].roomCode, '1101');
+assert.equal(alerts[0].timezone, '');
+assert.equal(alerts[0].country, '');
+assert.equal(alerts[1].country, 'United Arab Emirates');
+assert.equal(alerts[1].timezone, 'Asia/Dubai');
+assert.equal(alerts[2].country, 'India');
+assert.equal(alerts[2].timezone, 'Asia/Kolkata');
 assert.equal(alerts[2].contact, 'asha@example.com');
 assert.equal(alerts[2].planName, 'Monthly');
 assert.doesNotMatch(JSON.stringify(alerts), /payment-secret|12345|54321|56789|upiReference|accessKey/);
@@ -57,6 +66,33 @@ submitLogin('12345', 'device');
 assert.deepEqual(loginDB.accessLoginAlerts.map(e => e.allowed), [false, false, true]);
 assert.equal(batchedDenials, 2);
 assert.equal(saves, 1, 'successful login persists its alert along with activity');
+
+const signupStart = server.indexOf('function publicPayment(');
+const signupEnd = server.lastIndexOf('/*', server.indexOf('| PUBLIC SUPPORT', signupStart));
+const signupDB = { users: [], payments: [], plans: [{ id: 'plan', name: 'Monthly' }] };
+let createSignup, signupStatus;
+vm.runInNewContext(server.slice(signupStart, signupEnd), {
+  app: { post(_path, fn) { createSignup = fn; }, get(_path, fn) { signupStatus = fn; } },
+  process: { env: {} }, readDB: () => signupDB, writeDB() {}, makeId: () => 'payment-fixture',
+  sameValue: (a, b) => a === b, resolveAlertLocation,
+});
+const signupResponses = [];
+const signupRes = { status() { return this; }, json(data) { signupResponses.push(data); } };
+const signupBody = { username: 'Viewer', contact: 'viewer@example.com', planId: 'plan',
+  upiReference: 'reference-fixture', countryCode: 'IN', timezone: 'Asia/Kolkata' };
+createSignup({ body: signupBody }, signupRes);
+createSignup({ body: signupBody }, signupRes);
+signupStatus({ params: { paymentId: 'payment-fixture' } }, signupRes);
+assert.equal(signupDB.payments[0].alertLocation.timezone, 'Asia/Kolkata');
+assert.equal(signupResponses.length, 3);
+assert.doesNotMatch(JSON.stringify(signupResponses), /alertLocation|Asia\/Kolkata/);
+
+const app = readFileSync('src/App.jsx', 'utf8');
+const formatStart = app.indexOf('function formatDateTime(');
+const formatEnd = app.indexOf('function deviceType(', formatStart);
+const formatDateTime = vm.runInNewContext(app.slice(formatStart, formatEnd) + '\nformatDateTime');
+assert.notEqual(formatDateTime('2026-11-27T20:00:00Z', 'Asia/Kolkata'), formatDateTime('2026-11-27T20:00:00Z', 'UTC'));
+assert.equal(formatDateTime('2026-11-27T20:00:00Z', 'invalid'), formatDateTime('2026-11-27T20:00:00Z', 'UTC'));
 
 const start = server.indexOf('app.get("/api/admin/dashboard"');
 const end = server.indexOf('app.get("/api/admin/devices"', start);
