@@ -3275,6 +3275,7 @@ function AdminDashboard({ API_BASE, onBack }) {
   const [isAdminOnline, setIsAdminOnline] = useState(() => navigator.onLine);
   const [activeView, setActiveView] = useState("overview");
   const [search, setSearch] = useState("");
+  const [seenAlertsAt, setSeenAlertsAt] = useState(() => Number(readLocalJson("sayup_admin_alerts_seen_at", 0)) || 0);
 
   const [dashboard, setDashboard] = useState({
     totalUsers: 0,
@@ -3313,6 +3314,10 @@ function AdminDashboard({ API_BASE, onBack }) {
   const [selectedDeviceIds, setSelectedDeviceIds] = useState([]);
   const [selectedRoomIds, setSelectedRoomIds] = useState([]);
   const [adminDeleteKey, setAdminDeleteKey] = useState("");
+  const accessAlerts = dashboard.accessAlerts || [];
+  const unreadAlerts = activeView === "access_alerts" ? 0 : accessAlerts.filter(alert =>
+    Date.parse(alert.createdAt) > seenAlertsAt,
+  ).length;
 
   const headers = useMemo(
     () => ({
@@ -3444,13 +3449,20 @@ function AdminDashboard({ API_BASE, onBack }) {
 
   useEffect(() => {
     if (!authenticated) return undefined;
-    const id = setInterval(() => {
-      if (!navigator.onLine) return;
+    const refreshDashboard = () => {
+      if (!navigator.onLine || document.hidden) return;
       request("/api/admin/dashboard")
         .then(setDashboard)
         .catch(() => {});
-    }, 30000);
-    return () => clearInterval(id);
+    };
+    const id = setInterval(refreshDashboard, 30000);
+    document.addEventListener("visibilitychange", refreshDashboard);
+    window.addEventListener("online", refreshDashboard);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", refreshDashboard);
+      window.removeEventListener("online", refreshDashboard);
+    };
     // request uses the current PIN already listed above; recreating the timer on
     // every render would make the dashboard refresh unstable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3833,6 +3845,13 @@ function AdminDashboard({ API_BASE, onBack }) {
   }
 
   function openView(view) {
+    if (view === "access_alerts" || activeView === "access_alerts") {
+      const latest = Date.parse(accessAlerts[0]?.createdAt);
+      if (latest > seenAlertsAt) {
+        setSeenAlertsAt(latest);
+        try { localStorage.setItem("sayup_admin_alerts_seen_at", String(latest)); } catch { /* Use this session's value. */ }
+      }
+    }
     setActiveView(view);
     window.setTimeout(() => {
       document.getElementById("admin-detail-panel")?.scrollIntoView({
@@ -3898,6 +3917,9 @@ function AdminDashboard({ API_BASE, onBack }) {
         {authenticated ? (
           <>
             <section className="admin-stat-grid">
+              <StatCard label="Access alerts" value={accessAlerts.length} accent="#0f766e"
+                active={activeView === "access_alerts"} onClick={() => openView("access_alerts")}
+                subtitle={<span role="status">{unreadAlerts ? `${unreadAlerts} new` : "Login and sign-up"}</span>} />
               <StatCard label="Total users" value={dashboard.totalUsers} accent="#27c3cf" active={activeView === "users"} onClick={() => openView("users")} />
               <StatCard label="Online now" value={dashboard.onlineNow} accent="#36b875" active={activeView === "online"} onClick={() => openView("online")} />
               <StatCard label="Joined this week" value={dashboard.joinedThisWeek} accent="#ff765a" active={activeView === "joined"} onClick={() => openView("joined")} />
@@ -3946,6 +3968,35 @@ function AdminDashboard({ API_BASE, onBack }) {
                   <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, contact or Access Key" />
                 ) : null}
               </div>
+
+              {activeView === "access_alerts" && (
+                <div className="admin-record-list">
+                  {accessAlerts.length ? accessAlerts.map((entry) => (
+                    <article className="admin-user-card" key={entry.id}>
+                      <div className="admin-user-card-top">
+                        <div>
+                          <h3>{entry.displayName}</h3>
+                          <p>{entry.type === "signup" ? "Sign-up request" : "Login attempt"}</p>
+                        </div>
+                        <span className={`admin-status ${entry.type === "signup" ? "warning" : entry.allowed ? "success" : "danger"}`}>
+                          {entry.type === "signup" ? "Submitted" : entry.allowed ? "Access granted" : "Access denied"}
+                        </span>
+                      </div>
+                      <div className="admin-meta-grid">
+                        <span>{formatDateTime(entry.createdAt)}</span>
+                        {entry.type === "signup" ? (
+                          <>
+                            {entry.contact && <span style={{ overflowWrap: "anywhere" }}>{entry.contact}</span>}
+                            {entry.planName && <span>{entry.planName}</span>}
+                          </>
+                        ) : entry.roomCode && <span>Room {entry.roomCode}</span>}
+                      </div>
+                    </article>
+                  )) : <EmptyState>{dashboard.accessAlertsEnabled === false
+                    ? "Set a custom Admin PIN to view access alerts."
+                    : "No recent access alerts."}</EmptyState>}
+                </div>
+              )}
 
               {["users", "online", "joined", "active", "expired", "devices", "rooms"].includes(activeView) && (
                 <div
@@ -4215,6 +4266,7 @@ function AdminDashboard({ API_BASE, onBack }) {
             </section>
 
             <nav className="admin-quick-nav">
+              <button onClick={() => openView("access_alerts")}>Access alerts</button>
               <button onClick={() => openView("users")}>Users</button>
               <button onClick={() => openView("devices")}>Devices</button>
               <button onClick={() => openView("rooms")}>Rooms</button>

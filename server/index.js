@@ -1,4 +1,5 @@
 import { reportRoomPresence, roomPresenceSnapshot } from "./roomPresence.js";
+import { recordLoginAttempt, recentAccessAlerts } from "./accessAlerts.js";
 import { createClient } from "@supabase/supabase-js";
 import { StreamChat } from "stream-chat";
 import express from "express";
@@ -50,6 +51,7 @@ function createEmptyDB() {
     supportRequests: [],
     supportMessages: [],
     loginHistory: [],
+    accessLoginAlerts: [],
     paymentSettings: {
       currencyCode: "AED",
       currencyName: "UAE Dirham",
@@ -1087,6 +1089,22 @@ app.post("/api/rooms/clear", async (req, res) => {
 |--------------------------------------------------------------------------
 */
 
+let loginAlertSaveTimer;
+
+function flushDeniedLoginAlerts() {
+  clearTimeout(loginAlertSaveTimer);
+  loginAlertSaveTimer = undefined;
+  return writeDB(readDB());
+}
+
+function saveDeniedLoginAlerts() {
+  if (loginAlertSaveTimer) return;
+  loginAlertSaveTimer = setTimeout(() => {
+    void flushDeniedLoginAlerts().catch(error => console.error("Could not save login alerts:", error.message));
+  }, 2000);
+  loginAlertSaveTimer.unref();
+}
+
 app.post("/api/login", (req, res) => {
   const {
     username = "",
@@ -1098,19 +1116,24 @@ app.post("/api/login", (req, res) => {
     country = "Unknown",
     timezone = "",
     platform = "",
+    roomCode = "",
   } = req.body || {};
 
   const displayName =
     username || name || "Guest";
+  const db = readDB();
+  const recordAttempt = (allowed) => {
+    recordLoginAttempt(db, { displayName, roomCode, accessKey, allowed });
+    if (!allowed) saveDeniedLoginAlerts();
+  };
 
   if (!accessKey || !deviceId) {
+    if (username || name || roomCode) recordAttempt(false);
     return res.status(400).json({
       error:
         "Access Key and device ID are required",
     });
   }
-
-  const db = readDB();
 
   const auth = getActiveUserByAccessKey(
     db,
@@ -1118,6 +1141,7 @@ app.post("/api/login", (req, res) => {
   );
 
   if (auth.error) {
+    recordAttempt(false);
     return res.status(auth.status).json({
       success: false,
       error: auth.error,
@@ -1181,6 +1205,7 @@ app.post("/api/login", (req, res) => {
     user.country = preferKnownValue(country, user.country, "Unknown");
     user.timezone = preferKnownValue(timezone, user.timezone);
 
+    recordAttempt(true);
     writeDB(db);
 
     return res.json({
@@ -1200,6 +1225,7 @@ app.post("/api/login", (req, res) => {
   if (
     activeDevices.length >= deviceLimit
   ) {
+    recordAttempt(false);
     return res.status(403).json({
       error:
         `Device limit reached. This Access Key ` +
@@ -1230,6 +1256,7 @@ app.post("/api/login", (req, res) => {
   user.country = preferKnownValue(country, user.country, "Unknown");
   user.timezone = preferKnownValue(timezone, user.timezone);
 
+  recordAttempt(true);
   writeDB(db);
 
   return res.json({
@@ -2592,6 +2619,7 @@ app.post("/api/activity", (req, res) => {
 
 app.get("/api/admin/dashboard", (req, res) => {
   if (!checkAdminPin(req, res)) return;
+  res.set("Cache-Control", "no-store");
   const db = readDB();
   let changed = false;
   for (const user of db.users) {
@@ -2629,6 +2657,8 @@ app.get("/api/admin/dashboard", (req, res) => {
     activeUsers: db.users.filter((user) => user.status === "active" && user.subscriptionStatus !== "expired").length,
     expiredUsers: db.users.filter((user) => user.subscriptionStatus === "expired").length,
     pendingPayments: db.payments.filter((payment) => payment.status === "pending").length,
+    accessAlertsEnabled: Boolean(process.env.ADMIN_PIN),
+    accessAlerts: process.env.ADMIN_PIN ? recentAccessAlerts(db) : [],
     openSupport: db.supportRequests.filter((ticket) => !["closed", "solved", "archived"].includes(ticket.status)).length,
     closedSupport: db.supportRequests.filter((ticket) => ["closed", "solved", "archived"].includes(ticket.status)).length,
     totalRooms: db.rooms.length,
@@ -4663,6 +4693,7 @@ async function shutdown(signal) {
   console.log(`${signal} received. Saving database...`);
 
   try {
+    if (loginAlertSaveTimer) await flushDeniedLoginAlerts();
     await flushDatabaseWrites();
   } catch (error) {
     console.error(
