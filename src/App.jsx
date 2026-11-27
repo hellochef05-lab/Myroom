@@ -823,29 +823,34 @@ function getFallbackLocationInfo() {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
 
   return {
-    country: timezone === "Asia/Dubai" ? "United Arab Emirates" : "Unknown",
+    country: "Unknown",
+    countryCode: "",
     timezone,
   };
 }
 
 let clientContextPromise;
+let clientContextFetchedAt = 0;
 
-async function getClientLocationInfo() {
-  if (!clientContextPromise) {
-    clientContextPromise = fetch("/api/client-context", { cache: "no-store" })
+async function getClientLocationInfo(maxAgeMs = Infinity) {
+  if (!clientContextPromise || Date.now() - clientContextFetchedAt >= maxAgeMs) {
+    clientContextFetchedAt = Date.now();
+    clientContextPromise = apiFetch("/api/client-context", { cache: "no-store" }, { retries: 0, timeoutMs: 750 })
       .then(async (response) => {
         if (!response.ok) throw new Error("Location lookup failed");
         const data = await response.json();
-        const countryCode = String(data.countryCode || "").toUpperCase();
+        const reportedCode = String(data.countryCode || "").toUpperCase();
+        const countryCode = /^[A-Z]{2}$/.test(reportedCode) && reportedCode !== "ZZ" ? reportedCode : "";
         const regionNames = typeof Intl.DisplayNames === "function"
           ? new Intl.DisplayNames(["en"], { type: "region" })
           : null;
-        const country = /^[A-Z]{2}$/.test(countryCode) && regionNames
+        const country = countryCode && regionNames
           ? regionNames.of(countryCode)
           : "Unknown";
 
         return {
           country: country || "Unknown",
+          countryCode,
           timezone: data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "",
         };
       })
@@ -3232,10 +3237,18 @@ function formatDate(value) {
   return date.toLocaleDateString();
 }
 
-function formatDateTime(value) {
+function formatDateTime(value, timeZone) {
   if (!value) return "N/A";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
+  if (timeZone) {
+    const options = { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" };
+    try {
+      return date.toLocaleString(undefined, { ...options, timeZone });
+    } catch {
+      return date.toLocaleString(undefined, { ...options, timeZone: "UTC" });
+    }
+  }
   return date.toLocaleString();
 }
 
@@ -3983,7 +3996,8 @@ function AdminDashboard({ API_BASE, onBack }) {
                         </span>
                       </div>
                       <div className="admin-meta-grid">
-                        <span>{formatDateTime(entry.createdAt)}</span>
+                        <span>{formatDateTime(entry.createdAt, entry.timezone || "UTC")}</span>
+                        <span>{entry.country || "Country unavailable"}</span>
                         {entry.type === "signup" ? (
                           <>
                             {entry.contact && <span style={{ overflowWrap: "anywhere" }}>{entry.contact}</span>}
@@ -5638,6 +5652,7 @@ async function subscribeAndGenerateAccessKey(e) {
   }
 
   try {
+    const { countryCode, timezone } = await getClientLocationInfo(60000);
     const res = await apiFetch(`${API_BASE}/api/subscribe/request`, {
       method: "POST",
       headers: {
@@ -5648,6 +5663,8 @@ async function subscribeAndGenerateAccessKey(e) {
         contact: subscribeContact,
         planId: subscribePlan.id,
         upiReference: subscribeUpiReference,
+        countryCode,
+        timezone,
       }),
     });
 
@@ -6260,11 +6277,9 @@ async function adminUpdateTicketStatus(requestId, status) {
     let chatClient = null;
 
     try {
-      // Do not make the room transition wait for the optional IP/location lookup.
-      // The activity reporter refreshes the precise country shortly after login.
-      const location = getFallbackLocationInfo();
+      // Look up the alert location while the chat token request starts.
       const device = getClientDeviceInfo();
-      const loginRequest = apiFetch(`${API_BASE}/api/login`, {
+      const loginRequest = getClientLocationInfo(60000).then(location => apiFetch(`${API_BASE}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -6277,7 +6292,7 @@ async function adminUpdateTicketStatus(requestId, status) {
           ...device,
           ...location,
         }),
-      });
+      }));
       const tokenRequest = apiFetch(`${API_BASE}/api/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

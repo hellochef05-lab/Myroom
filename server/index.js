@@ -1,5 +1,5 @@
 import { reportRoomPresence, roomPresenceSnapshot } from "./roomPresence.js";
-import { recordLoginAttempt, recentAccessAlerts } from "./accessAlerts.js";
+import { recordLoginAttempt, recentAccessAlerts, resolveAlertLocation } from "./accessAlerts.js";
 import { createClient } from "@supabase/supabase-js";
 import { StreamChat } from "stream-chat";
 import express from "express";
@@ -1114,6 +1114,7 @@ app.post("/api/login", (req, res) => {
     deviceName = "",
     deviceType = "",
     country = "Unknown",
+    countryCode = "",
     timezone = "",
     platform = "",
     roomCode = "",
@@ -1123,7 +1124,7 @@ app.post("/api/login", (req, res) => {
     username || name || "Guest";
   const db = readDB();
   const recordAttempt = (allowed) => {
-    recordLoginAttempt(db, { displayName, roomCode, accessKey, allowed });
+    recordLoginAttempt(db, { displayName, roomCode, accessKey, allowed, countryCode, timezone });
     if (!allowed) saveDeniedLoginAlerts();
   };
 
@@ -1730,6 +1731,12 @@ app.patch(
 |--------------------------------------------------------------------------
 */
 
+function publicPayment(payment) {
+  const result = { ...payment };
+  delete result.alertLocation;
+  return result;
+}
+
 app.post(
   "/api/subscribe/request",
   (req, res) => {
@@ -1739,6 +1746,8 @@ app.post(
         contact,
         planId,
         upiReference,
+        countryCode,
+        timezone,
       } = req.body || {};
 
       if (
@@ -1812,7 +1821,7 @@ app.post(
         ? existingPayment.accessKey || ""
         : "",
     payment: {
-      ...existingPayment,
+      ...publicPayment(existingPayment),
       accessKey:
         existingPayment.status === "approved"
           ? existingPayment.accessKey || ""
@@ -1860,6 +1869,7 @@ app.post(
           "UAE Dirham",
         days: plan.days,
         upiReference,
+        alertLocation: resolveAlertLocation({ countryCode, timezone }),
 
         upiId:
           process.env.UPI_ID ||
@@ -1886,7 +1896,7 @@ app.post(
 
       return res.json({
         success: true,
-        payment,
+        payment: publicPayment(payment),
         message:
           "Payment submitted. Please wait for admin approval.",
       });
@@ -1941,7 +1951,7 @@ app.get(
       !linkedUser
     ) {
       return res.json({
-        ...payment,
+        ...publicPayment(payment),
         status: "revoked",
         accessKey: "",
         userId: "",
@@ -1951,7 +1961,7 @@ app.get(
     }
 
     return res.json({
-      ...payment,
+      ...publicPayment(payment),
       accessKey:
         payment.status === "approved"
           ? payment.accessKey
