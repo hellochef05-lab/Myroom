@@ -7,6 +7,7 @@ import { createOutboxFlusher, createDraftSafeSubmit } from "./messageOutbox.js";
 import { createRoomJoiner, callTransports, callFailureMessage, CALL_SIGNAL_ACK_TIMEOUT_MS } from "./callSignaling.js";
 import { createIceConfigLoader, callVideoConstraints, applyCallBandwidthLimits } from "./callNetwork.js";
 import { getChatViewportGeometry } from "./chatViewport.js";
+import { adminViewFromHash, adminViewTitles, navigateAdminView } from "./adminNavigation.js";
 import {
   createContext,
   useContext,
@@ -3262,11 +3263,11 @@ function deviceType(deviceName = "") {
   return "Other";
 }
 
-function StatCard({ label, value, accent, active, onClick, subtitle }) {
+function StatCard({ label, value, accent, onClick, subtitle }) {
   return (
     <button
       type="button"
-      className={`admin-stat-card ${active ? "is-active" : ""}`}
+      className="admin-stat-card"
       style={{ "--accent": accent }}
       onClick={onClick}
     >
@@ -3286,7 +3287,9 @@ function AdminDashboard({ API_BASE, onBack }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isAdminOnline, setIsAdminOnline] = useState(() => navigator.onLine);
-  const [activeView, setActiveView] = useState("overview");
+  const [activeView, setActiveView] = useState(() => adminViewFromHash(window.location.hash));
+  const headingRef = useRef(null);
+  const showOverview = activeView === "overview";
   const [search, setSearch] = useState("");
   const [seenAlertsAt, setSeenAlertsAt] = useState(() => Number(readLocalJson("sayup_admin_alerts_seen_at", 0)) || 0);
 
@@ -3328,9 +3331,39 @@ function AdminDashboard({ API_BASE, onBack }) {
   const [selectedRoomIds, setSelectedRoomIds] = useState([]);
   const [adminDeleteKey, setAdminDeleteKey] = useState("");
   const accessAlerts = dashboard.accessAlerts || [];
+  const latestAlertAt = Date.parse(accessAlerts[0]?.createdAt) || 0;
   const unreadAlerts = activeView === "access_alerts" ? 0 : accessAlerts.filter(alert =>
     Date.parse(alert.createdAt) > seenAlertsAt,
   ).length;
+
+  const markAlertsSeen = useCallback(() => {
+    if (!latestAlertAt) return;
+    setSeenAlertsAt(current => Math.max(current, latestAlertAt));
+    try {
+      const stored = Number(readLocalJson("sayup_admin_alerts_seen_at", 0)) || 0;
+      if (latestAlertAt > stored) localStorage.setItem("sayup_admin_alerts_seen_at", String(latestAlertAt));
+    } catch { /* Keep the current session's value. */ }
+  }, [latestAlertAt]);
+
+  useEffect(() => {
+    const restoreView = () => {
+      const nextView = adminViewFromHash(window.location.hash);
+      if (activeView === "access_alerts" || nextView === "access_alerts") markAlertsSeen();
+      setActiveView(nextView);
+    };
+    window.addEventListener("popstate", restoreView);
+    window.addEventListener("hashchange", restoreView);
+    return () => {
+      window.removeEventListener("popstate", restoreView);
+      window.removeEventListener("hashchange", restoreView);
+    };
+  }, [activeView, markAlertsSeen]);
+
+  useLayoutEffect(() => {
+    if (!authenticated) return;
+    window.scrollTo({ top: 0, behavior: "instant" });
+    headingRef.current?.focus({ preventScroll: true });
+  }, [authenticated, activeView]);
 
   const headers = useMemo(
     () => ({
@@ -3858,20 +3891,10 @@ function AdminDashboard({ API_BASE, onBack }) {
   }
 
   function openView(view) {
-    if (view === "access_alerts" || activeView === "access_alerts") {
-      const latest = Date.parse(accessAlerts[0]?.createdAt);
-      if (latest > seenAlertsAt) {
-        setSeenAlertsAt(latest);
-        try { localStorage.setItem("sayup_admin_alerts_seen_at", String(latest)); } catch { /* Use this session's value. */ }
-      }
-    }
-    setActiveView(view);
-    window.setTimeout(() => {
-      document.getElementById("admin-detail-panel")?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }, 50);
+    if (view === activeView) return;
+    if (view === "access_alerts" || activeView === "access_alerts") markAlertsSeen();
+    const nextView = navigateAdminView(window, view);
+    if (nextView) setActiveView(nextView);
   }
 
   const userListForView =
@@ -3889,13 +3912,11 @@ function AdminDashboard({ API_BASE, onBack }) {
     <div className="admin-page-shell">
       <main className="admin-dashboard">
         <header className="admin-topbar">
-          <div>
-            <p className="admin-eyebrow">SAYUP CONTROL CENTER</p>
-            <h1>Admin Dashboard</h1>
-            <p>Click any number to open its data and make changes.</p>
-          </div>
-          <button type="button" className="admin-back-button" onClick={onBack}>
-            Back to App
+          <h1 id="admin-page-heading" ref={headingRef} tabIndex={-1}>
+            {authenticated ? adminViewTitles[activeView] : adminViewTitles.overview}
+          </h1>
+          <button type="button" className="admin-back-button" onClick={showOverview ? onBack : () => openView("overview")}>
+            {showOverview ? "Back to App" : "Back to dashboard"}
           </button>
         </header>
 
@@ -3927,24 +3948,24 @@ function AdminDashboard({ API_BASE, onBack }) {
           </button>
         </section>
 
-        {authenticated ? (
+        {authenticated && showOverview && (
           <>
             <section className="admin-stat-grid">
               <StatCard label="Access alerts" value={accessAlerts.length} accent="#0f766e"
-                active={activeView === "access_alerts"} onClick={() => openView("access_alerts")}
+                onClick={() => openView("access_alerts")}
                 subtitle={<span role="status">{unreadAlerts ? `${unreadAlerts} new` : "Login and sign-up"}</span>} />
-              <StatCard label="Total users" value={dashboard.totalUsers} accent="#27c3cf" active={activeView === "users"} onClick={() => openView("users")} />
-              <StatCard label="Online now" value={dashboard.onlineNow} accent="#36b875" active={activeView === "online"} onClick={() => openView("online")} />
-              <StatCard label="Joined this week" value={dashboard.joinedThisWeek} accent="#ff765a" active={activeView === "joined"} onClick={() => openView("joined")} />
-              <StatCard label="Countries" value={dashboard.countries} accent="#9468db" active={activeView === "countries"} onClick={() => openView("countries")} />
-              <StatCard label="Active users" value={dashboard.activeUsers} accent="#3b82f6" active={activeView === "active"} onClick={() => openView("active")} />
-              <StatCard label="Expired users" value={dashboard.expiredUsers} accent="#ef4444" active={activeView === "expired"} onClick={() => openView("expired")} />
-              <StatCard label="Rooms" value={dashboard.totalRooms} accent="#f59e0b" active={activeView === "rooms"} onClick={() => openView("rooms")} />
-              <StatCard label="Devices" value={dashboard.totalDevices} accent="#14b8a6" active={activeView === "devices"} onClick={() => openView("devices")} />
-              <StatCard label="Pending payments" value={dashboard.pendingPayments} accent="#8b5cf6" active={activeView === "payments"} onClick={() => openView("payments")} />
-              <StatCard label="Currency" value={currencySettings.currencyCode} accent="#b58a48" active={activeView === "currency"} onClick={() => openView("currency")} />
-              <StatCard label="Open support" value={dashboard.openSupport} accent="#ec4899" active={activeView === "support"} onClick={() => openView("support")} />
-              <StatCard label="Closed tickets" value={dashboard.closedSupport || 0} accent="#64748b" active={activeView === "closed_support"} onClick={() => openView("closed_support")} />
+              <StatCard label="Total users" value={dashboard.totalUsers} accent="#27c3cf" onClick={() => openView("users")} />
+              <StatCard label="Online now" value={dashboard.onlineNow} accent="#36b875" onClick={() => openView("online")} />
+              <StatCard label="Joined this week" value={dashboard.joinedThisWeek} accent="#ff765a" onClick={() => openView("joined")} />
+              <StatCard label="Countries" value={dashboard.countries} accent="#9468db" onClick={() => openView("countries")} />
+              <StatCard label="Active users" value={dashboard.activeUsers} accent="#3b82f6" onClick={() => openView("active")} />
+              <StatCard label="Expired users" value={dashboard.expiredUsers} accent="#ef4444" onClick={() => openView("expired")} />
+              <StatCard label="Rooms" value={dashboard.totalRooms} accent="#f59e0b" onClick={() => openView("rooms")} />
+              <StatCard label="Devices" value={dashboard.totalDevices} accent="#14b8a6" onClick={() => openView("devices")} />
+              <StatCard label="Pending payments" value={dashboard.pendingPayments} accent="#8b5cf6" onClick={() => openView("payments")} />
+              <StatCard label="Currency" value={currencySettings.currencyCode} accent="#b58a48" onClick={() => openView("currency")} />
+              <StatCard label="Open support" value={dashboard.openSupport} accent="#ec4899" onClick={() => openView("support")} />
+              <StatCard label="Closed tickets" value={dashboard.closedSupport || 0} accent="#64748b" onClick={() => openView("closed_support")} />
             </section>
 
             <section className="admin-overview-grid">
@@ -3971,16 +3992,27 @@ function AdminDashboard({ API_BASE, onBack }) {
               </button>
             </section>
 
-            <section id="admin-detail-panel" className="admin-detail-panel">
-              <div className="admin-detail-heading">
-                <div>
-                  <p className="admin-eyebrow">CLICKABLE DATA VIEW</p>
-                  <h2>{activeView.replace(/(^|_)(\w)/g, (_, __, letter) => ` ${letter.toUpperCase()}`).trim()}</h2>
+            <nav className="admin-quick-nav" aria-label="Admin sections">
+              <button onClick={() => openView("access_alerts")}>Access alerts</button>
+              <button onClick={() => openView("users")}>Users</button>
+              <button onClick={() => openView("devices")}>Devices</button>
+              <button onClick={() => openView("rooms")}>Rooms</button>
+              <button onClick={() => openView("payments")}>Payments</button>
+              <button onClick={() => openView("support")}>Open Support</button>
+              <button onClick={() => openView("closed_support")}>Closed Tickets</button>
+              <button onClick={() => openView("plans")}>Plans</button>
+              <button onClick={() => openView("currency")}>Currency</button>
+            </nav>
+          </>
+        )}
+
+        {authenticated && !showOverview && (
+            <section className="admin-detail-panel" aria-labelledby="admin-page-heading">
+              {["users", "online", "joined", "active", "expired"].includes(activeView) && (
+                <div className="admin-detail-heading">
+                  <input aria-label="Search users" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, contact or Access Key" />
                 </div>
-                {["users", "online", "joined", "active", "expired"].includes(activeView) ? (
-                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, contact or Access Key" />
-                ) : null}
-              </div>
+              )}
 
               {activeView === "access_alerts" && (
                 <div className="admin-record-list">
@@ -4038,7 +4070,7 @@ function AdminDashboard({ API_BASE, onBack }) {
                 </div>
               )}
 
-              {["overview", "users", "online", "joined", "active", "expired"].includes(activeView) && (
+              {["users", "online", "joined", "active", "expired"].includes(activeView) && (
                 <div className="admin-record-list">
                   <div className="admin-actions" style={{ marginBottom: 14 }}>
                     <button type="button" className="secondary" onClick={toggleAllVisibleUsers}>
@@ -4278,20 +4310,9 @@ function AdminDashboard({ API_BASE, onBack }) {
                 </div>
               )}
             </section>
+        )}
 
-            <nav className="admin-quick-nav">
-              <button onClick={() => openView("access_alerts")}>Access alerts</button>
-              <button onClick={() => openView("users")}>Users</button>
-              <button onClick={() => openView("devices")}>Devices</button>
-              <button onClick={() => openView("rooms")}>Rooms</button>
-              <button onClick={() => openView("payments")}>Payments</button>
-              <button onClick={() => openView("support")}>Open Support</button>
-              <button onClick={() => openView("closed_support")}>Closed Tickets</button>
-              <button onClick={() => openView("plans")}>Plans</button>
-              <button onClick={() => openView("currency")}>Currency</button>
-            </nav>
-          </>
-        ) : (
+        {!authenticated && (
           <div className="admin-locked-state">
             <div>🔐</div>
             <h2>Enter the Admin PIN</h2>
