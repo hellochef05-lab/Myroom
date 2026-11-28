@@ -4634,7 +4634,9 @@ html[data-sayup-theme="dark"] .private-room-chat-page .sayup-composer-reply-copy
 /* Tighter WhatsApp-style bubble tails */
 .private-room-chat-page .private-room-message-bubble {
   border-radius: 7.5px !important;
-  max-width: min(78%, 360px) !important;
+  max-width: min(100%, 360px) !important;
+  overflow-wrap: break-word;
+  word-break: normal;
   padding: 6px 7px 14px 9px !important;
   position: relative;
 }

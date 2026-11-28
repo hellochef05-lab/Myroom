@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { ENGINE_UNAVAILABLE, readEngineStatus } from "./engineStatus.js";
+import { ENGINE_UNAVAILABLE, readEngineStatus, wasEngineVerifiedForNavigation } from "./engineStatus.js";
 
 export default function PublicEngineGate({ apiBase, children }) {
-  const [status, setStatus] = useState("checking");
+  const [verifiedOnNavigation] = useState(() => wasEngineVerifiedForNavigation(window.performance));
+  const [status, setStatus] = useState(verifiedOnNavigation ? "on" : "checking");
 
   useEffect(() => {
     let cancelled = false;
@@ -21,21 +22,24 @@ export default function PublicEngineGate({ apiBase, children }) {
       if (cancelled || startRevision !== revision) return;
       setStatus(current => enabled === null ? (current === "on" ? current : "off") : enabled ? "on" : "off");
     };
-    void refresh();
+    const refreshRestoredPage = (event) => {
+      if (event.persisted) void refresh();
+    };
+    if (!verifiedOnNavigation) void refresh();
     const timer = setInterval(refresh, 15000);
     window.addEventListener("online", refresh);
     window.addEventListener("sayup:engine-off", turnOff);
-    window.addEventListener("pageshow", refresh);
+    window.addEventListener("pageshow", refreshRestoredPage);
     document.addEventListener("visibilitychange", refresh);
     return () => {
       cancelled = true;
       clearInterval(timer);
       window.removeEventListener("online", refresh);
       window.removeEventListener("sayup:engine-off", turnOff);
-      window.removeEventListener("pageshow", refresh);
+      window.removeEventListener("pageshow", refreshRestoredPage);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [apiBase]);
+  }, [apiBase, verifiedOnNavigation]);
 
   if (status === "on") return children;
   return (
