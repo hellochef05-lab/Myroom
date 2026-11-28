@@ -27,8 +27,20 @@ try {
   assert.equal(allowed.headers.get('Cache-Control'), 'no-store');
   assert.equal(blocked.headers.get('Server-Timing'), null);
   assert.equal((await middleware(admin)).headers.get('Server-Timing'), null);
+  const assertConnectingShell = async () => {
+    const response = await middleware(normal);
+    assert.equal(response.headers.get('x-middleware-next'), '1', 'serve the connecting screen');
+    assert.equal(response.headers.get('Server-Timing'), null, 'never mark an unverified Engine as on');
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  };
   globalThis.fetch = async () => { throw new Error('Service down'); };
-  assert.equal((await middleware(normal)).status, 503, 'an unknown status cannot open the public app');
+  await assertConnectingShell();
+  globalThis.fetch = async () => new Response('<html>Starting</html>', { status: 503 });
+  await assertConnectingShell();
+  globalThis.fetch = async () => Response.json({ success: true, database: 'loading', engineEnabled: false });
+  await assertConnectingShell();
+  globalThis.fetch = async () => Response.json({ success: true, database: 'connected' });
+  await assertConnectingShell();
 } finally {
   globalThis.fetch = originalFetch;
 }
