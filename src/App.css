@@ -2736,7 +2736,9 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
 
 .private-room-message-actions-backdrop {
   position: fixed;
-  inset: 0;
+  /* The composer can pan the visible viewport away from the layout origin. */
+  inset: var(--private-room-viewport-top, 0px) 0 auto;
+  height: var(--private-room-visible-height, 100dvh);
   padding: 0;
   background: rgba(15, 23, 42, 0.22);
   -webkit-backdrop-filter: blur(5px);
@@ -2745,8 +2747,22 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
 }
 
 .private-room-message-actions-sheet {
-  position: fixed;
-  max-width: calc(100% - 24px);
+  --message-menu-width: min(300px, calc(100% - 24px));
+  --message-menu-top-inset: max(12px, env(safe-area-inset-top));
+  --message-menu-bottom-inset: max(12px, env(safe-area-inset-bottom));
+  --message-menu-top: clamp(
+    var(--message-menu-top-inset),
+    calc(var(--message-menu-anchor-y, var(--private-room-viewport-top, 0px)) - var(--private-room-viewport-top, 0px)),
+    calc(100% - var(--message-menu-bottom-inset) - 490px)
+  );
+  position: absolute;
+  top: var(--message-menu-top);
+  left: clamp(12px, calc(var(--message-menu-anchor-x, 12px) - var(--message-menu-anchor-offset, 0px)), calc(100% - var(--message-menu-width) - 12px));
+  width: var(--message-menu-width);
+  max-height: max(0px, calc(100% - var(--message-menu-top) - var(--message-menu-bottom-inset)));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 0;
   border-radius: 18px;
   background: transparent;
@@ -2755,6 +2771,7 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
 }
 
 .private-room-reaction-picker {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 4px;
@@ -2788,7 +2805,9 @@ html[data-sayup-palette="midnight"] .private-room-chat-page .sayup-composer-repl
 .private-room-message-action-list {
   overflow-x: hidden;
   overflow-y: auto;
-  max-height: min(430px, calc(100dvh - 92px));
+  min-height: 0;
+  max-height: 430px;
+  overscroll-behavior: contain;
   border: 1px solid rgba(15, 23, 42, 0.07);
   border-radius: 18px;
   background: #fff;
