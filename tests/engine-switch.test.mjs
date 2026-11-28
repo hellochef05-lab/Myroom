@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import middleware from '../middleware.js';
+import { wasEngineVerifiedForNavigation } from '../src/engineStatus.js';
 import { createEngineControl } from '../server/engineControl.js';
 
 const normal = new Request('https://sayup-chat.vercel.app/');
@@ -20,12 +21,29 @@ try {
   for (const request of [admin, adminHost]) assert.equal((await middleware(request)).headers.get('x-middleware-next'), '1');
   assert.equal(calls, 1, 'admin does not depend on the public gate');
   enabled = true;
-  assert.equal((await middleware(normal)).headers.get('x-middleware-next'), '1', 'enabled serves the app normally');
+  const allowed = await middleware(normal);
+  assert.equal(allowed.headers.get('x-middleware-next'), '1', 'enabled serves the app normally');
+  assert.equal(allowed.headers.get('Server-Timing'), 'sayup-engine;desc="on"');
+  assert.equal(allowed.headers.get('Cache-Control'), 'no-store');
+  assert.equal(blocked.headers.get('Server-Timing'), null);
+  assert.equal((await middleware(admin)).headers.get('Server-Timing'), null);
   globalThis.fetch = async () => { throw new Error('Service down'); };
   assert.equal((await middleware(normal)).status, 503, 'an unknown status cannot open the public app');
 } finally {
   globalThis.fetch = originalFetch;
 }
+
+const navigation = { type: 'navigate', serverTiming: [{ name: 'sayup-engine', description: 'on' }] };
+const timing = (entry) => ({
+  getEntriesByType(type) {
+    assert.equal(type, 'navigation');
+    return entry ? [entry] : [];
+  },
+});
+assert.equal(wasEngineVerifiedForNavigation(timing(navigation)), true);
+assert.equal(wasEngineVerifiedForNavigation(timing({ ...navigation, type: 'back_forward' })), false);
+assert.equal(wasEngineVerifiedForNavigation(timing({ ...navigation, serverTiming: [] })), false);
+assert.equal(wasEngineVerifiedForNavigation(timing()), false);
 
 const db = { devices: [{ streamUserId: 'alice' }, { streamUserId: 'alice' }, { streamUserId: 'bob' }] };
 let notices = 0, saved, failWrite = false;

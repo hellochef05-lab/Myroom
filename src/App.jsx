@@ -4872,7 +4872,6 @@ function MyMessage(props) {
                 border: "1px solid rgba(15,23,42,0.06)",
                 boxShadow: "0 2px 8px rgba(15,23,42,0.10)",
                 color: "#111827",
-                overflowWrap: "anywhere",
                 boxSizing: "border-box",
               }}
             >
