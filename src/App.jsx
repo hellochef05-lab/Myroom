@@ -4523,25 +4523,9 @@ function MyMessage(props) {
     const openActions = () => {
       clearLongPress();
       const bubbleRect = messageBubbleRef.current?.getBoundingClientRect();
-      const menuWidth = Math.min(300, window.innerWidth - 24);
-      const estimatedMenuHeight = 490;
-      const preferredLeft = isMine
-        ? (bubbleRect?.right || window.innerWidth - 12) - menuWidth
-        : bubbleRect?.left || 12;
-
-      setActionMenuPosition({
-        left: Math.max(
-          12,
-          Math.min(preferredLeft, window.innerWidth - menuWidth - 12)
-        ),
-        top: Math.max(
-          12,
-          Math.min(
-            (bubbleRect?.top || 76) - 62,
-            window.innerHeight - estimatedMenuHeight - 12
-          )
-        ),
-        width: menuWidth,
+      setActionMenuPosition(bubbleRect && {
+        left: isMine ? bubbleRect.right : bubbleRect.left,
+        top: bubbleRect.top - 62,
       });
       longPressTriggeredRef.current = true;
       setActionsOpen(true);
@@ -5011,9 +4995,9 @@ function MyMessage(props) {
               aria-label="Message options"
               onPointerDown={(event) => event.stopPropagation()}
               style={{
-                left: actionMenuPosition?.left ?? 12,
-                top: actionMenuPosition?.top ?? 12,
-                width: actionMenuPosition?.width ?? "calc(100% - 24px)",
+                "--message-menu-anchor-x": actionMenuPosition ? `${actionMenuPosition.left}px` : undefined,
+                "--message-menu-anchor-y": actionMenuPosition ? `${actionMenuPosition.top}px` : undefined,
+                "--message-menu-anchor-offset": isMine && actionMenuPosition ? "var(--message-menu-width)" : "0px",
               }}
             >
               <div className="private-room-reaction-picker" aria-label="React to message">
