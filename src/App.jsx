@@ -7,6 +7,8 @@ import { createOutboxFlusher, createDraftSafeSubmit } from "./messageOutbox.js";
 import { createRoomJoiner, callTransports, callFailureMessage, CALL_SIGNAL_ACK_TIMEOUT_MS } from "./callSignaling.js";
 import { createIceConfigLoader, callVideoConstraints, applyCallBandwidthLimits } from "./callNetwork.js";
 import { getChatViewportGeometry } from "./chatViewport.js";
+import { chatReactions } from "./chatReactions.js";
+import FloatingReactions from "./FloatingReactions.jsx";
 import { adminViewFromHash, adminViewTitles, navigateAdminView } from "./adminNavigation.js";
 import {
   createContext,
@@ -107,6 +109,14 @@ async function connectStreamUserWithRetry(chatClient, user, token) {
 
   throw lastError || new Error("Could not connect on this slow network. Keep trying.");
 }
+
+const streamReactionOptions = chatReactions.map(({ type, emoji, label }) => ({
+  type,
+  name: label,
+  Component: function ReactionEmoji() {
+    return <span>{emoji}</span>;
+  },
+}));
 
 const SAYUP_UI_THEMES = [
   { id: "champagne", label: "Champagne" },
@@ -4506,14 +4516,6 @@ function MyMessage(props) {
       Array.isArray(message.attachments) && message.attachments.length > 0;
     const allowedActions = context?.getMessageActions?.() || [];
     const canUseAction = (action) => allowedActions.includes(action);
-    const reactionOptions = [
-      { type: "love", emoji: "❤️", label: "Love" },
-      { type: "like", emoji: "👍", label: "Like" },
-      { type: "haha", emoji: "😂", label: "Laugh" },
-      { type: "wow", emoji: "😮", label: "Wow" },
-      { type: "sad", emoji: "😢", label: "Sad" },
-      { type: "pray", emoji: "🙏", label: "Thank you" },
-    ];
     const clearLongPress = () => {
       window.clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = 0;
@@ -5001,7 +5003,7 @@ function MyMessage(props) {
               }}
             >
               <div className="private-room-reaction-picker" aria-label="React to message">
-                {reactionOptions.map((reaction) => (
+                {chatReactions.map((reaction) => (
                   <button
                     type="button"
                     key={reaction.type}
@@ -7559,6 +7561,7 @@ async function adminUpdateTicketStatus(requestId, status) {
             channel={channel}
             Attachment={CustomAttachment}
             Message={MyMessage}
+            reactionOptions={streamReactionOptions}
             QuotedMessagePreview={WhatsAppQuotedMessagePreview}
             SendButton={KeepTypingSendButton}
             TypingIndicator={HiddenBottomIndicator}
@@ -7616,6 +7619,7 @@ async function adminUpdateTicketStatus(requestId, status) {
                   }}
                 >
                   <LatestMessageList key={channel.cid} channelId={channel.cid} />
+                  <FloatingReactions key={channel.cid} channel={channel} />
                 </div>
 
                 <div
