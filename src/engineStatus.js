@@ -11,9 +11,9 @@ export function wasEngineVerifiedForNavigation(performance) {
   );
 }
 
-export async function readEngineStatus(apiBase) {
+export async function readEngineStatus(apiBase, timeoutMs = 4000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(`${apiBase.replace(/\/+$/, "")}/api/health`, {
       cache: "no-store",
@@ -21,8 +21,8 @@ export async function readEngineStatus(apiBase) {
     });
     if (!response.ok) return null;
     const status = await response.json();
-    return status.success === true && status.database === "connected"
-      ? status.engineEnabled !== false
+    return status.success === true && status.database === "connected" && typeof status.engineEnabled === "boolean"
+      ? status.engineEnabled
       : null;
   } catch {
     return null;
