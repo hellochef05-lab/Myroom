@@ -2628,7 +2628,9 @@ function WebRTCCall({
       joiner.ensure();
     };
     const onCallPolicy = (policy) => setCallsEnabled(policy?.callsEnabled !== false);
+    const onEngineOff = () => window.dispatchEvent(new Event("sayup:engine-off"));
     s.on("room-call-policy", onCallPolicy);
+    s.on("engine-off", onEngineOff);
     s.on("connect", joinCurrentRoom);
     document.addEventListener("visibilitychange", resume);
     window.addEventListener("online", resume);
@@ -2639,11 +2641,13 @@ function WebRTCCall({
       window.removeEventListener("online", resume);
       s.off("connect", joinCurrentRoom);
       s.off("room-call-policy", onCallPolicy);
+      s.off("engine-off", onEngineOff);
       joiner.dispose();
       if (roomJoinerRef.current === joiner) roomJoinerRef.current = null;
       if (roomId && s.connected) s.emit("leave-room", { roomId });
       s.disconnect();
       socketRef.current = null;
+      cleanupCall();
       setJoinedRoom(false);
     };
   }, [roomId]);
@@ -3286,6 +3290,8 @@ function AdminDashboard({ API_BASE, onBack }) {
   const [adminPin, setAdminPin] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [engineSaving, setEngineSaving] = useState(false);
+  const [engineWarning, setEngineWarning] = useState("");
   const [isAdminOnline, setIsAdminOnline] = useState(() => navigator.onLine);
   const [activeView, setActiveView] = useState(() => adminViewFromHash(window.location.hash));
   const headingRef = useRef(null);
@@ -3410,6 +3416,23 @@ function AdminDashboard({ API_BASE, onBack }) {
       throw new Error(data.error || "Request failed");
     }
     return data;
+  }
+
+  async function updateEngine(enabled) {
+    if (engineSaving) return;
+    if (!enabled && dashboard.engineEnabled && !window.confirm("Turn off Sayup? The public link will close and active calls will end.")) return;
+    setEngineSaving(true);
+    setEngineWarning("");
+    try {
+      const result = await request("/api/admin/engine", { method: "PUT", body: JSON.stringify({ enabled }) });
+      setDashboard(current => ({ ...current, engineEnabled: result.enabled }));
+      setEngineWarning(result.warning || "");
+    } catch (error) {
+      setEngineWarning(error.message);
+      void request("/api/admin/dashboard").then(setDashboard).catch(() => {});
+    } finally {
+      setEngineSaving(false);
+    }
   }
 
   function buildUserDrafts(nextUsers) {
@@ -3950,6 +3973,19 @@ function AdminDashboard({ API_BASE, onBack }) {
 
         {authenticated && showOverview && (
           <>
+            <section className="admin-login-panel" aria-label="Sayup Engine">
+              <div>
+                <strong>Engine {dashboard.engineEnabled === undefined ? "status unavailable" : dashboard.engineEnabled ? "on" : "off"}</strong>
+                {engineWarning && <p role="status">{engineWarning}</p>}
+              </div>
+              <button type="button" disabled={engineSaving || !isAdminOnline || dashboard.engineEnabled === undefined}
+                onClick={() => updateEngine(!dashboard.engineEnabled)}>
+                {engineSaving ? "Saving…" : dashboard.engineEnabled === false ? "Turn engine on" : "Turn engine off"}
+              </button>
+              {engineWarning && dashboard.engineEnabled === false && (
+                <button type="button" disabled={engineSaving} onClick={() => updateEngine(false)}>Retry shutdown</button>
+              )}
+            </section>
             <section className="admin-stat-grid">
               <StatCard label="Access alerts" value={accessAlerts.length} accent="#0f766e"
                 onClick={() => openView("access_alerts")}

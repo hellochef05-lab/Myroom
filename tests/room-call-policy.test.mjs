@@ -18,6 +18,7 @@ const io = {
 };
 vm.runInNewContext(server.slice(routeStart, routeEnd) + server.slice(socketStart, socketEnd), {
   io, app: { patch(_path, handler) { patch = handler; } },
+  engine: { enabled: () => true },
   checkAdminPin(req, res) { return req.admin || (res.status(403).json({}), false); },
   readDB: () => db, writeDB: async data => { persisted = JSON.stringify(data); return true; },
   console: { log() {}, error() {} },

@@ -19,6 +19,7 @@
     "@daily-co/daily-js": "^0.87.0",
     "@daily-co/daily-react": "^0.24.0",
     "@supabase/supabase-js": "^2.111.0",
+    "@vercel/functions": "^3.12.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
