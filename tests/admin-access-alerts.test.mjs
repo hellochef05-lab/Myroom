@@ -99,11 +99,12 @@ const end = server.indexOf('app.get("/api/admin/devices"', start);
 let dashboard;
 const env = { ADMIN_PIN: 'fixture-pin' };
 vm.runInNewContext(server.slice(start, end), {
-  app: { get(_path, handler) { dashboard = handler; } },
+  app: { get(_path, handler) { dashboard = handler; }, put() {} },
   checkAdminPin: req => req.admin,
   readDB: () => ({ users: [], devices: [], payments: database.payments, supportRequests: [], rooms: [] }),
   recentAccessAlerts: () => alerts,
   process: { env },
+  engine: { enabled: () => true },
   Date,
 });
 const results = [];

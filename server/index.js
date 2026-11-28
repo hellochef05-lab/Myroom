@@ -1,4 +1,5 @@
 import { reportRoomPresence, roomPresenceSnapshot } from "./roomPresence.js";
+import { createEngineControl } from "./engineControl.js";
 import { recordLoginAttempt, recentAccessAlerts, resolveAlertLocation } from "./accessAlerts.js";
 import { createClient } from "@supabase/supabase-js";
 import { StreamChat } from "stream-chat";
@@ -52,6 +53,7 @@ function createEmptyDB() {
     supportMessages: [],
     loginHistory: [],
     accessLoginAlerts: [],
+    engineEnabled: true,
     paymentSettings: {
       currencyCode: "AED",
       currencyName: "UAE Dirham",
@@ -85,13 +87,14 @@ function normalizeDatabase(value) {
   const defaults = createEmptyDB();
 
   for (const key of Object.keys(defaults)) {
-    if (key === "paymentSettings") continue;
+    if (key === "paymentSettings" || key === "engineEnabled") continue;
     if (!Array.isArray(db[key])) {
       db[key] = [];
     }
   }
 
   db.paymentSettings = normalizePaymentSettings(db.paymentSettings);
+  db.engineEnabled = source.engineEnabled !== false;
 
   return db;
 }
@@ -703,6 +706,15 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
+app.use((req, res, next) => {
+  if (req.path === "/api/health" || req.path.startsWith("/api/admin/") ||
+      engine.enabled() || (req.method === "GET" && isAdmin(req) && ["/api/plans", "/api/payment-settings"].includes(req.path))) {
+    return next();
+  }
+  res.set("Cache-Control", "no-store");
+  return res.status(503).json({ error: "Sayup is unavailable right now.", code: "ENGINE_OFF" });
+});
+
 const streamApiKey = process.env.STREAM_API_KEY;
 const streamApiSecret =
   process.env.STREAM_API_SECRET;
@@ -752,9 +764,11 @@ app.get("/", (_req, res) => {
 });
 
 app.get("/api/health", (_req, res) => {
+  res.set("Cache-Control", "no-store");
   res.json({
     success: true,
     database: databaseReady ? "connected" : "loading",
+    engineEnabled: databaseReady && engine.enabled(),
     pendingSaveError: lastSaveError || null,
     time: new Date().toISOString(),
   });
@@ -811,6 +825,7 @@ app.post("/api/token", async (req, res) => {
     }
 
     const db = readDB();
+    const tokenCutoff = db.engineTokensRevokedBefore || 0;
 
     const auth = getActiveUserByAccessKey(
       db,
@@ -978,10 +993,11 @@ app.post("/api/token", async (req, res) => {
       );
     }
 
-    const token =
-      serverClient.createToken(
-        providedUserId
-      );
+    if (Date.now() < tokenCutoff) await new Promise(resolve => setTimeout(resolve, tokenCutoff - Date.now()));
+    if (!engine.enabled() || tokenCutoff !== (readDB().engineTokensRevokedBefore || 0)) {
+      return res.status(503).json({ error: "Sayup is unavailable right now.", code: "ENGINE_OFF" });
+    }
+    const token = serverClient.createToken(providedUserId, undefined, Math.floor(Date.now() / 1000));
 
     return res.json({
       token,
@@ -2660,6 +2676,7 @@ app.get("/api/admin/dashboard", (req, res) => {
     .sort((a, b) => b.count - a.count);
 
   return res.json({
+    engineEnabled: engine.enabled(),
     totalUsers,
     onlineNow: db.users.filter((user) => isRecentlyOnline(user.lastActivityAt || user.lastLoginAt)).length,
     joinedThisWeek: db.users.filter((user) => new Date(user.createdAt || 0).getTime() >= weekAgo).length,
@@ -2676,6 +2693,14 @@ app.get("/api/admin/dashboard", (req, res) => {
     topCountries,
     deviceSummary,
   });
+});
+
+app.put("/api/admin/engine", async (req, res) => {
+  if (!process.env.ADMIN_PIN) return res.status(503).json({ error: "Configure a custom Admin PIN to use the Engine switch." });
+  if (!checkAdminPin(req, res)) return;
+  if (typeof req.body?.enabled !== "boolean") return res.status(400).json({ error: "enabled must be true or false." });
+  const { status = 200, ...result } = await engine.update(req.body.enabled);
+  return res.status(status).json(result);
 });
 
 app.get("/api/admin/devices", (req, res) => {
@@ -4554,6 +4579,24 @@ const io = new Server(
   }
 );
 
+const engine = createEngineControl({
+  readDB,
+  writeDB,
+  notifyOff() {
+    io.emit("signal", { type: "hangup" });
+    io.emit("engine-off");
+  },
+  async revokeTokens(ids, before) {
+    for (let start = 0; start < ids.length; start += 50) {
+      const batch = ids.slice(start, start + 50);
+      const { users } = await serverClient.queryUsers({ id: { $in: batch } }, [], { limit: batch.length });
+      if (users.length) await serverClient.revokeUsersToken(users.map(user => user.id), before);
+    }
+  },
+});
+
+io.use((_socket, next) => next(engine.enabled() ? undefined : new Error("Sayup is unavailable right now.")));
+
 function roomCallsEnabled(roomId) {
   return !readDB().rooms.some(room => room.id === roomId && room.callsEnabled === false);
 }
@@ -4572,6 +4615,10 @@ io.on(
         { roomId },
         ack
       ) => {
+        if (!engine.enabled()) {
+          if (typeof ack === "function") ack({ ok: false, code: "ENGINE_OFF" });
+          return;
+        }
         if (!roomId) {
           if (ack) {
             ack({
@@ -4617,6 +4664,10 @@ io.on(
           roomId &&
           data
         ) {
+          if (!engine.enabled()) {
+            if (typeof ack === "function") ack({ ok: false, recipients: 0, code: "ENGINE_OFF" });
+            return;
+          }
           if (!roomCallsEnabled(roomId) && data.type !== "hangup") {
             if (typeof ack === "function") {
               ack({ ok: false, recipients: 0, code: "CALLS_DISABLED" });

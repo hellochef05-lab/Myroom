@@ -59,7 +59,8 @@ export default defineConfig({
       },
 
       workbox: {
-        navigateFallback: "/index.html",
+        // Send every document navigation to the server-side Engine switch.
+        globIgnores: ["**/*.html"],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: false,
